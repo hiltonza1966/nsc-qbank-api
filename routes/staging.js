@@ -7,7 +7,7 @@ const QBANK_DB = process.env.DB_NAME || 'nsc_qbank';
 function validateItem(it) {
   const required = ['subject_official_code', 'paper_no', 'question_text'];
   for (const f of required) {
-    if (!it[f] || String(it[f]).trim() === '') return `Missing ${f}`;
+    if (!it[f] || String(it[f]).trim() === '') return 'Missing ' + f;
   }
   if (!it.marks || isNaN(parseInt(it.marks))) return 'Missing or invalid marks';
   return null;
@@ -37,8 +37,8 @@ router.post('/bulk', async (req, res) => {
         `INSERT INTO ${QBANK_DB}.qbank_items_staging
          (item_id, subject_official_code, paper_no, question_text, marks, topic, cognitive_level, difficulty,
           created_by, source_year, source_exam_board, source_paper_code, 
-          item_code, question_number, source_reference, staging_batch, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft')`,
+          item_code, question_number, source_reference, staging_batch, status, item_type)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
         [
           uuidv4(),
           it.subject_official_code,
@@ -55,7 +55,8 @@ router.post('/bulk', async (req, res) => {
           it.item_code || null,
           it.question_number || null,
           it.source_reference || null,
-          it.batch || 'wizard-' + new Date().toISOString().slice(0, 10)
+          it.batch || 'wizard-' + new Date().toISOString().slice(0, 10),
+          it.item_type || 'Extended'
         ]
       );
       inserted++;

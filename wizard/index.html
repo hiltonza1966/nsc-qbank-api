@@ -15,6 +15,17 @@
 .loading { animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .memo-preview { background:#fef3c7; border-left:3px solid #f59e0b; }
+.image-drop-zone { border: 2px dashed #cbd5e1; border-radius: 4px; padding: 8px; text-align: center; cursor: pointer; transition: all 0.2s; }
+.image-drop-zone:hover { border-color: #2563eb; background: #eff6ff; }
+.image-drop-zone.drag-over { border-color: #2563eb; background: #dbeafe; }
+.image-preview { max-width: 100px; max-height: 100px; border-radius: 4px; margin-top: 4px; }
+.qnum-input { font-family: monospace; font-size: 0.85rem; width: 80px; }
+.marks-input { width: 60px; font-family: monospace; }
+.error-row { background: #fef2f2; }
+.error-text { color: #dc2626; font-size: 0.75rem; }
+.warning-text { color: #d97706; font-size: 0.75rem; }
+.sub-part-badge { font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; background: #e0e7ff; color: #4338ca; margin-right: 2px; }
+.debug-text { font-family: monospace; font-size: 0.7rem; background: #1e293b; color: #e2e8f0; padding: 8px; border-radius: 4px; max-height: 200px; overflow: auto; white-space: pre-wrap; }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -74,10 +85,15 @@
       <h3 class="font-semibold text-sm mb-2">Parsed QP Items (<span id="qpCount">0</span>)</h3>
       <div class="overflow-auto max-h-40 border text-sm">
         <table class="w-full">
-          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Type</th><th class="p-1">Marks</th><th class="p-1">Preview</th></tr></thead>
+          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Type</th><th class="p-1">Section</th><th class="p-1">Marks</th><th class="p-1">Images</th><th class="p-1">Preview</th></tr></thead>
           <tbody id="qpPreviewBody"></tbody>
         </table>
       </div>
+    </div>
+    <div id="qpDebug" class="mt-4 hidden">
+      <h3 class="font-semibold text-sm mb-2 text-red-600">Debug: Extracted Text Preview (first 2000 chars)</h3>
+      <div class="debug-text" id="qpDebugText"></div>
+      <p class="text-xs text-gray-500 mt-1">If few items were parsed, check this text to see what the PDF extractor found. You may need to use OCR for scanned PDFs.</p>
     </div>
   </section>
 
@@ -98,22 +114,32 @@
       <h3 class="font-semibold text-sm mb-2">Parsed Memo Items (<span id="memoCount">0</span>)</h3>
       <div class="overflow-auto max-h-40 border text-sm">
         <table class="w-full">
-          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Marks</th><th class="p-1">Preview</th></tr></thead>
+          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Marks</th><th class="p-1">Sub-parts</th><th class="p-1">Preview</th></tr></thead>
           <tbody id="memoPreviewBody"></tbody>
         </table>
       </div>
+    </div>
+    <div id="memoDebug" class="mt-4 hidden">
+      <h3 class="font-semibold text-sm mb-2 text-red-600">Debug: Extracted Text Preview (first 2000 chars)</h3>
+      <div class="debug-text" id="memoDebugText"></div>
     </div>
   </section>
 
   <!-- Step 4: Review & Import -->
   <section id="step4" class="hidden bg-white p-6 rounded shadow">
     <h2 class="font-semibold mb-4">4. Review &amp; Import (QP + Memo Linked)</h2>
-    <p class="text-sm mb-3 text-gray-600">Item codes auto-generated: <code class="bg-gray-200 px-1">LIFE-P1-2025-DBE-001</code>. QP questions linked to memo answers by question number.</p>
+    <p class="text-sm mb-3 text-gray-600">Item codes auto-generated: <code class="bg-gray-200 px-1">LIFE-P1-2025-DBE-001</code>. QP questions linked to memo answers by question number. Edit question numbers, text, marks, and upload images before importing.</p>
 
-    <div class="flex gap-2 mb-3">
+    <div id="validationSummary" class="mb-3 hidden p-3 bg-red-50 border border-red-200 rounded text-sm">
+      <strong class="text-red-700">Validation Errors:</strong>
+      <ul id="validationList" class="mt-1 text-red-600"></ul>
+    </div>
+
+    <div class="flex gap-2 mb-3 flex-wrap">
       <button type="button" onclick="addItem()" class="bg-green-600 text-white px-3 py-1 rounded text-sm">+ Add Item</button>
       <button type="button" onclick="clearItems()" class="border px-3 py-1 rounded text-sm">Clear All</button>
       <button type="button" onclick="renderItems()" class="border px-3 py-1 rounded text-sm">Refresh</button>
+      <button type="button" onclick="autoLinkMemos()" class="bg-yellow-600 text-white px-3 py-1 rounded text-sm">Auto-Link Memos</button>
       <span class="ml-auto text-sm">Total: <span id="totalCount">0</span> items, <span id="totalMarks">0</span> marks</span>
     </div>
 
@@ -121,11 +147,12 @@
       <table class="w-full text-sm" id="itemsTable">
         <thead class="bg-gray-100 sticky top-0"><tr>
           <th class="p-2 text-left w-12">#</th>
-          <th class="p-2 text-left">Item Code</th>
-          <th class="p-2 text-left">Q.No</th>
+          <th class="p-2 text-left w-24">Item Code</th>
+          <th class="p-2 text-left w-24">Q.No</th>
           <th class="p-2 text-left">Question Text</th>
           <th class="p-2 text-left">Memo Answer</th>
           <th class="p-2 w-20">Marks</th>
+          <th class="p-2 w-32">Images</th>
           <th class="p-2 w-24">Action</th>
         </tr></thead>
         <tbody></tbody>
@@ -149,6 +176,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 const state = JSON.parse(localStorage.getItem('nsc_wizard_v2')||'{}');
 let qpPDFFile = null;
 let memoPDFFile = null;
+let uploadedImages = {};
 
 function saveState(){ localStorage.setItem('nsc_wizard_v2', JSON.stringify(state)); }
 
@@ -159,13 +187,14 @@ function init(){
   }
   state.qpItems = state.qpItems || [];
   state.memoItems = state.memoItems || [];
-  
+  uploadedImages = state.uploadedImages || {};
+
   ['subject','paper_no','source_year','source_exam_board','source_paper_code','cognitive_level','difficulty','created_by'].forEach(id=>{
     const el=document.getElementById(id);
     if(state[id]) el.value=state[id];
     el.addEventListener('change',()=>{state[id]=el.value;saveState();});
   });
-  
+
   updateButtonStates();
   renderItems();
 }
@@ -173,7 +202,7 @@ function init(){
 function updateButtonStates() {
   const nextToMemo = document.getElementById('nextToMemoBtn');
   const nextToReview = document.getElementById('nextToReviewBtn');
-  
+
   if (nextToMemo) {
     if (state.qpItems && state.qpItems.length > 0) {
       nextToMemo.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -183,7 +212,7 @@ function updateButtonStates() {
       nextToMemo.disabled = true;
     }
   }
-  
+
   if (nextToReview) {
     if (state.memoItems && state.memoItems.length > 0) {
       nextToReview.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -204,7 +233,7 @@ function go(n){
     if (stepNum === n) d.classList.add('step-active');
     else if (stepNum < n) d.classList.add('step-completed');
   });
-  if (n === 4) renderItems();
+  if (n === 4) { renderItems(); validateItems(); }
 }
 
 function renderPDF(file, containerId){
@@ -247,30 +276,47 @@ document.getElementById('memoFile').addEventListener('change', (e) => {
 
 async function parseQP() {
   if (!qpPDFFile) { alert('Please select a QP PDF first'); return; }
-  
+
   const btn = document.getElementById('parseQPBtn');
   const status = document.getElementById('qpParseStatus');
+  const debugDiv = document.getElementById('qpDebug');
+  const debugText = document.getElementById('qpDebugText');
   btn.disabled = true;
   status.innerHTML = '<span class="loading text-blue-600">Parsing Question Paper... please wait</span>';
-  
+  debugDiv.classList.add('hidden');
+
   const formData = new FormData();
   formData.append('pdf', qpPDFFile);
-  
+
   try {
     const res = await fetch('http://localhost:4000/api/wizard/parse-pdf', {
       method: 'POST',
       body: formData
     });
     const data = await res.json();
-    
+
     if (data.success) {
       state.qpItems = data.items || [];
       saveState();
-      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' questions (' + data.total_marks + ' marks) from ' + data.total_pages + ' pages.</span>';
+      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' questions (' + data.total_marks + ' marks) using ' + (data.extraction_method || 'unknown') + '. ' + (data.total_images_detected || 0) + ' images detected.</span>';
+
+      // Show debug text if few items parsed
+      if (data.debug_text_preview && data.total_items < 10) {
+        debugDiv.classList.remove('hidden');
+        debugText.textContent = data.debug_text_preview;
+      }
+
       updateButtonStates();
       renderQPPreview();
     } else {
       status.innerHTML = '<span class="text-red-700">Parse error: ' + data.error + '</span>';
+      if (data.ocr_required) {
+        status.innerHTML += '<br><span class="text-orange-600">This PDF appears to be image-based (scanned). OCR is required.</span>';
+      }
+      if (data.debug_text_preview) {
+        debugDiv.classList.remove('hidden');
+        debugText.textContent = data.debug_text_preview;
+      }
       btn.disabled = false;
     }
   } catch (err) {
@@ -283,51 +329,71 @@ function renderQPPreview() {
   const tbody = document.getElementById('qpPreviewBody');
   tbody.innerHTML = '';
   document.getElementById('qpCount').textContent = state.qpItems.length;
-  
+
   if (!state.qpItems.length) {
     document.getElementById('qpPreview').classList.add('hidden');
     return;
   }
-  
+
   document.getElementById('qpPreview').classList.remove('hidden');
   state.qpItems.forEach((it, i) => {
     const tr = document.createElement('tr');
     tr.className = 'border-t';
+    const imgCount = it.images ? it.images.length : 0;
+    const subPartCount = it.sub_parts ? it.sub_parts.length : 0;
     tr.innerHTML = '<td class="p-1">' + (i+1) + '</td>' +
-      '<td class="p-1 font-mono">' + it.question_number + '</td>' +
-      '<td class="p-1">' + it.type + '</td>' +
+      '<td class="p-1 font-mono">' + (it.question_number || '-') + '</td>' +
+      '<td class="p-1">' + (it.type || 'Unknown') + '</td>' +
+      '<td class="p-1">' + (it.section || '-') + '</td>' +
       '<td class="p-1">' + it.marks + '</td>' +
-      '<td class="p-1 text-gray-600">' + escapeHtml(it.question_text.substring(0, 60)) + '...</td>';
+      '<td class="p-1">' + (imgCount > 0 ? imgCount + ' detected' : '-') + '</td>' +
+      '<td class="p-1 text-gray-600">' + escapeHtml((it.question_text || '').substring(0, 60)) + '...</td>';
     tbody.appendChild(tr);
   });
 }
 
 async function parseMemo() {
   if (!memoPDFFile) { alert('Please select a Memo PDF first'); return; }
-  
+
   const btn = document.getElementById('parseMemoBtn');
   const status = document.getElementById('memoParseStatus');
+  const debugDiv = document.getElementById('memoDebug');
+  const debugText = document.getElementById('memoDebugText');
   btn.disabled = true;
   status.innerHTML = '<span class="loading text-blue-600">Parsing Marking Guidelines... please wait</span>';
-  
+  debugDiv.classList.add('hidden');
+
   const formData = new FormData();
   formData.append('pdf', memoPDFFile);
-  
+
   try {
     const res = await fetch('http://localhost:4000/api/wizard/parse-memo', {
       method: 'POST',
       body: formData
     });
     const data = await res.json();
-    
+
     if (data.success) {
       state.memoItems = data.items || [];
       saveState();
-      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' memo items (' + data.total_marks + ' marks) from ' + data.total_pages + ' pages.</span>';
+      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' memo items (' + data.total_marks + ' marks) using ' + (data.extraction_method || 'unknown') + '.</span>';
+
+      if (data.debug_text_preview && data.total_items < 10) {
+        debugDiv.classList.remove('hidden');
+        debugText.textContent = data.debug_text_preview;
+      }
+
       updateButtonStates();
       renderMemoPreview();
     } else {
       status.innerHTML = '<span class="text-red-700">Parse error: ' + data.error + '</span>';
+      if (data.ocr_required) {
+        status.innerHTML += '<br><span class="text-orange-600">This PDF appears to be image-based (scanned). OCR is required.</span>';
+      }
+      if (data.debug_text_preview) {
+        debugDiv.classList.remove('hidden');
+        debugText.textContent = data.debug_text_preview;
+      }
       btn.disabled = false;
     }
   } catch (err) {
@@ -340,20 +406,22 @@ function renderMemoPreview() {
   const tbody = document.getElementById('memoPreviewBody');
   tbody.innerHTML = '';
   document.getElementById('memoCount').textContent = state.memoItems.length;
-  
+
   if (!state.memoItems.length) {
     document.getElementById('memoPreview').classList.add('hidden');
     return;
   }
-  
+
   document.getElementById('memoPreview').classList.remove('hidden');
   state.memoItems.forEach((it, i) => {
     const tr = document.createElement('tr');
     tr.className = 'border-t';
+    const subPartCount = it.sub_parts ? it.sub_parts.length : 0;
     tr.innerHTML = '<td class="p-1">' + (i+1) + '</td>' +
-      '<td class="p-1 font-mono">' + it.question_number + '</td>' +
+      '<td class="p-1 font-mono">' + (it.question_number || '-') + '</td>' +
       '<td class="p-1">' + it.marks + '</td>' +
-      '<td class="p-1 text-gray-600">' + escapeHtml(it.answer_text.substring(0, 60)) + '...</td>';
+      '<td class="p-1">' + (subPartCount > 0 ? subPartCount + ' parts' : '-') + '</td>' +
+      '<td class="p-1 text-gray-600">' + escapeHtml((it.answer_text || '').substring(0, 60)) + '...</td>';
     tbody.appendChild(tr);
   });
 }
@@ -369,7 +437,10 @@ function linkItems() {
       marks: qp.marks,
       memo_marks: memo ? memo.marks : qp.marks,
       section: qp.section || '',
-      type: qp.type || 'Extended'
+      type: qp.type || 'Extended',
+      images: qp.images || [],
+      sub_parts: qp.sub_parts || [],
+      child_sub_parts: qp.child_sub_parts || (memo ? memo.child_sub_parts : [])
     });
   });
   return linked;
@@ -393,14 +464,25 @@ function generateSourceReference(){
 }
 
 function addItem(){
-  state.qpItems.push({question_number:'',question_text:'',marks:1,section:'',type:'Extended'});
-  saveState(); renderItems();
+  state.qpItems.push({
+    question_number: '',
+    question_text: '',
+    marks: 1,
+    section: '',
+    type: 'Extended',
+    images: [],
+    sub_parts: []
+  });
+  saveState(); 
+  renderItems();
+  validateItems();
 }
 
 function clearItems(){ 
-  if(confirm('Clear all QP and Memo items?')){
+  if(confirm('Clear all QP and Memo items? This cannot be undone.')){
     state.qpItems=[];
     state.memoItems=[];
+    uploadedImages = {};
     saveState();
     renderItems();
     updateButtonStates();
@@ -409,46 +491,169 @@ function clearItems(){
   }
 }
 
+function autoLinkMemos() {
+  let linked = 0;
+  state.qpItems.forEach(qp => {
+    const memo = state.memoItems.find(m => m.question_number === qp.question_number);
+    if (memo) linked++;
+  });
+  alert('Auto-linked ' + linked + ' of ' + state.qpItems.length + ' QP items to memos. Unlinked items will show "No memo linked" warning.');
+  renderItems();
+  validateItems();
+}
+
+function validateItems() {
+  const errors = [];
+  const warnings = [];
+  const qNumSet = new Set();
+
+  state.qpItems.forEach((it, i) => {
+    if (!it.question_text || !it.question_text.trim()) {
+      errors.push('Item ' + (i+1) + ': Question text is empty');
+    }
+    if (!it.question_number || !it.question_number.trim()) {
+      errors.push('Item ' + (i+1) + ': Question number is empty');
+    }
+    if (it.question_number && it.question_number.trim()) {
+      const qn = it.question_number.trim();
+      if (qNumSet.has(qn)) {
+        errors.push('Item ' + (i+1) + ': Duplicate question number "' + qn + '"');
+      }
+      qNumSet.add(qn);
+    }
+    if (!it.marks || it.marks < 1 || it.marks > 100) {
+      errors.push('Item ' + (i+1) + ': Invalid marks (' + it.marks + ')');
+    }
+    const memo = state.memoItems.find(m => m.question_number === it.question_number);
+    if (!memo) {
+      warnings.push('Item ' + (i+1) + ' (' + (it.question_number || '?') + '): No memo linked');
+    } else if (memo.marks !== it.marks) {
+      warnings.push('Item ' + (i+1) + ' (' + it.question_number + '): QP marks (' + it.marks + ') != Memo marks (' + memo.marks + ')');
+    }
+  });
+
+  const summary = document.getElementById('validationSummary');
+  const list = document.getElementById('validationList');
+
+  if (errors.length > 0 || warnings.length > 0) {
+    summary.classList.remove('hidden');
+    list.innerHTML = '';
+    errors.forEach(e => {
+      const li = document.createElement('li');
+      li.className = 'error-text';
+      li.textContent = 'ERROR: ' + e;
+      list.appendChild(li);
+    });
+    warnings.forEach(w => {
+      const li = document.createElement('li');
+      li.className = 'warning-text';
+      li.textContent = 'WARNING: ' + w;
+      list.appendChild(li);
+    });
+  } else {
+    summary.classList.add('hidden');
+  }
+
+  return { errors, warnings };
+}
+
 function renderItems(){
   const tbody=document.querySelector('#itemsTable tbody');
   tbody.innerHTML='';
   let totalMarks=0;
-  
+
   const linked = linkItems();
-  
+
   linked.forEach((it,i)=>{
     totalMarks+=Number(it.marks)||0;
     const itemCode=generateItemCode(i);
+    const memo = state.memoItems.find(m => m.question_number === it.question_number);
+    const hasMemo = !!memo;
+    const marksMismatch = memo && memo.marks !== it.marks;
+    const itemImages = uploadedImages[i] || [];
+
     const tr=document.createElement('tr');
-    tr.className='border-t';
+    tr.className='border-t' + (marksMismatch ? ' error-row' : '');
+
+    let subPartsHtml = '';
+    if (it.sub_parts && it.sub_parts.length > 0) {
+      subPartsHtml = '<div class="mt-1 flex gap-1 flex-wrap">' + 
+        it.sub_parts.map(sp => '<span class="sub-part-badge" title="' + escapeHtml(sp.text.substring(0, 50)) + '">' + sp.letter + ' (' + sp.marks + ')</span>').join('') + 
+        '</div>';
+    }
+    let childSubPartsHtml = '';
+    if (it.child_sub_parts && it.child_sub_parts.length > 0) {
+      childSubPartsHtml = '<div class="mt-1 text-xs text-gray-600 border-l-2 border-blue-300 pl-2">' + 
+        '<div class="font-semibold mb-1">Sub-questions:</div>' +
+        it.child_sub_parts.map(csp => '<div class="mb-1">' + csp.number + ' (' + csp.marks + ' marks): ' + escapeHtml(csp.text.substring(0, 60)) + (csp.text.length > 60 ? '...' : '') + '</div>').join('') + 
+        '</div>';
+    }
+
+    let imagesHtml = '<div class="flex flex-col gap-1">';
+    if (itemImages.length > 0) {
+      itemImages.forEach((img, idx) => {
+        imagesHtml += '<div class="flex items-center gap-1">' +
+          '<img src="' + img.preview + '" class="image-preview" alt="img">' +
+          '<button type="button" onclick="removeImage(' + i + ',' + idx + ')" class="text-red-600 text-xs">×</button>' +
+          '</div>';
+      });
+    }
+    imagesHtml += '<div class="image-drop-zone" id="drop-zone-' + i + '" onclick="triggerImageUpload(' + i + ')" ' +
+      'ondragover="handleDragOver(event,' + i + ')" ondragleave="handleDragLeave(event,' + i + ')" ondrop="handleDrop(event,' + i + ')">' +
+      '<span class="text-xs text-gray-500">+ Add Image</span>' +
+      '<input type="file" id="img-input-' + i + '" accept="image/*" class="hidden" onchange="handleImageUpload(event,' + i + ')">' +
+      '</div></div>';
+
     tr.innerHTML='<td class="p-1 align-top">' + (i+1) + '</td>' +
       '<td class="p-1 align-top">' +
         '<div class="item-code">' + itemCode + '</div>' +
         '<div class="text-xs text-gray-500">' + generateSourceReference() + '</div>' +
+        '<div class="text-xs text-gray-400">' + (it.type || 'Extended') + '</div>' +
       '</td>' +
-      '<td class="p-1 align-top font-mono text-xs">' + (it.question_number || '-') + '</td>' +
+      '<td class="p-1 align-top">' +
+        '<input type="text" class="qnum-input border p-1 rounded" data-i="' + i + '" data-f="question_number" value="' + escapeHtml(it.question_number || '') + '" placeholder="e.g. 2.1">' +
+        (marksMismatch ? '<div class="error-text">Marks mismatch!</div>' : '') +
+        (hasMemo ? '' : '<div class="warning-text">No memo</div>') +
+      '</td>' +
       '<td class="p-1">' +
         '<div class="flex flex-col gap-1">' +
-          '<textarea class="w-full border p-1 h-20 font-mono text-xs" data-i="' + i + '" data-f="question_text" placeholder="Question text...">' + escapeHtml(it.question_text||'') + '</textarea>' +
-          '<div class="text-xs text-gray-500">Markdown preview:</div>' +
+          '<textarea class="w-full border p-1 h-24 font-mono text-xs" data-i="' + i + '" data-f="question_text" placeholder="Question text...">' + escapeHtml(it.question_text||'') + '</textarea>' +
+          '<div class="text-xs text-gray-500">Preview:</div>' +
           '<div class="md-preview p-1 text-xs" id="preview-q-' + i + '">' + markdownPreview(it.question_text||'') + '</div>' +
+          subPartsHtml +
+        childSubPartsHtml +
         '</div>' +
       '</td>' +
       '<td class="p-1">' +
         '<div class="flex flex-col gap-1">' +
-          '<textarea class="w-full border p-1 h-20 font-mono text-xs ' + (it.answer_text ? '' : 'bg-red-50') + '" data-i="' + i + '" data-f="answer_text" placeholder="Memo answer...">' + escapeHtml(it.answer_text||'') + '</textarea>' +
-          '<div class="text-xs text-gray-500">Memo preview:</div>' +
+          '<textarea class="w-full border p-1 h-24 font-mono text-xs ' + (hasMemo ? '' : 'bg-red-50') + '" data-i="' + i + '" data-f="answer_text" placeholder="Memo answer...">' + escapeHtml(it.answer_text||'') + '</textarea>' +
+          '<div class="text-xs text-gray-500">Preview:</div>' +
           '<div class="memo-preview p-1 text-xs" id="preview-m-' + i + '">' + markdownPreview(it.answer_text||'') + '</div>' +
-          (it.answer_text ? '' : '<div class="text-xs text-red-600">No memo linked</div>') +
         '</div>' +
       '</td>' +
-      '<td class="p-1 align-top"><input type="number" class="w-full border p-1" data-i="' + i + '" data-f="marks" value="' + (it.marks||1) + '" min="1" max="50"></td>' +
-      '<td class="p-1 align-top"><button type="button" onclick="delItem(' + i + ')" class="text-red-600 text-xs">Delete</button></td>';
+      '<td class="p-1 align-top">' +
+        '<input type="number" class="marks-input border p-1 rounded" data-i="' + i + '" data-f="marks" value="' + (it.marks||1) + '" min="1" max="100">' +
+      '</td>' +
+      '<td class="p-1 align-top">' + imagesHtml + '</td>' +
+      '<td class="p-1 align-top">' +
+        '<button type="button" onclick="delItem(' + i + ')" class="text-red-600 text-xs mb-1">Delete</button>' +
+        '<button type="button" onclick="moveItem(' + i + ', -1)" class="text-gray-600 text-xs block">↑ Move Up</button>' +
+        '<button type="button" onclick="moveItem(' + i + ', 1)" class="text-gray-600 text-xs block">↓ Move Down</button>' +
+      '</td>';
     tbody.appendChild(tr);
   });
-  
+
   document.getElementById('totalCount').textContent=linked.length;
   document.getElementById('totalMarks').textContent=totalMarks;
+
+  tbody.querySelectorAll('input[data-f="question_number"]').forEach(el=>{
+    el.addEventListener('input',e=>{
+      const i=e.target.dataset.i;
+      state.qpItems[i].question_number=e.target.value;
+      saveState();
+      validateItems();
+    });
+  });
 
   tbody.querySelectorAll('textarea[data-f="question_text"]').forEach(el=>{
     el.addEventListener('input',e=>{
@@ -456,32 +661,121 @@ function renderItems(){
       state.qpItems[i].question_text=e.target.value;
       document.getElementById('preview-q-'+i).innerHTML=markdownPreview(e.target.value);
       saveState();
+      validateItems();
     });
     el.addEventListener('paste',handlePaste);
   });
-  
+
   tbody.querySelectorAll('textarea[data-f="answer_text"]').forEach(el=>{
     el.addEventListener('input',e=>{
       const i=e.target.dataset.i;
       const qNum = state.qpItems[i].question_number;
       let memo = state.memoItems.find(m => m.question_number === qNum);
       if (!memo) {
-        memo = { question_number: qNum, answer_text: '', marks: state.qpItems[i].marks };
+        memo = { question_number: qNum, answer_text: '', marks: state.qpItems[i].marks, sub_parts: [] };
         state.memoItems.push(memo);
       }
       memo.answer_text = e.target.value;
       document.getElementById('preview-m-'+i).innerHTML=markdownPreview(e.target.value);
       saveState();
+      validateItems();
     });
   });
-  
+
   tbody.querySelectorAll('input[data-f="marks"]').forEach(el=>{
     el.addEventListener('input',e=>{
       const i=e.target.dataset.i;
       state.qpItems[i].marks=parseInt(e.target.value)||1;
-      saveState(); renderItems();
+      saveState(); 
+      renderItems();
+      validateItems();
     });
   });
+}
+
+function triggerImageUpload(index) {
+  document.getElementById('img-input-' + index).click();
+}
+
+function handleDragOver(e, index) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-zone-' + index).classList.add('drag-over');
+}
+
+function handleDragLeave(e, index) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-zone-' + index).classList.remove('drag-over');
+}
+
+function handleDrop(e, index) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-zone-' + index).classList.remove('drag-over');
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    processImageFile(files[0], index);
+  }
+}
+
+function handleImageUpload(e, index) {
+  const file = e.target.files[0];
+  if (file) {
+    processImageFile(file, index);
+  }
+}
+
+function processImageFile(file, index) {
+  if (!file.type.startsWith('image/')) {
+    alert('Only image files are allowed');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    alert('Image must be under 5MB');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    if (!uploadedImages[index]) uploadedImages[index] = [];
+    uploadedImages[index].push({
+      file: file,
+      preview: e.target.result,
+      name: file.name,
+      size: file.size
+    });
+    state.uploadedImages = uploadedImages;
+    saveState();
+    renderItems();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage(itemIndex, imgIndex) {
+  if (uploadedImages[itemIndex]) {
+    uploadedImages[itemIndex].splice(imgIndex, 1);
+    state.uploadedImages = uploadedImages;
+    saveState();
+    renderItems();
+  }
+}
+
+function moveItem(index, direction) {
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= state.qpItems.length) return;
+
+  const temp = state.qpItems[index];
+  state.qpItems[index] = state.qpItems[newIndex];
+  state.qpItems[newIndex] = temp;
+
+  const tempImg = uploadedImages[index];
+  uploadedImages[index] = uploadedImages[newIndex];
+  uploadedImages[newIndex] = tempImg;
+
+  state.uploadedImages = uploadedImages;
+  saveState();
+  renderItems();
 }
 
 function escapeHtml(text){
@@ -497,8 +791,8 @@ function markdownPreview(text){
     .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
     .replace(/\*(.*?)\*/g,'<em>$1</em>')
     .replace(/\n/g,'<br>');
-  if(text.includes('[IMAGE:')){
-    html+='<div class="mt-1 p-1 bg-yellow-100 text-xs text-yellow-800">⚠️ Image detected — OCR will be applied server-side</div>';
+  if(text.includes('[IMAGE:') || text.includes('[image:')){
+    html+='<div class="mt-1 p-1 bg-yellow-100 text-xs text-yellow-800">Image placeholder detected</div>';
   }
   return html;
 }
@@ -525,15 +819,35 @@ function handlePaste(e){
 
 function delItem(i){ 
   state.qpItems.splice(i,1); 
-  saveState(); renderItems(); 
+  delete uploadedImages[i];
+  const newImages = {};
+  Object.keys(uploadedImages).forEach(key => {
+    const k = parseInt(key);
+    if (k > i) newImages[k - 1] = uploadedImages[k];
+    else if (k < i) newImages[k] = uploadedImages[k];
+  });
+  uploadedImages = newImages;
+  state.uploadedImages = uploadedImages;
+  saveState(); 
+  renderItems(); 
+  validateItems();
 }
 
-function saveDraft(){ saveState(); alert('Draft saved locally'); }
+function saveDraft(){ 
+  saveState(); 
+  alert('Draft saved to localStorage (' + state.qpItems.length + ' QP items, ' + state.memoItems.length + ' memo items)'); 
+}
 
 async function importItems(){
   const btn=document.getElementById('importBtn');
   const status=document.getElementById('importStatus');
-  
+
+  const validation = validateItems();
+  if (validation.errors.length > 0) {
+    alert('Please fix ' + validation.errors.length + ' error(s) before importing.\n\n' + validation.errors.join('\n'));
+    return;
+  }
+
   if(!state.qpItems.length){alert('No QP items to import');return;}
 
   const emptyItems=state.qpItems.filter(it=>!it.question_text||!it.question_text.trim());
@@ -558,7 +872,8 @@ async function importItems(){
     source_paper_code: document.getElementById('source_paper_code').value,
     item_code: generateItemCode(idx),
     source_reference: sourceRef,
-    batch: batchName
+    batch: batchName,
+    item_type: it.type || 'Extended'
   }));
 
   try{
@@ -566,18 +881,43 @@ async function importItems(){
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(qpPayload)
     });
     const data1=await res1.json();
-    
+
     if(!data1.success){
       status.innerHTML='<span class="text-red-700">QP import failed: ' + data1.error + '</span>';
       btn.disabled=false;
       return;
     }
-    
+
     status.innerHTML='<span class="text-green-700">QP: ' + data1.inserted + ' items imported. ' + data1.skipped + ' duplicates skipped. ' + data1.errors.length + ' errors.</span>';
+
+    const imageKeys = Object.keys(uploadedImages);
+    if (imageKeys.length > 0) {
+      status.innerHTML += '<br><span class="text-blue-600">Uploading images...</span>';
+      let uploadedCount = 0;
+      for (const idx of imageKeys) {
+        const imgs = uploadedImages[idx];
+        for (const img of imgs) {
+          try {
+            const formData = new FormData();
+            formData.append('image', img.file);
+            formData.append('item_index', idx);
+            formData.append('batch', batchName);
+            const imgRes = await fetch('http://localhost:4000/api/attachments/upload', {
+              method: 'POST',
+              body: formData
+            });
+            if (imgRes.ok) uploadedCount++;
+          } catch (imgErr) {
+            console.error('Image upload failed:', imgErr);
+          }
+        }
+      }
+      status.innerHTML += '<br><span class="text-green-700">' + uploadedCount + ' images uploaded.</span>';
+    }
 
     if (state.memoItems.length > 0) {
       status.innerHTML += '<br><span class="text-blue-600">Importing Memo items...</span>';
-      
+
       const memoPayload = state.memoItems.map(it => ({
         question_number: it.question_number || '',
         answer_text: it.answer_text.trim(),
@@ -588,35 +928,36 @@ async function importItems(){
         subject_official_code: document.getElementById('subject').value,
         paper_no: parseInt(document.getElementById('paper_no').value)
       }));
-      
+
       const res2=await fetch('http://localhost:4000/api/staging/bulk-memo',{
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(memoPayload)
       });
       const data2=await res2.json();
-      
+
       if(data2.success){
         status.innerHTML += '<br><span class="text-green-700">Memo: ' + data2.inserted + ' items imported. ' + data2.skipped + ' duplicates skipped. ' + data2.errors.length + ' errors.</span>';
       } else {
         status.innerHTML += '<br><span class="text-red-700">Memo import failed: ' + data2.error + '</span>';
       }
     }
-    
+
     if(data1.errors.length){
       status.innerHTML+='<div class="text-red-600 text-xs mt-1">QP Errors: ' + data1.errors.map(e=>'#' + e.index + ': ' + e.error).join(', ') + '</div>';
     }
-    
+
     state.qpItems=[];
     state.memoItems=[];
+    uploadedImages = {};
+    state.uploadedImages = {};
     saveState();
     renderItems();
-    
+
   }catch(e){ 
     status.innerHTML='<span class="text-red-700">Network error: ' + e.message + '. Is API running on port 4000?</span>'; 
   }
   btn.disabled=false;
 }
 
-// Initialize when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {

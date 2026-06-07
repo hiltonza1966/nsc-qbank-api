@@ -51,7 +51,8 @@ app.use('/api/staging', stagingRoutes);
 app.use('/api/qbank/items', require('./routes/items'));
 app.use('/api/qbank/papers', require('./routes/papers'));
 app.use('/api/qbank/specs', require('./routes/specs'));
-app.use('/api/wizard', require('./routes/pdf_parser'));  // NEW: PDF parser endpoint
+app.use('/api/wizard', require('./routes/pdf_parser'));
+app.use('/api/attachments', require('./routes/attachments'));  // NEW: Image upload/download
 
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
