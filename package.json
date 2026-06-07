@@ -8,12 +8,15 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "mysql2": "^3.9.7",
     "cors": "^2.8.5",
+    "docx": "^8.5.0",
     "dotenv": "^16.4.5",
-    "uuid": "^9.0.1",
+    "express": "^4.19.2",
     "mammoth": "^1.6.0",
-    "docx": "^8.5.0"
+    "mysql2": "^3.9.7",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }

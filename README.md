@@ -1,31 +1,22 @@
-# NSC QBank API v1
+\# NSC QBank API
 
-Phase 3 implementation for nsc_registration_v3
 
-## Setup
-1. npm install
-2. cp .env.example .env (edit credentials)
-3. npm start
 
-## Endpoints
+Live folder: `C:\\dev\\nsc-qbank`
 
-### Items
-POST /api/qbank/items - create item
-GET /api/qbank/items?subject=19331054&paper=1 - list
-GET /api/qbank/items/:id - get with options
+Port: 4000
 
-### Papers
-POST /api/qbank/papers/generate
-Body: {"subject_official_code":"19331054","paper_no":1,"title":"MATH P1 Trial 2026"}
 
-GET /api/qbank/papers/:id
-GET /api/qbank/papers/:id/export
 
-### Specs
-GET /api/qbank/specs
-GET /api/qbank/specs/10351024/1
+\## Provenance fields (added 2026-06-06)
 
-## Field Mapping (CRITICAL)
-- Uses subject_official_code: '10351024' (AGRM), '19331054' (MATH)
-- NOT alpha codes
-- All FKs validated against subject_structure
+\- source\_year (YEAR)
+
+\- source\_exam\_board (DBE, IEB, etc.)
+
+\- source\_paper\_code (NSC, etc.)
+
+
+
+POST /api/qbank/items accepts these fields.
+

@@ -1,0 +1,282 @@
+=== 1._ABRIDGED_CONCEPT_DOCUMENT_Version_3_Edited_17_Sept_2025_JDP_TH.docx ===
+
+ABRIDGED CONCEPT DOCUMENT V3
+INTRODUCTION
+The aim of this concept document is to motivate for the transition from face-to-face setting of all public examinations, viz. General Education Certificate (GEC), Systemic Evaluations (SE) and National Senior Certificate (NSC) Examinations to an item banking system. 
+In making this transition, the Department of Basic Education (DBE) envisages that these high-stakes examinations match the high standards adopted by leading assessment bodies worldwide.
+As an educational system it is critical that the DBE stays abreast of evolving 21st century practices and incorporates technology into the process of setting examinations as iterated in the DBE’s vision and mission: ‘The vision of the Department of Basic Education is of a South Africa in which all our people will have access to lifelong learning, education and training opportunities. Our mission is to provide leadership in the establishment of a South African education system for the 21st century.’  
+In transitioning to an item banking system for the purpose of generating examination papers, the DBE is embracing the role that technology can play in a crucial aspect of the educational process. The aforementioned examinations serve as ‘barometers of the health of the education system’ at the end of each phase. The NSC, being the ultimate examination, is ‘an annual event of major public significance. These examinations signify the culmination of twelve years of formal schooling.’  
+BACKGROUND
+The responsibility of setting all public examination papers is the remit of the Chief Directorate: National Assessment and Public Examinations (CD: NAPE) which continuously seeks to enhance its examination setting process and the quality of question papers.
+Currently, all public examinations are set and moderated face-to-face, at the DBE Head Office in Pretoria. 
+Each examination paper is set by a panel of 4-5 examiners, a chief examiner and an internal moderator.
+Members of the examining panels are provided with flights, shuttle service, accommodation and catering during their setting processes. These processes necessitate that examiners and moderators have to be hosted in Pretoria for approximately 5 times a year, for at least 4 to 5 days per visit. This has huge cost implications for the DBE.
+For the past number of years, a total of approximately 170 NSC and GEC question papers were set and moderated by approximately 400 examiners and moderators.
+In recent decades, the DBE has bench-marked its setting processes and NSC examinations against those of leading assessment bodies in other countries. This has led to the realisation that question banks would be a valid alternative to the current approach adopted by DBE panels in the setting of question papers from zero-base on each occasion.  
+The DBE, therefore, proposes that a project be implemented to develop an advanced item banking system to generate question papers, tests and marking guidelines for all public examinations (i.e. NSC, GEC and SE) as well as other assessments in the South African school education context, e.g. school-based assessment tasks (SBA).
+TRANSITIONING TO AN ITEM BANKING SYSTEM
+As previously stated, in order to keep abreast of the changing educational landscape, it is critical that the DBE incorporates technology into its practices. An item banking system, with artificial intelligence (AI) functionality, is a step in this direction. A detailed description of the item banking system that the DBE requires, is captured in the Terms of Reference (ToR) – Appendix A.
+For the successful implementation of the item banking project, the following objectives will serve as the focus of the project:
+To appoint competent item writers and reviewers to design and review items.
+To generate items that are of high quality and standard.
+To provide access to quality items, which caters for different types of questions, e.g. multiple-choice/source-based/problem-solving questions.
+To decentralise the authoring process through facilitating online collaboration between contracted item-writers, reviewers and moderators at times convenient to them.
+IMPLEMENTATION OF THE ITEM BANKING SYSTEM
+Prior to the implementation of the item banking system, the following processes have to be completed:
+Procurement of a suitable item banking system package and the appointment of a service provider;
+Implementation of the software system and enhancements;
+Training, certification and appointment of designated users and provision of access; 
+Further implications for resources i.e. personnel, physical and financial.
+Appointment of a suitable service provider 
+This process involves a tender (bidding) process for an item banking system as stipulated in the DBE’s ToR. This process would be preceded by a review of the DBE’s detailed technical documentation together with stipulations of additional customisation outputs to be delivered within the contracted period. 
+The successful service provider shall be asked to compile and present a Risk Management Plan and a Security Management Plan to the DBE prior to the commencement of the project.
+The service provider will have to provide technical training (to all users) on how to use the system.
+Features of the software system and enhancements
+	Key features of the software system to be adapted or implemented in advance by the service provider include:
+a web-based system designed for desk-top computers and networked computers; 
+specifications needed for hardware to be procured by the DBE;
+a repository for quality-assured formative and summative assessment items that can be accessed by teachers with tagging of items according to DBE needs e.g. type, difficulty and cognitive levels;
+generation of secure tests and question papers for summative assessment for all public examinations and other assessments aligned to the CAPS and Examination Guidelines across the GET and FET bands, according to the question paper generation specifications;
+efficiency, security and cost-effectiveness. The large pool of items in an item bank repository allows for question papers or other assessment tasks to be generated in a short space of time.  Items would be based on clear specifications and forwarded to a central point to enable easy retrieval by authorised persons;
+a seamless and secure process of tracking inputs from a variety of contracted item writers and reviewers, with audit signals in the unlikely event of breaches;
+dual authorisations by code or password and rigorous permissions to access material allocated to item writers or reviewers;
+formulation and feedback of psychometric analyses and diagnostics of specific problems; experienced by learners, and a function that redirects teachers and learners to similar tasks or items in a specific content area or topic of items; 
+generation of a record of all information relevant for payment of item writers, reviewers and other relevant officials in the item banking process;
+a five-year full maintenance, enhancement and support service agreement before the Item Bank system is handed over to DBE;
+supporting documentation relating to the item banking system and users;
+a training service for the period of the contract with adequate quality-assured material to cover technical, administration, user, management and follow-up training; 
+Any other feature as stipulated in the ToR.
+Training, certification and appointment of designated users and provision of access  
+The DBE will provide an accredited online Short Learning Programme (SLP) on Examination Setting to all applicants interested in applying as an item writer – on condition that they meet the minimum requirements for appointment.
+The item banking service provider will be required to conduct training for the period of the contract in collaboration with the DBE, on technical aspects of the software.
+All users should first register with a unique username and a secured password. To ensure a high level of security the user registration facility should consist of a two-factor authentication system i.e. one-time password (OTP) or PIN, fingerprint registration or confirmation of identification through a mobile phone number. 
+All users will also be trained by the DBE on how to design an item; this will include training on how to tag items with the requisite metadata.
+The Internal Moderators will draft both the item specifications and the question paper generation specifications.
+Personnel required 
+TABLE 1 summarises the personnel required.
+TABLE 1: PERSONNEL REQUIRED
+USERS OF THE ITEM BANKING SYSTEM 
+Item writers, reviewers and moderators: 	
+Will be appointed based on the following criteria extracted from the Personnel Administrative Measures (PAM) document:
+Qualification in the subject concerned: Item writers, reviewers and moderators must have at least a three-year post-matriculation qualification, which must include the subject concerned at second- or third-year level;
+ Experience as an educator/examiner/subject advisor: Item writers, reviewers and moderators must have extensive knowledge and competence in the particular subject or a related area and at least two years teaching or other curriculum-related experience within the last five years at appropriate level;
+Experience as an examiner/moderator/marker will be an added advantage;
+Issues of equity and capacity building will also be considered. 
+In addition to the above criteria, all item writers, reviewers and moderators will have to:
+successfully complete the SLP for Setting Examinations, which will be accredited/certificated;
+ensure access to a stable and secure network, at their own expense; 
+be trained in using the item banking system;
+register as a user on the item banking system;
+upload all the relevant documents.
+ITEM BANKING SYSTEM REQUIREMENTS
+It is envisioned that the item banking system will assist the DBE to establish a large pool of items to assist in the generation of examination question papers of comparable standards within limited time frames. This will provide the foundation for the establishment of an item bank for all the subjects, in both the General Education and Training (GET) and the Further Education and Training (FET) bands, from which examination question papers can be generated in future. 
+The DBE therefore, has to procure an item banking system which: 
+could be leased, maintained and upgraded;
+meets 80% of the DBE’s specifications;
+allows 20% customisation to the DBE’s requirements;
+has AI functionality;
+is able to generate question papers, marking guidelines and analysis grids for high-stakes examinations;
+allows educators to access formative assessment items, for the generation of SBA tasks.
+TABLE 2 outlines the item banking system requirements, in the form of a workflow diagram.
+TABLE 2: WORKFLOW DIAGRAM
+FINANCIAL IMPLICATIONS
+The proposed budget will be attached as Appendix B.
+TIME FRAMES (To be discussed – subjects to be inserted) 
+PERSONNEL | RESPONSIBILITIES
+ITEM BANK ADMINISTRATOR | To ensure that all users are trained and registered;
+To manage the functionality of the item bank;
+To authorise the remuneration of the item writers;
+To troubleshoot when users encounter problems;
+To ensure that all items meet the generic specifications.
+ITEM WRITERS | To write items which comply with the subject’s Curriculum and Assessment Policy Statement (CAPS) and Examination Guidelines;
+To ensure that all items meet the item specifications for the subject, including marking guidelines and analysis grids;
+To capture the metadata accurately.
+ITEM REVIEWERS | To review all items submitted;
+To ensure that all items meet the item specifications for the subject; CAPS and Examination Guidelines compliant;
+To classify each item as: Accepted, Provisionally Accepted, Accepted with Corrections or Rejected;
+To provide feedback to the item writers;
+To amend the Provisionally Accepted items;
+To return Accepted with Corrections to the item writers;
+To capture the metadata accurately;
+To bank Accepted items;
+To provide feedback to the item bank administrator re remuneration of item writers.
+INTERNAL MODERATORS | To draft the item writing specifications;
+To draft the question paper generation specifications;
+To moderate items that would be used for summative assessment;
+To liaise with the DBE personnel, reviewers, the external moderators and scrutineer;
+To moderate the question papers generated by the system;
+To effect the changes proposed by the external moderators.
+EXTERNAL MODERATORS | To moderate all questions papers, marking guidelines and analysis grids used for summative assessments, that were generated by the item banking system;
+To provide feedback to the DBE and the internal moderators.
+PSYCHOMETRICIANS | To analyse the results of learners who wrote the pre-test;
+To provide feedback to the DBE, reviewers, internal and external moderators on their findings post-analysis.
+EDITORS | To edit all Accepted items prior to their being banked;
+To edit the question papers and marking guidelines, prior to the dissemination to the provinces.
+SCRUTINEERS | To write the question paper prior to checking the marking guidelines;
+To provide feedback to the DBE and internal moderator regarding the standard and quality of the question paper.
+PHASE | DESCRIPTION | PROCESS
+PHASE 1: REGISTRATION OF ITEM WRITERS | Only accredited item writers may register for access to the item banking system. | All prospective item writers should successfully complete the Examination Paper Setting Short Learning Programme (SLP). They will receive certification on their completion.
+The item writers will be trained by the item banking system service provider, on how to use the item banking system.
+Item writers must also provide the personal particulars to facilitate remuneration.
+PHASE 2: 
+ITEM WRITING | 2.1 The DBE will provide the item specifications developed by internal moderators to the item writers. 
+
+
+2.2 Item writers will then develop items and upload them on the Item Banking system. | 2.1 ITEM SPECIFICATIONS
+(a) The items should be CAPS compliant.
+(b) Items should meet the necessary weightings in respect of cognitive and difficulty levels.
+(c) Sourcing and formatting should be in accordance with the Examination Guidelines stipulations.
+
+
+2.2 ITEM WRITERS
+(a) Accredited item writers will be allowed to draft items offline.
+(b) Items that meet the prescripts as per the item specifications will be uploaded onto the system.
+PHASE 3: 
+REVIEWING | 3.1 All items that have been uploaded will be reviewed by appointed item reviewers.
+
+
+
+
+
+
+
+3.2 After the first review process, items identified for summative assessment will be reviewed by external reviewers (Umalusi). | 3.1. INTERNAL REVIEW
+(a) All items will be reviewed for compliance; validity; etc.
+(b) Items will receive a status qualification as either: Accepted, Provisionally Accepted, Accepted with Corrections or Rejected.
+(c) Provisionally accepted items will be amended by the item reviewer and Accepted with Corrections will be returned to the item writer, to implement amendments. Rejected items are disposed of.
+(d) Thereafter, all Accepted items will be tagged with the necessary metadata.
+(e) All items deemed suitable for formative assessment will be provisionally banked and the item banking system will remunerate the item writers accordingly.
+
+
+3.2 EXTERNAL REVIEW
+(a) All items identified for summative assessment will be reviewed by the external reviewers.
+(b) Items will receive a status qualification as either: Accepted, Provisionally Accepted, Accepted with Corrections or Rejected.
+(c) Provisionally accepted items will be amended by the item reviewer and Accepted with Corrections will be returned to the item writer, to implement amendments. Rejected items are disposed of.
+(d) Thereafter, all Accepted items will be tagged with the necessary metadata.
+(e) All items deemed suitable for summative assessment will be provisionally banked and the item banking system will remunerate the item writers accordingly.
+PHASE 4: 
+STORAGE AND MAINTENANCE | All items stored in the repository will be tagged with the relevant metadata. | (a) All items deemed suitable for banking are edited and their tagging is checked.
+(b) The item banking system should also be able to generate a register of items that have been banked.
+PHASE 5: 
+SYSTEM TESTING | 5.1 The DBE will provide the question paper specifications, per subject.
+
+
+5.2 Practice tests (that closely resemble examination papers) are generated.
+5.3 These practice tests are administered to the relevant cohort of 200+ learners. | 5.1 QUESTION PAPER SPECIFICATIONS
+Question papers must be constructed in accordance with the identified subjects’ CAPS and Examination Guidelines and the specifications developed by internal moderators.
+
+
+5.2 PRACTICE TESTS:
+The item banking system generates a full examination paper in selected subjects, to be field tested.
+
+
+
+5.3 ADMINISTERING THE PRACTICE TEST
+(a) The test is administered to 200+ learners as either a formative assessment activity or as a trial examination.
+(b) The per item results are submitted to psychometricians for analysis.
+(c) Based on the feedback from the psychometricians, items are either accepted or rejected.
+PHASE 6: 
+QUESTION PAPER GENERATION | 6.1 The Item Banking System will generate full question papers, marking guidelines and analysis grids, using the question paper specifications.
+
+6.2 These question papers will be moderated both internally (DBE) and externally (Umalusi). | 6.1 GENERATION OF QUESTION PAPERS
+(a) The item banking system will generate four (i.e. to suit budget phases – needs discussion) full question papers, marking guidelines and analysis grids from the repository, for all subjects. 
+(b) Items that are selected will be stored in a separate repository and may not be used within a specified timeframe.
+
+
+6.2 MODERATION
+(a) The internal moderators will moderate the question papers, marking guidelines and analysis grids and effect necessary changes.
+(b) The question papers, marking guidelines and analysis grids will be submitted to Umalusi for external moderation.
+(c) The internal moderators will effect Umalusi’s recommendations.
+PHASE 7: 
+PROCESS FINALISATION | 7.1 Once the papers have been approved they will be submitted for editing.
+7.2 The DBE will appoint a scrutineer who will write the examination paper and provide feedback. | 7.1 EDITING
+All question papers and marking guidelines will be submitted for editing, prior to dissemination to the provinces.
+
+7.2 SCRUTINISING
+(a) A scrutineer, with subject expertise and experience, will write the question paper. The marking guideline will then be provided after the paper has been written.
+(b) The scrutineer will then provide feedback to the DBE and the internal moderators.
+2027: STAGE 1 | 2027: STAGE 1 | 2027: STAGE 1 | 2027: STAGE 1
+Phases | Grade | No. of subjects | Subjects
+FET Languages | 12 | 8 | 
+FET Non-languages | 12 | 8 | 
+GET Senior | 9 | 8 | 
+2028: STAGE 2 | 2028: STAGE 2 | 2028: STAGE 2 | 2028: STAGE 2
+Phases | Grade | No. of subjects | Subjects
+FET Languages | 12 | 8 | 
+FET Non-languages | 12 | 8 | 
+GET Senior | 9 | 8 | 
+2029: STAGE 3 | 2029: STAGE 3 | 2029: STAGE 3 | 2029: STAGE 3
+Phases | Grade | No. of subjects | Subjects
+FET Languages | 12 | 9 | 
+FET Non-languages | 12 | 8 | 
+GET Senior | 9 | 7 | 
+2030: STAGE 4 | 2030: STAGE 4 | 2030: STAGE 4 | 2030: STAGE 4
+Phases | Grade | No. of subjects | Subjects
+FET Languages | 12 | 9 | 
+FET Non-languages | 12 | 7 | 
+GET Senior | 9 | 7 | 
+2031: STAGE 5 | 2031: STAGE 5 | 2031: STAGE 5 | 2031: STAGE 5
+Phases | Grade | No. of subjects | Subjects
+FET Languages | 12 |  | 
+FET Non-languages | 12 |  | 
+GET Senior | 9 |  | 
+2032: STAGE 6 | 2032: STAGE 6 | 2032: STAGE 6 | 2032: STAGE 6
+Phases | Grade | No. of subjects | Subjects
+FET Languages | 12 |  | 
+FET Non-languages | 12 |  | 
+GET Senior | 9 |  | 
+
+================================================================================
+
+=== 1._SECTION_5_FOR_CONCEPT_DOCUMENT_OVERVIEW_OF_EXPECTED_WORKFLOW.docx ===
+
+SECTION 5: OVERVIEW OF EXPECTED WORKFLOW – TO BE CONVERTED INTO A NARRATIVE FOR THE CONCEPT DOCUMENT?  (based on Natasha’s workflow – Work in progress: Jacquie & Trevor
+Intro | The DBE forms teams of Item Specification Writers per subject to develop instructions for item writers. This would determine the expected number of item writers required for appointment by the DBE, prevent unnecessary duplication of items, and assist in budgeting.  (See SQA’s note)
+Procurement of Item Banking system software from the successful service provider as per the DBE’s Terms of Reference, and creation of repositories for several levels of items. 
+The item banking system should allow for the integration of Artificial Intelligence applications and existing software programs being used in specific subjects e.g. Mathematics; CAT, EGD; this implies that licensing agreements should be sought where software programs are currently being used.  
+The software should be able to bank all types of questions (levels, difficulty etc) to enable for question papers to be developed. | The DBE forms teams of Item Specification Writers per subject to develop instructions for item writers. This would determine the expected number of item writers required for appointment by the DBE, prevent unnecessary duplication of items, and assist in budgeting.  (See SQA’s note)
+Procurement of Item Banking system software from the successful service provider as per the DBE’s Terms of Reference, and creation of repositories for several levels of items. 
+The item banking system should allow for the integration of Artificial Intelligence applications and existing software programs being used in specific subjects e.g. Mathematics; CAT, EGD; this implies that licensing agreements should be sought where software programs are currently being used.  
+The software should be able to bank all types of questions (levels, difficulty etc) to enable for question papers to be developed.
+ | Question: Are we looking for a hybrid model initially until such time that the until all papers are able to be generated using IB including AI? | Question: Are we looking for a hybrid model initially until such time that the until all papers are able to be generated using IB including AI?
+1. | Registration of users of the Item Banking software including appointed DBE administrators, item-writers, reviewers, moderators, and scrutinizers.   This process involves verifying of personal details of users: qualifications and experience as per their submitted CVs.  Note: Applicants must be registered with SACE. | Registration of users of the Item Banking software including appointed DBE administrators, item-writers, reviewers, moderators, and scrutinizers.   This process involves verifying of personal details of users: qualifications and experience as per their submitted CVs.  Note: Applicants must be registered with SACE.
+ | Question: are we going to limit the number of users (also see phasing in below)? | Question: are we going to limit the number of users (also see phasing in below)?
+2. | Technical training of DBE appointed administrators to manage the Item Banking system and appointed users of the software. | Technical training of DBE appointed administrators to manage the Item Banking system and appointed users of the software.
+3. | Setting up of Item Specifications by DBE subject experts to ensure compliance with the CAPS and Examination Guidelines e.g. item identifiers, cognitive levels, degrees of difficulty. | Setting up of Item Specifications by DBE subject experts to ensure compliance with the CAPS and Examination Guidelines e.g. item identifiers, cognitive levels, degrees of difficulty.
+4. | Training of item-writers, examiners, reviewers and internal moderators using the Short Learning Program developed by the DBE in conjunction with the University of Johannesburg.  This will be followed with summative assessments developed by the DBE/UJ to identify proficient users. | Training of item-writers, examiners, reviewers and internal moderators using the Short Learning Program developed by the DBE in conjunction with the University of Johannesburg.  This will be followed with summative assessments developed by the DBE/UJ to identify proficient users.
+ | Question: should we be phasing in subjects over the period 2026-2031 as envisaged in 2023? | Question: should we be phasing in subjects over the period 2026-2031 as envisaged in 2023?
+5. | Appointment of proficient item-writers, examiners, reviewers, internal moderators and scrutineers / (verifiers?). | Appointment of proficient item-writers, examiners, reviewers, internal moderators and scrutineers / (verifiers?).
+6. | Offline drafting of items by the appointed item-writers, followed by online submission to the DBE for reviewing. | Offline drafting of items by the appointed item-writers, followed by online submission to the DBE for reviewing.
+7. | First review of all items: | First review of all items:
+ | 7.1 | All submitted items are reviewed internally. (Delete CE) Includes the tagging process for accurate confirmation providing the metadata information of the items. (by reviewers?)
+ | 7.2 | Items to be Accepted / Provisionally accepted / Accepted with corrections / Rejected. 
+Editing of accepted items.
+Banking of accepted items for formative assessment in repository. Disposal of rejected items.
+Payment for accepted formative items.
+8. | Second review of items to be used for summative assessment: | Second review of items to be used for summative assessment:
+ | 8.1 | Items to be used for summative assessment will be reviewed by internal and external reviewers.  
+This includes the tagging process for accurate confirmation providing the metadata information of the items.
+ | 8.2 | Items to be Accepted / Provisionally accepted / Accepted with corrections / Rejected. 
+Editing of accepted items.
+Banking of accepted items in repository. Disposal of rejected items.
+Payment for accepted summative items.
+9. | Field testing of selected items to be used for summative assessments. | Field testing of selected items to be used for summative assessments.
+ | Items are field-tested to include approx. 200 learners from high-performing to low-performing schools.
+Responses to these items are then submitted to psychometricians for analysis and feedback. | Items are field-tested to include approx. 200 learners from high-performing to low-performing schools.
+Responses to these items are then submitted to psychometricians for analysis and feedback.
+10. | Item specifications for summative question papers. | Item specifications for summative question papers.
+ | Item Specification Writers per subject develop instructions for development of question papers that comply with the CAPS and Examination Guidelines. | Item Specification Writers per subject develop instructions for development of question papers that comply with the CAPS and Examination Guidelines.
+11. | Generate practice tests that comply with the CAPS and Examination Guidelines to closely resemble what candidates would be exposed to in a final examination. | Generate practice tests that comply with the CAPS and Examination Guidelines to closely resemble what candidates would be exposed to in a final examination.
+ | 11.1 | Pre-test full question papers of selected subjects for at least 200 candidates writing the full question paper.
+ | 11.2 | ?? Analyse, record and bank the results of the practice tests. ??
+12. | Generate summative question papers using the system software. | Generate summative question papers using the system software.
+ | 12.1 | The item banking system generates Question Papers, Marking Guides and Analysis Grids to be reviewed by the Chief Examiner and Internal Moderator. Reports are compiled by both the Chief Examiner and Internal Moderator. Internally approved Question Papers, Marking Guides and Analysis Grids are submitted to Umalusi for external moderation.
+ | 12.2 | Moderation by the Umalusi External Moderators who compile their moderation report. Changes to be effected by DBE Internal Moderator.
+13. | The Scrutineer ….. (Roles to be discussed). 
+DBE appoints independent subject specialists (scrutineers) in each subject to validate / scrutinize the question papers to provide indications of unexpected answers / interpretation of questions / ambiguities that may influence performance. 
+The scrutineer / validator undertakes to write the papers independently without reference to marking guidelines and analysis grids. Thereafter they are provided with marking guides to check expected responses from candidates. 
+The scrutineer then compiles a report for submission to the DBE and Internal Moderator for corrections or amendments to the papers.
+14. | Final editing by DBE editors in consultation with DBE Internal Moderator (if necessary).
+
+================================================================================
+

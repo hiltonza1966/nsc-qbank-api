@@ -1,0 +1,435 @@
+================================================================================
+NSC REGISTRATION SYSTEM v4 - COMPLETE SYSTEM DISCOVERY
+GIA Protocol v1.2 - Zero Assumption Context
+Generated: 2026-05-20 23:34
+Version: 1.9
+================================================================================
+
+PURPOSE:
+This file contains everything an AI needs to know about the NSC v4 system.
+Upload this file at the start of EVERY new AI session before any task.
+
+INSTRUCTIONS FOR AI:
+1. Read this entire file completely before starting any task
+2. Do not make assumptions about table names, column names, or file paths
+3. Reference exact names from this file
+4. If information is missing, ask the human - do not guess
+5. Section 7 contains frontend paths and API shapes - check it first
+6. Section 9 contains the canonical directory structure - follow it strictly
+7. CRITICAL: The ONLY database is nsc_registration_v3. Never use any other.
+
+================================================================================
+SECTION 1: PROJECT METADATA
+================================================================================
+
+Project Name: NSC Registration System v4
+Project Path: E:\GitProjects\NSC_Registration_System_v4
+Database Name: nsc_registration_v3  <-- HARD CODED: NEVER USE ANY OTHER DATABASE
+
+System Environment:
+  OS: Windows 11
+  Shell: PowerShell 7.4
+  Node.js: v24.14.0
+  MySQL: 8.0.45
+  MySQL Path: C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe
+
+Git Status:
+  Current Commit: [SEE GIT LOG]
+  Branch: master
+  Status: Clean (as of generation)
+
+Project Stats:
+  Total Files: 82130
+  TypeScript Files (.ts): 22241
+  TSX Files (.tsx): 76
+  SQL Files (.sql): 64
+  Backend Source Files: 60
+  Frontend Source Files: 140
+  Documentation Files: 91
+  Script Files: 15
+
+NSC System Stats:
+  Total Learners Imported: 253,724
+  Dashboards Built: 15
+  Compliance Documents: 32
+  Provinces: 9
+  Git Commits: 212+
+
+GIA Protocol:
+  Version: 1.2
+  Status: STATIC - never modify
+  Location: docs/gia/GIA_Protocol_v1.2.md
+  Validated: 2026-05-16
+  Templates Tested: Full (PASSED), Abbreviated v2 (PASSED)
+
+Change Control:
+  Process: GIA Annexure G v1.1
+  Location: docs/gia/GIA_Annexure_G_Change_Control_Process.md
+  CR Template: docs/templates/NSC_v4_Change_Request_Template.txt
+  TID Template: docs/templates/NSC_v4_Technical_Impact_Assessment_Template.txt
+  UAT Template: docs/templates/NSC_v4_UAT_Signoff_Template.txt
+
+================================================================================
+SECTION 2: DATABASE SCHEMA
+================================================================================
+
+Database: nsc_registration_v3
+Collation: utf8mb4_unicode_ci
+Engine: InnoDB
+MySQL Version: 8.0.45
+
+CRITICAL RULE: This system ONLY uses nsc_registration_v3.
+Never connect to, query, or reference any other database name.
+
+Total Tables: 85
+Total Stored Procedures: 16
+
+---
+TABLE LIST (Alphabetical)
+---
+  admin_activity_logs
+  audit_log
+  barrier_alert_rules
+  barrier_concession_rules
+  config_environment
+  config_system
+  dashboard_permissions
+  dashboard_permissions_backup
+  dryrun_sasams_import
+  email_verification_tokens
+  etl_error_details
+  etl_error_types
+  etl_import_batches
+  etl_school_summaries
+  etl_validation_log
+  import_error_logs
+  lookup_accommodations
+  lookup_assessment_types
+  lookup_asylum_seeker_status
+  lookup_centre_accommodations
+  lookup_centres
+  lookup_centres_backup_20260429
+  lookup_circuits
+  lookup_circuits_backup_20260429
+  lookup_concessions
+  lookup_districts
+  lookup_districts_backup_20260429
+  lookup_document_types
+  lookup_exam_languages
+  lookup_exam_months
+  lookup_exam_paper_languages
+  lookup_exam_types
+  lookup_genders
+  lookup_id_types
+  lookup_languages
+  lookup_musical_instruments
+  lookup_no_fee_status
+  lookup_nsc_endorsement
+  lookup_paper_types
+  lookup_popia_consent
+  lookup_programs
+  lookup_progression_status
+  lookup_province_numeric_map
+  lookup_provinces
+  lookup_provinces_backup_20260429
+  lookup_race_codes
+  lookup_redo_papers
+  lookup_regions
+  lookup_registration_statuses
+  lookup_registration_types
+  lookup_religions
+  lookup_roles
+  lookup_sasams_import_validations
+  lookup_second_chance_programme
+  lookup_sne_codes
+  lookup_special_needs_centre
+  lookup_streams
+  lookup_subject_components
+  lookup_subject_groups
+  lookup_subjects_backup
+  lookup_subjects_backup_20260415
+  lookup_titles
+  nsc_candidate_address
+  nsc_candidate_registration
+  parsing_sasams_import
+  password_reset_tokens
+  previous_exam_subjects
+  provinces
+  provincial_contacts
+  registration_controls
+  registration_type_controls
+  role_permissions
+  role_permissions_backup
+  staging_sasams_import
+  staging_transfer_log
+  subject_groups
+  subject_structure
+  subject_structure_audit
+  system_config
+  table_province_access
+  test_staging
+  theme_settings
+  users
+  val_lookup_subjects
+
+---
+STORED PROCEDURE LIST (Alphabetical)
+---
+  AddColumnIfNotExists
+  sp_etl_fix_subjects
+  sp_etl_full_reimport
+  sp_etl_import_province_year
+  sp_etl_import_remaining
+  sp_etl_import_with_province
+  sp_sasams_bulk_insert_parsing
+  sp_sasams_commit_dryrun
+  sp_sasams_get_dryrun_preview
+  sp_sasams_move_parsing_to_staging
+  sp_transfer_approved_sasams_type01
+  sp_transfer_approved_sasams_type02
+  sp_transfer_ft_learners
+  sp_validate_staging_sasams_type01  [CR-011: Optimized ~16 single-pass UPDATEs, no temp tables]
+  sp_validate_staging_sasams_type02  [CR-011: Optimized ~9 single-pass UPDATEs, no temp tables]
+
+---
+KEY TABLE STRUCTURES
+---
+
+TABLE: nsc_candidate_registration
+  Description: DBE Link Spec Record Type 01 (learner registration data)
+  Columns: [same as v1.7 - unchanged]
+  Indexes:
+    PRIMARY KEY (`id`)
+    KEY `idx_lurits` (`lurits_number`)
+    KEY `idx_id_number` (`candidate_id_number`)
+    KEY `idx_emis` (`emis_number`)
+    KEY `idx_nsc_id` (`candidate_id_number`)
+    KEY `idx_nsc_lurits` (`lurits_number`)
+    KEY `idx_nsc_exam_prov` (`nsc_examination_date`,`nsc_province_number`)
+    KEY `idx_nsc_candidate_lookup` (`candidate_id_number`,`lurits_number`,`nsc_examination_date`)
+    KEY `idx_nsc_reg_sasams_unique` (`candidate_sa_sams_unique_number`,`nsc_examination_date`,`nsc_province_number`)
+    + KEY `idx_nsc_transfer_lookup` (`candidate_sa_sams_unique_number`,`lurits_number`,`candidate_id_number`,`nsc_examination_date`,`nsc_province_number`) -- ADDED CR-008
+
+TABLE: nsc_candidate_address
+  Description: DBE Link Spec Record Type 02 (learner address data)
+  Columns: [same as v1.7 - unchanged]
+  Indexes:
+    PRIMARY KEY (`id`)
+    KEY `idx_addr_id_number` (`candidate_id_number`)
+    KEY `idx_addr_lurits` (`lurits_number`)
+    KEY `idx_nsc_addr_sasams_unique` (`candidate_sa_sams_unique_number`,`lurits_number`)
+
+TABLE: staging_sasams_import
+  Description: Staging table for SASAMS import validation
+  Columns: [same as v1.7 - unchanged]
+  Indexes:
+    PRIMARY KEY (`id`)
+    KEY `idx_lurits` (`lurits_number`)
+    KEY `idx_id_number` (`candidate_id_number`)
+    KEY `idx_emis` (`emis_number`)
+    KEY `idx_pathway` (`pathway`)
+    KEY `idx_val_status` (`import_status`)
+    KEY `idx_val_centre` (`val_centre_ok`)
+    KEY `idx_validation_filter` (`nsc_examination_date`,`nsc_province_number`,`import_status`,`record_type`,`val_structure_ok`)
+    KEY `idx_staging_status` (`import_status`,`nsc_examination_date`,`nsc_province_number`)
+    KEY `idx_staging_sasams_unique` (`nsc_examination_date`,`nsc_province_number`)
+    + KEY `idx_staging_workflow` (`nsc_examination_date`,`nsc_province_number`,`created_by`,`import_status`,`record_type`) -- ADDED CR-008
+
+TABLE: parsing_sasams_import
+  Description: Initial parsing table for raw SASAMS data
+  Columns: [same as v1.7 - unchanged]
+  Indexes:
+    PRIMARY KEY (`id`)
+    KEY `idx_lurits` (`lurits_number`)
+    KEY `idx_id_number` (`candidate_id_number`)
+    KEY `idx_emis` (`emis_number`)
+    KEY `idx_pathway` (`pathway`)
+    KEY `idx_val_status` (`import_status`)
+    KEY `idx_parsing_sasams_unique` (`candidate_sa_sams_unique_number`,`nsc_examination_date`,`nsc_province_number`)
+    + KEY `idx_parsing_workflow` (`nsc_examination_date`,`nsc_province_number`,`created_by`,`import_status`) -- ADDED CR-008
+
+---
+CR-008 INDEX DETAILS
+---
+Index: idx_parsing_workflow
+  Table: parsing_sasams_import
+  Columns: nsc_examination_date, nsc_province_number, created_by, import_status
+  Purpose: Optimize wizard Steps 2-4 (dry-run, commit, move-to-staging)
+  Affected procedures: sp_sasams_get_dryrun_preview, sp_sasams_commit_dryrun, sp_sasams_move_parsing_to_staging
+  Installation time: 0.578 sec
+
+Index: idx_staging_workflow
+  Table: staging_sasams_import
+  Columns: nsc_examination_date, nsc_province_number, created_by, import_status, record_type
+  Purpose: Optimize wizard Steps 4-7 (move-to-staging, validate, transfer)
+  Affected procedures: sp_sasams_move_parsing_to_staging, sp_validate_staging_sasams, sp_transfer_approved_sasams
+  Installation time: 0.735 sec
+
+Index: idx_nsc_transfer_lookup
+  Table: nsc_candidate_registration
+  Columns: candidate_sa_sams_unique_number, lurits_number, candidate_id_number, nsc_examination_date, nsc_province_number
+  Purpose: Optimize duplicate detection in sp_transfer_approved_sasams
+  Installation time: 0.187 sec
+
+Verified Existing:
+  lookup_centres.idx_emis_number -- already exists, covers centre validation JOIN
+
+Total Installation Time: 1.500 seconds
+Status: Zero errors, zero duplicates, zero warnings
+
+---
+FULL SCHEMA DUMP
+---
+For complete schema including all tables, indexes, foreign keys, triggers,
+and stored procedures:
+  File: docs/nsc_registration_v3_schema_dump.sql
+  Generated: 2026-05-19 19:20
+  Size: ~49KB
+  Database: nsc_registration_v3
+
+================================================================================
+SECTION 3: CANONICAL DIRECTORY STRUCTURE (CRITICAL - FOLLOW STRICTLY)
+================================================================================
+
+[Same as v1.7 - unchanged]
+
+================================================================================
+SECTION 4: FILE MANIFEST (KEY FILES)
+================================================================================
+
+[Same as v1.7 - unchanged]
+
+================================================================================
+SECTION 5: API ENDPOINTS (BACKEND)
+================================================================================
+
+[Same as v1.7 - unchanged]
+
+================================================================================
+SECTION 6: KNOWN ISSUES & WORKAROUNDS
+================================================================================
+
+[Same as v1.7 - unchanged]
+
+================================================================================
+SECTION 7: GIA PROTOCOL REFERENCES
+================================================================================
+
+[Same as v1.7 - unchanged]
+
+================================================================================
+SECTION 8: FRONTEND ARCHITECTURE (CRITICAL - READ FIRST)
+================================================================================
+
+[Same as v1.7 - unchanged]
+
+================================================================================
+SECTION 9: SASAMS IMPORT PIPELINE - PROCEDURE INVENTORY
+================================================================================
+
+[Same as v1.7 - unchanged]
+
+================================================================================
+SECTION 10: CR-007 LINK KEY MIGRATION (COMPLETED 2026-05-20)
+================================================================================
+
+[Same as v1.7 - unchanged]
+
+================================================================================
+SECTION 11: CHANGE REGISTER
+================================================================================
+
+Location: docs/change-requests/NSC_v4_Change_Register.md
+Auto-Update: Yes -- via nsc-commit on every stage transition
+
+Current Entries:
+| CR-001 | 2026-05-15 | hiltonza@gmail.com | Initial NSC v4 discovery setup | REGISTERED | OK | OK | OK | a8406b78 |
+| CR-002 | 2026-05-15 | hiltonza@gmail.com | GIA Protocol v1.2 with AI Continuity | REGISTERED | OK | OK | OK | aa29503e |
+| CR-003 | 2026-05-16 | hiltonza@gmail.com | Change Control System v1.0 implementation | REGISTERED | OK | OK | OK | aa29503e |
+| CR-004 | 2026-05-16 | hiltonza@gmail.com | Added Annexure G (Change Control) and Annexure H (Clean System Base) | REGISTERED | OK | OK | OK | 6cdc2850 |
+| CR-005 | 2026-05-16 | hiltonza@gmail.com | Added Annexure I -- Validation Test Report for CR-004 | REGISTERED | OK | OK | OK | 6e54f5e2 |
+| CR-007 | 2026-05-20 | hiltonza@gmail.com | Change primary link key from lurits_number to candidate_sa_sams_unique_number | COMPLETED | OK | OK | PENDING | f5681c60 |
+| CR-007B | 2026-05-20 | hiltonza@gmail.com | Option B Fix: SA SAMS Unique sufficient for approval -- Transfer procedure column order fix, validation fields alignment | COMPLETED | OK | OK | PASSED | 12a6c0f6 |
+| CR-008 | 2026-05-20 | hiltonza@gmail.com | Indexing optimization for batch processing speed -- Added idx_parsing_workflow, idx_staging_workflow, idx_nsc_transfer_lookup | COMPLETED | OK | OK | PASSED | cc14286f |
+| CR-009 | 2026-05-19 | hiltonza@gmail.com | Add candidate_sa_sams_unique_number field to learner CRUD pages | COMPLETED | OK | OK | PENDING | f0162446 |
+| CR-010A | 2026-05-22 | hiltonza@gmail.com | Split Type 01/02 validation procedures, fix LURITS fallback, SA SAMS sole primary key | COMPLETED | OK | OK | PASSED | cc14286f |
+| CR-010B | 2026-05-22 | hiltonza@gmail.com | Post-Approval Validation Dashboard -- add validation flags to nsc_candidate_registration, enable approved records review/correction | IN-PROGRESS | TBD | TBD | TBD | TBD |
+| CR-011 | 2026-05-24 | hiltonza@gmail.com | Fix transfer display + add timing logs + optimize validation procedures (consolidated UPDATEs, no temp tables) | COMPLETED | OK | OK | PASSED | cb8f242ba |
+
+Status Legend:
+  SUBMITTED       -- Change request submitted, awaiting TID/RA
+  ASSESSMENT-COMPLETE -- TID + RA completed by AI, awaiting approval
+  APPROVED        -- TID + RA approved by requester
+  IN-PROGRESS     -- Changes being implemented by AI
+  COMPLETED       -- Changes implemented, awaiting UAT
+  UAT-PASSED      -- User Acceptance Testing passed
+  REGISTERED      -- Formally tracked, all documents committed
+  STOPPED         -- CR halted due to unmitigated risk or 3 rejections
+
+================================================================================
+SECTION 12: CHANGE REQUEST TEMPLATE
+================================================================================
+
+Location: docs/templates/NSC_v4_Change_Request_Template.txt
+  Status: v2.4 (Updated for v1.8 discovery file)
+
+Pre-Populated Data (CRITICAL -- DO NOT CHANGE):
+  Database: nsc_registration_v3 (HARD CODED)
+  Discovery File: docs/nsc_registration_system_v4_details_v1.8.txt
+  GIA Protocol: docs/gia/GIA_Protocol_v1.2.md (STATIC)
+  Change Control: docs/gia/GIA_Annexure_G_Change_Control_Process.md
+  Node.js: v24.14.0
+  MySQL: 8.0.45
+  Project: E:\GitProjects\NSC_Registration_System_v4
+
+Template Sections:
+  [Same as v1.7 - unchanged]
+
+
+================================================================================
+SECTION 12: CR-013 VALIDATION DASHBOARD LEVEL 3 CRUD (COMPLETED 2026-05-26)
+================================================================================
+
+Status: COMPLETED
+Files Modified:
+  - frontend/src/pages/admin/ValidationDashboard.tsx (Level 3 rebuilt)
+  - backend/src/routes/validations.ts (learner CRUD endpoints)
+  - backend/src/server.ts (route registration)
+  - frontend/src/services/sasamsValidationService.ts (CRUD methods)
+  - backend/sql/procedures/sp_validate_staging_sasams_type01_WORKBENCH.sql
+
+Level 3 CRUD Pattern (SASAMSValidationDashboard aligned):
+  - fetchLookups(): Loads all lookup tables from API
+  - getLookupLabel(): Translates codes to display labels
+  - renderModalSelect(): Dropdown with lookup labels (view/edit toggle)
+  - renderModalInput(): Input field with view/edit toggle
+  - All sections: Personal Info, Registration, Centre, 15 Subjects, SNE &
+    Accommodations, Immigrant, POPIA, Validation Info, Validation Checks Grid,
+    Type 02 Validation Checks
+  - Primary key: candidate_sa_sams_unique_number (never id)
+
+Procedure Fix: Subject Slot Validation Extended
+  - Issue: sp_validate_staging_sasams_type01 only checked subject_code_1..7
+  - Fix: Extended all 8 subject validations to check subject_code_1..15
+  - Validations fixed: val_subject_count_ok, val_hl_present_ok,
+    val_fal_present_ok, val_math_present_ok, val_life_orientation_ok,
+    val_no_duplicate_subjects_ok, val_no_same_language_ok
+  - Impact: Learners with required subjects in slots 8-15 now pass correctly
+
+Known Data Issues (Provincial Admin Fix Required):
+  - Subject code 12351054: Unmapped/invalid code flagged by validator
+  - Centre not found: EMIS numbers missing from lookup_centres
+  - LURITS duplicates: Duplicate LURITS numbers in import batches
+
+Git Commit: 1e185f892 (CR-013 complete backend and frontend fixes)
+
+================================================================================
+*Discovery File v1.11 - CR-011 completion, validation procedure optimization*
+*Schema dump: docs/nsc_registration_v3_schema_dump.sql*
+*Database: nsc_registration_v3 (HARD CODED - NEVER CHANGE)*
+*GIA Protocol: v1.2 (STATIC)*
+*Change Control: GIA Annexure G v1.1*
+*CR Templates: docs/templates/NSC_v4_Change_Request_Template.txt (v2.4)*
+*Last Updated: 2026-05-26 17:25*
+*Author: hiltonza@gmail.com*
+================================================================================

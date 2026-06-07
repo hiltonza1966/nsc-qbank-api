@@ -1,0 +1,6 @@
+NSC QBANK v4 - Initial Commit
+Date: 2026-06-05 04:08:05
+Phase: 0 - Foundation
+Migrations: 001, 002
+API: /api/qbank/subjects-with-papers (stub)
+Confirmed: paper_mark as display field
