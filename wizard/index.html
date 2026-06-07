@@ -3,35 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NSC QBank — Paper Ingestion Wizard</title>
+<title>NSC QBank — Item Import Wizard</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js"></script>
 <style>
-.pdf-container { height: 70vh; overflow:auto; border:1px solid #e5e7eb; }
+.pdf-container { height: 60vh; overflow:auto; border:1px solid #e5e7eb; }
 .step-active { background:#2563eb; color:white; }
+.md-preview { background:#f8f9fa; border-left:3px solid #2563eb; }
+.image-preview { max-width:100%; max-height:200px; border:1px dashed #ccc; }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
 <div class="max-w-7xl mx-auto p-4">
   <header class="mb-6">
-    <h1 class="text-2xl font-bold">NSC QBank — Paper Ingestion Wizard</h1>
-    <p class="text-sm text-gray-600">Select subject, load QP & Memo separately, then create items. Nothing is sent until you click Import.</p>
+    <h1 class="text-2xl font-bold">NSC QBank — Item Import Wizard</h1>
+    <p class="text-sm text-gray-600">Import items to staging. Tagging will be done at a later stage. PDFs are for reference only.</p>
   </header>
 
   <div class="flex gap-2 mb-6" id="steps">
     <div class="px-3 py-1 rounded step-active" data-step="1">1. Setup</div>
-    <div class="px-3 py-1 rounded bg-gray-200" data-step="2">2. Question Paper</div>
-    <div class="px-3 py-1 rounded bg-gray-200" data-step="3">3. Memo</div>
-    <div class="px-3 py-1 rounded bg-gray-200" data-step="4">4. Review & Import</div>
+    <div class="px-3 py-1 rounded bg-gray-200" data-step="2">2. Question Paper (Ref)</div>
+    <div class="px-3 py-1 rounded bg-gray-200" data-step="3">3. Memo (Ref)</div>
+    <div class="px-3 py-1 rounded bg-gray-200" data-step="4">4. Create Items</div>
   </div>
 
-  <!-- Step 1 -->
+  <!-- Step 1: Setup -->
   <section id="step1" class="bg-white p-6 rounded shadow">
-    <h2 class="font-semibold mb-4">Setup</h2>
+    <h2 class="font-semibold mb-4">1. Setup</h2>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <div><label class="text-sm">Subject</label>
         <select id="subject" class="w-full border p-2 rounded">
-          <option>MAT</option><option>PHY</option><option>CHE</option><option>LFE</option><option>ENG</option><option>ACC</option><option>BUS</option>
+          <option value="MATH">MATH</option><option value="PHYS">PHYS</option><option value="CHEM">CHEM</option><option value="LIFE">LIFE</option><option value="ENG">ENG</option><option value="ACC">ACC</option><option value="BUS">BUS</option>
         </select></div>
       <div><label class="text-sm">Paper No</label>
         <select id="paper_no" class="w-full border p-2 rounded"><option>1</option><option>2</option><option>3</option></select></div>
@@ -42,7 +45,7 @@
         <select id="source_paper_code" class="w-full border p-2 rounded"><option>NSC</option><option>SC</option></select></div>
       <div><label class="text-sm">Cognitive Level</label>
         <select id="cognitive_level" class="w-full border p-2 rounded">
-          <option>Understand</option><option>Remember</option><option>Apply</option><option>Analyse</option><option>Evaluate</option><option>Create</option><option>Understanding</option>
+          <option>Understand</option><option>Remember</option><option>Apply</option><option>Analyse</option><option>Evaluate</option><option>Create</option>
         </select></div>
       <div><label class="text-sm">Difficulty</label>
         <select id="difficulty" class="w-full border p-2 rounded"><option>Medium</option><option>Easy</option><option>Hard</option></select></div>
@@ -51,44 +54,50 @@
     <div class="mt-4 flex justify-end"><button onclick="go(2)" class="bg-blue-600 text-white px-4 py-2 rounded">Next</button></div>
   </section>
 
-  <!-- Step 2 -->
+  <!-- Step 2: QP Reference -->
   <section id="step2" class="hidden bg-white p-6 rounded shadow">
-    <h2 class="font-semibold mb-4">2. Load Question Paper PDF</h2>
+    <h2 class="font-semibold mb-4">2. Load Question Paper PDF (Reference Only)</h2>
     <input type="file" id="qpFile" accept="application/pdf" class="mb-3">
     <div id="qpViewer" class="pdf-container bg-gray-100 flex items-center justify-center text-gray-500">No file loaded</div>
     <div class="mt-4 flex justify-between"><button onclick="go(1)" class="px-4 py-2 border rounded">Back</button><button onclick="go(3)" class="bg-blue-600 text-white px-4 py-2 rounded">Next</button></div>
   </section>
 
-  <!-- Step 3 -->
+  <!-- Step 3: Memo Reference -->
   <section id="step3" class="hidden bg-white p-6 rounded shadow">
-    <h2 class="font-semibold mb-4">3. Load Marking Guideline PDF</h2>
+    <h2 class="font-semibold mb-4">3. Load Marking Guideline PDF (Reference Only)</h2>
     <input type="file" id="memoFile" accept="application/pdf" class="mb-3">
     <div id="memoViewer" class="pdf-container bg-gray-100 flex items-center justify-center text-gray-500">No file loaded</div>
     <div class="mt-4 flex justify-between"><button onclick="go(2)" class="px-4 py-2 border rounded">Back</button><button onclick="go(4)" class="bg-blue-600 text-white px-4 py-2 rounded">Next</button></div>
   </section>
 
-  <!-- Step 4 -->
+  <!-- Step 4: Create Items -->
   <section id="step4" class="hidden bg-white p-6 rounded shadow">
-    <h2 class="font-semibold mb-4">4. Create Items</h2>
-    <p class="text-sm mb-3">Use the PDFs in steps 2-3 as reference. Add each question manually — no auto-parsing.</p>
+    <h2 class="font-semibold mb-4">4. Create Items (No Tagging — Tagging Done Later)</h2>
+    <p class="text-sm mb-3 text-gray-600">Paste or type question text. Images pasted here will show an OCR placeholder — actual OCR will be implemented server-side.</p>
+
     <div class="flex gap-2 mb-3">
       <button onclick="addItem()" class="bg-green-600 text-white px-3 py-1 rounded text-sm">+ Add Item</button>
       <button onclick="clearItems()" class="border px-3 py-1 rounded text-sm">Clear All</button>
       <span class="ml-auto text-sm">Total: <span id="totalCount">0</span> items, <span id="totalMarks">0</span> marks</span>
     </div>
-    <div class="overflow-auto max-h-[50vh] border">
+
+    <div class="overflow-auto max-h-[55vh] border">
       <table class="w-full text-sm" id="itemsTable">
         <thead class="bg-gray-100 sticky top-0"><tr>
-          <th class="p-2 text-left w-12">#</th><th class="p-2 text-left">Question Text</th><th class="p-2 w-20">Marks</th><th class="p-2 w-32">Topic</th><th class="p-2 w-24">Action</th>
+          <th class="p-2 text-left w-12">#</th>
+          <th class="p-2 text-left">Question Text (Markdown)</th>
+          <th class="p-2 w-20">Marks</th>
+          <th class="p-2 w-24">Action</th>
         </tr></thead>
         <tbody></tbody>
       </table>
     </div>
+
     <div class="mt-4 flex justify-between items-center">
       <button onclick="go(3)" class="px-4 py-2 border rounded">Back</button>
       <div class="flex gap-2">
         <button onclick="saveDraft()" class="border px-4 py-2 rounded">Save Draft</button>
-        <button onclick="importItems()" id="importBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Import to Database</button>
+        <button onclick="importItems()" id="importBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Import to Staging</button>
       </div>
     </div>
     <div id="importStatus" class="mt-3 text-sm"></div>
@@ -138,10 +147,11 @@ document.getElementById('qpFile').addEventListener('change',e=>{ if(e.target.fil
 document.getElementById('memoFile').addEventListener('change',e=>{ if(e.target.files[0]) renderPDF(e.target.files[0],'memoViewer'); });
 
 function addItem(){
-  state.items.push({question_text:'',marks:1,topic:'Algebra'});
+  state.items.push({question_text:'',marks:1});
   saveState(); renderItems();
 }
 function clearItems(){ if(confirm('Clear all?')){state.items=[];saveState();renderItems();} }
+
 function renderItems(){
   const tbody=document.querySelector('#itemsTable tbody');
   tbody.innerHTML='';
@@ -151,19 +161,82 @@ function renderItems(){
     const tr=document.createElement('tr');
     tr.className='border-t';
     tr.innerHTML=`<td class="p-1 align-top">${i+1}</td>
-      <td class="p-1"><textarea class="w-full border p-1 h-20" data-i="${i}" data-f="question_text">${it.question_text||''}</textarea></td>
-      <td class="p-1 align-top"><input type="number" class="w-full border p-1" data-i="${i}" data-f="marks" value="${it.marks||1}"></td>
-      <td class="p-1 align-top"><input class="w-full border p-1" data-i="${i}" data-f="topic" value="${it.topic||''}" placeholder="e.g. Algebra"></td>
+      <td class="p-1">
+        <div class="flex flex-col gap-1">
+          <textarea class="w-full border p-1 h-24 font-mono text-xs" data-i="${i}" data-f="question_text" placeholder="Paste question text here...">${escapeHtml(it.question_text||'')}</textarea>
+          <div class="text-xs text-gray-500">Markdown preview:</div>
+          <div class="md-preview p-1 text-xs" id="preview-${i}">${markdownPreview(it.question_text||'')}</div>
+        </div>
+      </td>
+      <td class="p-1 align-top"><input type="number" class="w-full border p-1" data-i="${i}" data-f="marks" value="${it.marks||1}" min="1" max="50"></td>
       <td class="p-1 align-top"><button onclick="delItem(${i})" class="text-red-600 text-xs">Delete</button></td>`;
     tbody.appendChild(tr);
   });
   document.getElementById('totalCount').textContent=state.items.length;
   document.getElementById('totalMarks').textContent=totalMarks;
-  tbody.querySelectorAll('input,textarea').forEach(el=>el.addEventListener('input',e=>{
-    const i=e.target.dataset.i, f=e.target.dataset.f;
-    state.items[i][f]=e.target.value; saveState(); renderItems();
-  }));
+
+  // Add event listeners
+  tbody.querySelectorAll('textarea[data-f="question_text"]').forEach(el=>{
+    el.addEventListener('input',e=>{
+      const i=e.target.dataset.i;
+      state.items[i].question_text=e.target.value;
+      document.getElementById('preview-'+i).innerHTML=markdownPreview(e.target.value);
+      saveState();
+    });
+    // Handle paste for images
+    el.addEventListener('paste',handlePaste);
+  });
+  tbody.querySelectorAll('input[data-f="marks"]').forEach(el=>{
+    el.addEventListener('input',e=>{
+      const i=e.target.dataset.i;
+      state.items[i].marks=parseInt(e.target.value)||1;
+      saveState(); renderItems();
+    });
+  });
 }
+
+function escapeHtml(text){
+  const div=document.createElement('div');
+  div.textContent=text;
+  return div.innerHTML;
+}
+
+function markdownPreview(text){
+  if(!text) return '<em class="text-gray-400">No content</em>';
+  // Simple markdown preview: convert **bold**, *italic*, newlines
+  let html=text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g,'<em>$1</em>')
+    .replace(/\n/g,'<br>');
+  // Show image placeholder
+  if(text.includes('[IMAGE:')){
+    html+='<div class="mt-1 p-1 bg-yellow-100 text-xs text-yellow-800">⚠️ Image detected — OCR will be applied server-side</div>';
+  }
+  return html;
+}
+
+function handlePaste(e){
+  const items=e.clipboardData.items;
+  for(let i=0;i<items.length;i++){
+    if(items[i].type.indexOf('image')!==-1){
+      e.preventDefault();
+      const blob=items[i].getAsFile();
+      const reader=new FileReader();
+      reader.onload=evt=>{
+        const textarea=e.target;
+        const imgTag=`[IMAGE: pasted_image_${Date.now()}.png]`;
+        const start=textarea.selectionStart;
+        const end=textarea.selectionEnd;
+        textarea.value=textarea.value.substring(0,start)+imgTag+textarea.value.substring(end);
+        // Trigger input event to update preview
+        textarea.dispatchEvent(new Event('input'));
+      };
+      reader.readAsDataURL(blob);
+    }
+  }
+}
+
 function delItem(i){ state.items.splice(i,1); saveState(); renderItems(); }
 function saveDraft(){ saveState(); alert('Draft saved locally'); }
 
@@ -171,27 +244,38 @@ async function importItems(){
   const btn=document.getElementById('importBtn');
   const status=document.getElementById('importStatus');
   if(!state.items.length){alert('Add at least one item');return;}
-  btn.disabled=true; status.textContent='Importing...';
+
+  // Validate all items have question_text
+  const emptyItems=state.items.filter(it=>!it.question_text||!it.question_text.trim());
+  if(emptyItems.length){alert(`${emptyItems.length} item(s) have empty question text. Please fill them.`);return;}
+
+  btn.disabled=true; status.textContent='Importing to staging...';
+
+  const batchName='wizard-'+new Date().toISOString().slice(0,10)+'-'+Date.now();
   const payload = state.items.map(it=>({
     subject_official_code: document.getElementById('subject').value,
     paper_no: parseInt(document.getElementById('paper_no').value),
-    question_text: it.question_text,
-    marks: parseInt(it.marks)||0,
-    topic: it.topic||'',
+    question_text: it.question_text.trim(),
+    marks: parseInt(it.marks)||1,
     cognitive_level: document.getElementById('cognitive_level').value,
     difficulty: document.getElementById('difficulty').value,
     created_by: parseInt(document.getElementById('created_by').value)||1,
     source_year: parseInt(document.getElementById('source_year').value)||null,
     source_exam_board: document.getElementById('source_exam_board').value,
-    source_paper_code: document.getElementById('source_paper_code').value
+    source_paper_code: document.getElementById('source_paper_code').value,
+    batch: batchName
   }));
+
   try{
-    const res=await fetch('http://localhost:4000/api/qbank/items/bulk',{
+    const res=await fetch('http://localhost:4000/api/staging/bulk',{
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
     });
     const data=await res.json();
     if(data.success){
-      status.innerHTML=`<span class="text-green-700">Success: ${data.count} items imported.</span>`;
+      status.innerHTML=`<span class="text-green-700">Success: ${data.inserted} items imported to staging. ${data.skipped} duplicates skipped. ${data.errors.length} errors.</span>`;
+      if(data.errors.length){
+        status.innerHTML+=`<div class="text-red-600 text-xs mt-1">Errors: ${data.errors.map(e=>`#${e.index}: ${e.error}`).join(', ')}</div>`;
+      }
       state.items=[]; saveState(); renderItems();
     } else { status.innerHTML=`<span class="text-red-700">Error: ${data.error}</span>`; }
   }catch(e){ status.innerHTML=`<span class="text-red-700">Network error: ${e.message}. Is API running on port 4000?</span>`; }
