@@ -6,26 +6,29 @@
 <title>NSC QBank — Item Import Wizard</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js"></script>
 <style>
 .pdf-container { height: 60vh; overflow:auto; border:1px solid #e5e7eb; }
 .step-active { background:#2563eb; color:white; }
+.step-completed { background:#10b981; color:white; }
 .md-preview { background:#f8f9fa; border-left:3px solid #2563eb; }
-.image-preview { max-width:100%; max-height:200px; border:1px dashed #ccc; }
+.item-code { font-family: monospace; font-size: 0.75rem; color: #666; }
+.loading { animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.memo-preview { background:#fef3c7; border-left:3px solid #f59e0b; }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
 <div class="max-w-7xl mx-auto p-4">
   <header class="mb-6">
     <h1 class="text-2xl font-bold">NSC QBank — Item Import Wizard</h1>
-    <p class="text-sm text-gray-600">Import items to staging. Tagging will be done at a later stage. PDFs are for reference only.</p>
+    <p class="text-sm text-gray-600">Import items to staging. QP and Memo parsed separately but linked by question number. Tagging done at later stage.</p>
   </header>
 
   <div class="flex gap-2 mb-6" id="steps">
     <div class="px-3 py-1 rounded step-active" data-step="1">1. Setup</div>
-    <div class="px-3 py-1 rounded bg-gray-200" data-step="2">2. Question Paper (Ref)</div>
-    <div class="px-3 py-1 rounded bg-gray-200" data-step="3">3. Memo (Ref)</div>
-    <div class="px-3 py-1 rounded bg-gray-200" data-step="4">4. Create Items</div>
+    <div class="px-3 py-1 rounded bg-gray-200" data-step="2">2. QP Reference</div>
+    <div class="px-3 py-1 rounded bg-gray-200" data-step="3">3. Memo Reference</div>
+    <div class="px-3 py-1 rounded bg-gray-200" data-step="4">4. Review &amp; Import</div>
   </div>
 
   <!-- Step 1: Setup -->
@@ -38,7 +41,7 @@
         </select></div>
       <div><label class="text-sm">Paper No</label>
         <select id="paper_no" class="w-full border p-2 rounded"><option>1</option><option>2</option><option>3</option></select></div>
-      <div><label class="text-sm">Source Year</label><input id="source_year" type="number" value="2023" class="w-full border p-2 rounded"></div>
+      <div><label class="text-sm">Source Year</label><input id="source_year" type="number" value="2025" class="w-full border p-2 rounded"></div>
       <div><label class="text-sm">Exam Board</label>
         <select id="source_exam_board" class="w-full border p-2 rounded"><option>DBE</option><option>IEB</option><option>SACAI</option></select></div>
       <div><label class="text-sm">Paper Code</label>
@@ -51,33 +54,66 @@
         <select id="difficulty" class="w-full border p-2 rounded"><option>Medium</option><option>Easy</option><option>Hard</option></select></div>
       <div><label class="text-sm">Created By</label><input id="created_by" type="number" value="1" class="w-full border p-2 rounded"></div>
     </div>
-    <div class="mt-4 flex justify-end"><button onclick="go(2)" class="bg-blue-600 text-white px-4 py-2 rounded">Next</button></div>
+    <div class="mt-4 flex justify-end"><button type="button" onclick="go(2)" class="bg-blue-600 text-white px-4 py-2 rounded">Next</button></div>
   </section>
 
   <!-- Step 2: QP Reference -->
   <section id="step2" class="hidden bg-white p-6 rounded shadow">
-    <h2 class="font-semibold mb-4">2. Load Question Paper PDF (Reference Only)</h2>
+    <h2 class="font-semibold mb-4">2. Load Question Paper PDF</h2>
     <input type="file" id="qpFile" accept="application/pdf" class="mb-3">
+    <div id="qpParseStatus" class="mb-2 text-sm"></div>
     <div id="qpViewer" class="pdf-container bg-gray-100 flex items-center justify-center text-gray-500">No file loaded</div>
-    <div class="mt-4 flex justify-between"><button onclick="go(1)" class="px-4 py-2 border rounded">Back</button><button onclick="go(3)" class="bg-blue-600 text-white px-4 py-2 rounded">Next</button></div>
+    <div class="mt-4 flex justify-between items-center">
+      <button type="button" onclick="go(1)" class="px-4 py-2 border rounded">Back</button>
+      <div class="flex gap-2">
+        <button type="button" onclick="parseQP()" id="parseQPBtn" class="bg-green-600 text-white px-4 py-2 rounded">Parse QP</button>
+        <button type="button" onclick="go(3)" id="nextToMemoBtn" class="bg-blue-600 text-white px-4 py-2 rounded opacity-50 cursor-not-allowed">Next</button>
+      </div>
+    </div>
+    <div id="qpPreview" class="mt-4 hidden">
+      <h3 class="font-semibold text-sm mb-2">Parsed QP Items (<span id="qpCount">0</span>)</h3>
+      <div class="overflow-auto max-h-40 border text-sm">
+        <table class="w-full">
+          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Type</th><th class="p-1">Marks</th><th class="p-1">Preview</th></tr></thead>
+          <tbody id="qpPreviewBody"></tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
   <!-- Step 3: Memo Reference -->
   <section id="step3" class="hidden bg-white p-6 rounded shadow">
-    <h2 class="font-semibold mb-4">3. Load Marking Guideline PDF (Reference Only)</h2>
+    <h2 class="font-semibold mb-4">3. Load Marking Guideline PDF</h2>
     <input type="file" id="memoFile" accept="application/pdf" class="mb-3">
+    <div id="memoParseStatus" class="mb-2 text-sm"></div>
     <div id="memoViewer" class="pdf-container bg-gray-100 flex items-center justify-center text-gray-500">No file loaded</div>
-    <div class="mt-4 flex justify-between"><button onclick="go(2)" class="px-4 py-2 border rounded">Back</button><button onclick="go(4)" class="bg-blue-600 text-white px-4 py-2 rounded">Next</button></div>
+    <div class="mt-4 flex justify-between items-center">
+      <button type="button" onclick="go(2)" class="px-4 py-2 border rounded">Back</button>
+      <div class="flex gap-2">
+        <button type="button" onclick="parseMemo()" id="parseMemoBtn" class="bg-green-600 text-white px-4 py-2 rounded">Parse Memo</button>
+        <button type="button" onclick="go(4)" id="nextToReviewBtn" class="bg-blue-600 text-white px-4 py-2 rounded opacity-50 cursor-not-allowed">Next</button>
+      </div>
+    </div>
+    <div id="memoPreview" class="mt-4 hidden">
+      <h3 class="font-semibold text-sm mb-2">Parsed Memo Items (<span id="memoCount">0</span>)</h3>
+      <div class="overflow-auto max-h-40 border text-sm">
+        <table class="w-full">
+          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Marks</th><th class="p-1">Preview</th></tr></thead>
+          <tbody id="memoPreviewBody"></tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
-  <!-- Step 4: Create Items -->
+  <!-- Step 4: Review & Import -->
   <section id="step4" class="hidden bg-white p-6 rounded shadow">
-    <h2 class="font-semibold mb-4">4. Create Items (No Tagging — Tagging Done Later)</h2>
-    <p class="text-sm mb-3 text-gray-600">Paste or type question text. Images pasted here will show an OCR placeholder — actual OCR will be implemented server-side.</p>
+    <h2 class="font-semibold mb-4">4. Review &amp; Import (QP + Memo Linked)</h2>
+    <p class="text-sm mb-3 text-gray-600">Item codes auto-generated: <code class="bg-gray-200 px-1">LIFE-P1-2025-DBE-001</code>. QP questions linked to memo answers by question number.</p>
 
     <div class="flex gap-2 mb-3">
-      <button onclick="addItem()" class="bg-green-600 text-white px-3 py-1 rounded text-sm">+ Add Item</button>
-      <button onclick="clearItems()" class="border px-3 py-1 rounded text-sm">Clear All</button>
+      <button type="button" onclick="addItem()" class="bg-green-600 text-white px-3 py-1 rounded text-sm">+ Add Item</button>
+      <button type="button" onclick="clearItems()" class="border px-3 py-1 rounded text-sm">Clear All</button>
+      <button type="button" onclick="renderItems()" class="border px-3 py-1 rounded text-sm">Refresh</button>
       <span class="ml-auto text-sm">Total: <span id="totalCount">0</span> items, <span id="totalMarks">0</span> marks</span>
     </div>
 
@@ -85,7 +121,10 @@
       <table class="w-full text-sm" id="itemsTable">
         <thead class="bg-gray-100 sticky top-0"><tr>
           <th class="p-2 text-left w-12">#</th>
-          <th class="p-2 text-left">Question Text (Markdown)</th>
+          <th class="p-2 text-left">Item Code</th>
+          <th class="p-2 text-left">Q.No</th>
+          <th class="p-2 text-left">Question Text</th>
+          <th class="p-2 text-left">Memo Answer</th>
           <th class="p-2 w-20">Marks</th>
           <th class="p-2 w-24">Action</th>
         </tr></thead>
@@ -94,10 +133,10 @@
     </div>
 
     <div class="mt-4 flex justify-between items-center">
-      <button onclick="go(3)" class="px-4 py-2 border rounded">Back</button>
+      <button type="button" onclick="go(3)" class="px-4 py-2 border rounded">Back</button>
       <div class="flex gap-2">
-        <button onclick="saveDraft()" class="border px-4 py-2 rounded">Save Draft</button>
-        <button onclick="importItems()" id="importBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Import to Staging</button>
+        <button type="button" onclick="saveDraft()" class="border px-4 py-2 rounded">Save Draft</button>
+        <button type="button" onclick="importItems()" id="importBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Import to Staging</button>
       </div>
     </div>
     <div id="importStatus" class="mt-3 text-sm"></div>
@@ -107,23 +146,67 @@
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const state = JSON.parse(localStorage.getItem('nsc_wizard')||'{}');
-function saveState(){ localStorage.setItem('nsc_wizard', JSON.stringify(state)); }
+const state = JSON.parse(localStorage.getItem('nsc_wizard_v2')||'{}');
+let qpPDFFile = null;
+let memoPDFFile = null;
+
+function saveState(){ localStorage.setItem('nsc_wizard_v2', JSON.stringify(state)); }
 
 function init(){
+  if (state.items && !state.qpItems) {
+    state.qpItems = state.items;
+    delete state.items;
+  }
+  state.qpItems = state.qpItems || [];
+  state.memoItems = state.memoItems || [];
+  
   ['subject','paper_no','source_year','source_exam_board','source_paper_code','cognitive_level','difficulty','created_by'].forEach(id=>{
     const el=document.getElementById(id);
     if(state[id]) el.value=state[id];
     el.addEventListener('change',()=>{state[id]=el.value;saveState();});
   });
-  state.items = state.items||[];
+  
+  updateButtonStates();
   renderItems();
 }
+
+function updateButtonStates() {
+  const nextToMemo = document.getElementById('nextToMemoBtn');
+  const nextToReview = document.getElementById('nextToReviewBtn');
+  
+  if (nextToMemo) {
+    if (state.qpItems && state.qpItems.length > 0) {
+      nextToMemo.classList.remove('opacity-50', 'cursor-not-allowed');
+      nextToMemo.disabled = false;
+    } else {
+      nextToMemo.classList.add('opacity-50', 'cursor-not-allowed');
+      nextToMemo.disabled = true;
+    }
+  }
+  
+  if (nextToReview) {
+    if (state.memoItems && state.memoItems.length > 0) {
+      nextToReview.classList.remove('opacity-50', 'cursor-not-allowed');
+      nextToReview.disabled = false;
+    } else {
+      nextToReview.classList.add('opacity-50', 'cursor-not-allowed');
+      nextToReview.disabled = true;
+    }
+  }
+}
+
 function go(n){
   document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));
   document.getElementById('step'+n).classList.remove('hidden');
-  document.querySelectorAll('#steps div').forEach(d=>d.classList.toggle('step-active', d.dataset.step==n));
+  document.querySelectorAll('#steps div').forEach(d=>{
+    d.classList.remove('step-active','step-completed');
+    const stepNum = parseInt(d.dataset.step);
+    if (stepNum === n) d.classList.add('step-active');
+    else if (stepNum < n) d.classList.add('step-completed');
+  });
+  if (n === 4) renderItems();
 }
+
 function renderPDF(file, containerId){
   const container=document.getElementById(containerId);
   container.innerHTML='';
@@ -143,53 +226,259 @@ function renderPDF(file, containerId){
   };
   reader.readAsArrayBuffer(file);
 }
-document.getElementById('qpFile').addEventListener('change',e=>{ if(e.target.files[0]) renderPDF(e.target.files[0],'qpViewer'); });
-document.getElementById('memoFile').addEventListener('change',e=>{ if(e.target.files[0]) renderPDF(e.target.files[0],'memoViewer'); });
+
+document.getElementById('qpFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  qpPDFFile = file;
+  renderPDF(file, 'qpViewer');
+  document.getElementById('parseQPBtn').disabled = false;
+  document.getElementById('qpParseStatus').innerHTML = '<span class="text-gray-600">PDF loaded. Click "Parse QP" to extract questions.</span>';
+});
+
+document.getElementById('memoFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  memoPDFFile = file;
+  renderPDF(file, 'memoViewer');
+  document.getElementById('parseMemoBtn').disabled = false;
+  document.getElementById('memoParseStatus').innerHTML = '<span class="text-gray-600">PDF loaded. Click "Parse Memo" to extract marking guidelines.</span>';
+});
+
+async function parseQP() {
+  if (!qpPDFFile) { alert('Please select a QP PDF first'); return; }
+  
+  const btn = document.getElementById('parseQPBtn');
+  const status = document.getElementById('qpParseStatus');
+  btn.disabled = true;
+  status.innerHTML = '<span class="loading text-blue-600">Parsing Question Paper... please wait</span>';
+  
+  const formData = new FormData();
+  formData.append('pdf', qpPDFFile);
+  
+  try {
+    const res = await fetch('http://localhost:4000/api/wizard/parse-pdf', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+    
+    if (data.success) {
+      state.qpItems = data.items || [];
+      saveState();
+      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' questions (' + data.total_marks + ' marks) from ' + data.total_pages + ' pages.</span>';
+      updateButtonStates();
+      renderQPPreview();
+    } else {
+      status.innerHTML = '<span class="text-red-700">Parse error: ' + data.error + '</span>';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    status.innerHTML = '<span class="text-red-700">Network error: ' + err.message + '. Is API running on port 4000?</span>';
+    btn.disabled = false;
+  }
+}
+
+function renderQPPreview() {
+  const tbody = document.getElementById('qpPreviewBody');
+  tbody.innerHTML = '';
+  document.getElementById('qpCount').textContent = state.qpItems.length;
+  
+  if (!state.qpItems.length) {
+    document.getElementById('qpPreview').classList.add('hidden');
+    return;
+  }
+  
+  document.getElementById('qpPreview').classList.remove('hidden');
+  state.qpItems.forEach((it, i) => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-t';
+    tr.innerHTML = '<td class="p-1">' + (i+1) + '</td>' +
+      '<td class="p-1 font-mono">' + it.question_number + '</td>' +
+      '<td class="p-1">' + it.type + '</td>' +
+      '<td class="p-1">' + it.marks + '</td>' +
+      '<td class="p-1 text-gray-600">' + escapeHtml(it.question_text.substring(0, 60)) + '...</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+async function parseMemo() {
+  if (!memoPDFFile) { alert('Please select a Memo PDF first'); return; }
+  
+  const btn = document.getElementById('parseMemoBtn');
+  const status = document.getElementById('memoParseStatus');
+  btn.disabled = true;
+  status.innerHTML = '<span class="loading text-blue-600">Parsing Marking Guidelines... please wait</span>';
+  
+  const formData = new FormData();
+  formData.append('pdf', memoPDFFile);
+  
+  try {
+    const res = await fetch('http://localhost:4000/api/wizard/parse-memo', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+    
+    if (data.success) {
+      state.memoItems = data.items || [];
+      saveState();
+      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' memo items (' + data.total_marks + ' marks) from ' + data.total_pages + ' pages.</span>';
+      updateButtonStates();
+      renderMemoPreview();
+    } else {
+      status.innerHTML = '<span class="text-red-700">Parse error: ' + data.error + '</span>';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    status.innerHTML = '<span class="text-red-700">Network error: ' + err.message + '. Is API running on port 4000?</span>';
+    btn.disabled = false;
+  }
+}
+
+function renderMemoPreview() {
+  const tbody = document.getElementById('memoPreviewBody');
+  tbody.innerHTML = '';
+  document.getElementById('memoCount').textContent = state.memoItems.length;
+  
+  if (!state.memoItems.length) {
+    document.getElementById('memoPreview').classList.add('hidden');
+    return;
+  }
+  
+  document.getElementById('memoPreview').classList.remove('hidden');
+  state.memoItems.forEach((it, i) => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-t';
+    tr.innerHTML = '<td class="p-1">' + (i+1) + '</td>' +
+      '<td class="p-1 font-mono">' + it.question_number + '</td>' +
+      '<td class="p-1">' + it.marks + '</td>' +
+      '<td class="p-1 text-gray-600">' + escapeHtml(it.answer_text.substring(0, 60)) + '...</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function linkItems() {
+  const linked = [];
+  state.qpItems.forEach(qp => {
+    const memo = state.memoItems.find(m => m.question_number === qp.question_number);
+    linked.push({
+      question_number: qp.question_number,
+      question_text: qp.question_text,
+      answer_text: memo ? memo.answer_text : '',
+      marks: qp.marks,
+      memo_marks: memo ? memo.marks : qp.marks,
+      section: qp.section || '',
+      type: qp.type || 'Extended'
+    });
+  });
+  return linked;
+}
+
+function generateItemCode(index){
+  const subj=document.getElementById('subject').value;
+  const paper=parseInt(document.getElementById('paper_no').value);
+  const year=parseInt(document.getElementById('source_year').value);
+  const board=document.getElementById('source_exam_board').value;
+  return subj + '-P' + paper + '-' + year + '-' + board + '-' + String(index+1).padStart(3,'0');
+}
+
+function generateSourceReference(){
+  const subj=document.getElementById('subject').value;
+  const paper=parseInt(document.getElementById('paper_no').value);
+  const year=parseInt(document.getElementById('source_year').value);
+  const board=document.getElementById('source_exam_board').value;
+  const code=document.getElementById('source_paper_code').value;
+  return subj + ' Paper ' + paper + ' ' + year + ' ' + board + ' ' + code;
+}
 
 function addItem(){
-  state.items.push({question_text:'',marks:1});
+  state.qpItems.push({question_number:'',question_text:'',marks:1,section:'',type:'Extended'});
   saveState(); renderItems();
 }
-function clearItems(){ if(confirm('Clear all?')){state.items=[];saveState();renderItems();} }
+
+function clearItems(){ 
+  if(confirm('Clear all QP and Memo items?')){
+    state.qpItems=[];
+    state.memoItems=[];
+    saveState();
+    renderItems();
+    updateButtonStates();
+    document.getElementById('qpPreview').classList.add('hidden');
+    document.getElementById('memoPreview').classList.add('hidden');
+  }
+}
 
 function renderItems(){
   const tbody=document.querySelector('#itemsTable tbody');
   tbody.innerHTML='';
   let totalMarks=0;
-  state.items.forEach((it,i)=>{
+  
+  const linked = linkItems();
+  
+  linked.forEach((it,i)=>{
     totalMarks+=Number(it.marks)||0;
+    const itemCode=generateItemCode(i);
     const tr=document.createElement('tr');
     tr.className='border-t';
-    tr.innerHTML=`<td class="p-1 align-top">${i+1}</td>
-      <td class="p-1">
-        <div class="flex flex-col gap-1">
-          <textarea class="w-full border p-1 h-24 font-mono text-xs" data-i="${i}" data-f="question_text" placeholder="Paste question text here...">${escapeHtml(it.question_text||'')}</textarea>
-          <div class="text-xs text-gray-500">Markdown preview:</div>
-          <div class="md-preview p-1 text-xs" id="preview-${i}">${markdownPreview(it.question_text||'')}</div>
-        </div>
-      </td>
-      <td class="p-1 align-top"><input type="number" class="w-full border p-1" data-i="${i}" data-f="marks" value="${it.marks||1}" min="1" max="50"></td>
-      <td class="p-1 align-top"><button onclick="delItem(${i})" class="text-red-600 text-xs">Delete</button></td>`;
+    tr.innerHTML='<td class="p-1 align-top">' + (i+1) + '</td>' +
+      '<td class="p-1 align-top">' +
+        '<div class="item-code">' + itemCode + '</div>' +
+        '<div class="text-xs text-gray-500">' + generateSourceReference() + '</div>' +
+      '</td>' +
+      '<td class="p-1 align-top font-mono text-xs">' + (it.question_number || '-') + '</td>' +
+      '<td class="p-1">' +
+        '<div class="flex flex-col gap-1">' +
+          '<textarea class="w-full border p-1 h-20 font-mono text-xs" data-i="' + i + '" data-f="question_text" placeholder="Question text...">' + escapeHtml(it.question_text||'') + '</textarea>' +
+          '<div class="text-xs text-gray-500">Markdown preview:</div>' +
+          '<div class="md-preview p-1 text-xs" id="preview-q-' + i + '">' + markdownPreview(it.question_text||'') + '</div>' +
+        '</div>' +
+      '</td>' +
+      '<td class="p-1">' +
+        '<div class="flex flex-col gap-1">' +
+          '<textarea class="w-full border p-1 h-20 font-mono text-xs ' + (it.answer_text ? '' : 'bg-red-50') + '" data-i="' + i + '" data-f="answer_text" placeholder="Memo answer...">' + escapeHtml(it.answer_text||'') + '</textarea>' +
+          '<div class="text-xs text-gray-500">Memo preview:</div>' +
+          '<div class="memo-preview p-1 text-xs" id="preview-m-' + i + '">' + markdownPreview(it.answer_text||'') + '</div>' +
+          (it.answer_text ? '' : '<div class="text-xs text-red-600">No memo linked</div>') +
+        '</div>' +
+      '</td>' +
+      '<td class="p-1 align-top"><input type="number" class="w-full border p-1" data-i="' + i + '" data-f="marks" value="' + (it.marks||1) + '" min="1" max="50"></td>' +
+      '<td class="p-1 align-top"><button type="button" onclick="delItem(' + i + ')" class="text-red-600 text-xs">Delete</button></td>';
     tbody.appendChild(tr);
   });
-  document.getElementById('totalCount').textContent=state.items.length;
+  
+  document.getElementById('totalCount').textContent=linked.length;
   document.getElementById('totalMarks').textContent=totalMarks;
 
-  // Add event listeners
   tbody.querySelectorAll('textarea[data-f="question_text"]').forEach(el=>{
     el.addEventListener('input',e=>{
       const i=e.target.dataset.i;
-      state.items[i].question_text=e.target.value;
-      document.getElementById('preview-'+i).innerHTML=markdownPreview(e.target.value);
+      state.qpItems[i].question_text=e.target.value;
+      document.getElementById('preview-q-'+i).innerHTML=markdownPreview(e.target.value);
       saveState();
     });
-    // Handle paste for images
     el.addEventListener('paste',handlePaste);
   });
+  
+  tbody.querySelectorAll('textarea[data-f="answer_text"]').forEach(el=>{
+    el.addEventListener('input',e=>{
+      const i=e.target.dataset.i;
+      const qNum = state.qpItems[i].question_number;
+      let memo = state.memoItems.find(m => m.question_number === qNum);
+      if (!memo) {
+        memo = { question_number: qNum, answer_text: '', marks: state.qpItems[i].marks };
+        state.memoItems.push(memo);
+      }
+      memo.answer_text = e.target.value;
+      document.getElementById('preview-m-'+i).innerHTML=markdownPreview(e.target.value);
+      saveState();
+    });
+  });
+  
   tbody.querySelectorAll('input[data-f="marks"]').forEach(el=>{
     el.addEventListener('input',e=>{
       const i=e.target.dataset.i;
-      state.items[i].marks=parseInt(e.target.value)||1;
+      state.qpItems[i].marks=parseInt(e.target.value)||1;
       saveState(); renderItems();
     });
   });
@@ -203,13 +492,11 @@ function escapeHtml(text){
 
 function markdownPreview(text){
   if(!text) return '<em class="text-gray-400">No content</em>';
-  // Simple markdown preview: convert **bold**, *italic*, newlines
   let html=text
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
     .replace(/\*(.*?)\*/g,'<em>$1</em>')
     .replace(/\n/g,'<br>');
-  // Show image placeholder
   if(text.includes('[IMAGE:')){
     html+='<div class="mt-1 p-1 bg-yellow-100 text-xs text-yellow-800">⚠️ Image detected — OCR will be applied server-side</div>';
   }
@@ -225,11 +512,10 @@ function handlePaste(e){
       const reader=new FileReader();
       reader.onload=evt=>{
         const textarea=e.target;
-        const imgTag=`[IMAGE: pasted_image_${Date.now()}.png]`;
+        const imgTag='[IMAGE: pasted_image_' + Date.now() + '.png]';
         const start=textarea.selectionStart;
         const end=textarea.selectionEnd;
         textarea.value=textarea.value.substring(0,start)+imgTag+textarea.value.substring(end);
-        // Trigger input event to update preview
         textarea.dispatchEvent(new Event('input'));
       };
       reader.readAsDataURL(blob);
@@ -237,51 +523,105 @@ function handlePaste(e){
   }
 }
 
-function delItem(i){ state.items.splice(i,1); saveState(); renderItems(); }
+function delItem(i){ 
+  state.qpItems.splice(i,1); 
+  saveState(); renderItems(); 
+}
+
 function saveDraft(){ saveState(); alert('Draft saved locally'); }
 
 async function importItems(){
   const btn=document.getElementById('importBtn');
   const status=document.getElementById('importStatus');
-  if(!state.items.length){alert('Add at least one item');return;}
+  
+  if(!state.qpItems.length){alert('No QP items to import');return;}
 
-  // Validate all items have question_text
-  const emptyItems=state.items.filter(it=>!it.question_text||!it.question_text.trim());
-  if(emptyItems.length){alert(`${emptyItems.length} item(s) have empty question text. Please fill them.`);return;}
+  const emptyItems=state.qpItems.filter(it=>!it.question_text||!it.question_text.trim());
+  if(emptyItems.length){alert(emptyItems.length + ' item(s) have empty question text. Please fill them.');return;}
 
-  btn.disabled=true; status.textContent='Importing to staging...';
+  btn.disabled=true; status.textContent='Importing QP items to staging...';
 
   const batchName='wizard-'+new Date().toISOString().slice(0,10)+'-'+Date.now();
-  const payload = state.items.map(it=>({
+  const sourceRef=generateSourceReference();
+
+  const qpPayload = state.qpItems.map((it,idx)=>({
     subject_official_code: document.getElementById('subject').value,
     paper_no: parseInt(document.getElementById('paper_no').value),
     question_text: it.question_text.trim(),
     marks: parseInt(it.marks)||1,
+    question_number: it.question_number || '',
     cognitive_level: document.getElementById('cognitive_level').value,
     difficulty: document.getElementById('difficulty').value,
     created_by: parseInt(document.getElementById('created_by').value)||1,
     source_year: parseInt(document.getElementById('source_year').value)||null,
     source_exam_board: document.getElementById('source_exam_board').value,
     source_paper_code: document.getElementById('source_paper_code').value,
+    item_code: generateItemCode(idx),
+    source_reference: sourceRef,
     batch: batchName
   }));
 
   try{
-    const res=await fetch('http://localhost:4000/api/staging/bulk',{
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+    const res1=await fetch('http://localhost:4000/api/staging/bulk',{
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(qpPayload)
     });
-    const data=await res.json();
-    if(data.success){
-      status.innerHTML=`<span class="text-green-700">Success: ${data.inserted} items imported to staging. ${data.skipped} duplicates skipped. ${data.errors.length} errors.</span>`;
-      if(data.errors.length){
-        status.innerHTML+=`<div class="text-red-600 text-xs mt-1">Errors: ${data.errors.map(e=>`#${e.index}: ${e.error}`).join(', ')}</div>`;
+    const data1=await res1.json();
+    
+    if(!data1.success){
+      status.innerHTML='<span class="text-red-700">QP import failed: ' + data1.error + '</span>';
+      btn.disabled=false;
+      return;
+    }
+    
+    status.innerHTML='<span class="text-green-700">QP: ' + data1.inserted + ' items imported. ' + data1.skipped + ' duplicates skipped. ' + data1.errors.length + ' errors.</span>';
+
+    if (state.memoItems.length > 0) {
+      status.innerHTML += '<br><span class="text-blue-600">Importing Memo items...</span>';
+      
+      const memoPayload = state.memoItems.map(it => ({
+        question_number: it.question_number || '',
+        answer_text: it.answer_text.trim(),
+        marks: parseInt(it.marks)||1,
+        source_year: parseInt(document.getElementById('source_year').value)||null,
+        source_exam_board: document.getElementById('source_exam_board').value,
+        source_paper_code: document.getElementById('source_paper_code').value,
+        subject_official_code: document.getElementById('subject').value,
+        paper_no: parseInt(document.getElementById('paper_no').value)
+      }));
+      
+      const res2=await fetch('http://localhost:4000/api/staging/bulk-memo',{
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(memoPayload)
+      });
+      const data2=await res2.json();
+      
+      if(data2.success){
+        status.innerHTML += '<br><span class="text-green-700">Memo: ' + data2.inserted + ' items imported. ' + data2.skipped + ' duplicates skipped. ' + data2.errors.length + ' errors.</span>';
+      } else {
+        status.innerHTML += '<br><span class="text-red-700">Memo import failed: ' + data2.error + '</span>';
       }
-      state.items=[]; saveState(); renderItems();
-    } else { status.innerHTML=`<span class="text-red-700">Error: ${data.error}</span>`; }
-  }catch(e){ status.innerHTML=`<span class="text-red-700">Network error: ${e.message}. Is API running on port 4000?</span>`; }
+    }
+    
+    if(data1.errors.length){
+      status.innerHTML+='<div class="text-red-600 text-xs mt-1">QP Errors: ' + data1.errors.map(e=>'#' + e.index + ': ' + e.error).join(', ') + '</div>';
+    }
+    
+    state.qpItems=[];
+    state.memoItems=[];
+    saveState();
+    renderItems();
+    
+  }catch(e){ 
+    status.innerHTML='<span class="text-red-700">Network error: ' + e.message + '. Is API running on port 4000?</span>'; 
+  }
   btn.disabled=false;
 }
-init();
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
 </script>
 </body>
 </html>

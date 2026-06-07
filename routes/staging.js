@@ -1,11 +1,9 @@
 const express = require('express');
+const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
 
-// All QBank tables are in nsc_qbank (consolidated)
-// Only subject_structure is in nsc_registration_v3 (cross-referenced when needed)
 const QBANK_DB = process.env.DB_NAME || 'nsc_qbank';
 
-// Validate required fields for staging
 function validateItem(it) {
   const required = ['subject_official_code', 'paper_no', 'question_text'];
   for (const f of required) {
@@ -15,6 +13,14 @@ function validateItem(it) {
   return null;
 }
 
+function validateMemo(it) {
+  if (!it.question_number || String(it.question_number).trim() === '') return 'Missing question_number';
+  if (!it.answer_text || String(it.answer_text).trim() === '') return 'Missing answer_text';
+  if (!it.marks || isNaN(parseInt(it.marks))) return 'Missing or invalid marks';
+  return null;
+}
+
+// POST /api/staging/bulk — Import QP items to staging
 router.post('/bulk', async (req, res) => {
   const items = req.body;
   if (!Array.isArray(items) || !items.length)
@@ -29,12 +35,14 @@ router.post('/bulk', async (req, res) => {
     try {
       await req.db.query(
         `INSERT INTO ${QBANK_DB}.qbank_items_staging
-         (subject_official_code, paper_no, question_text, marks, topic, cognitive_level, difficulty_level,
-          created_by, source_year, source_exam_board, source_paper_code, staging_batch, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft')`,
+         (item_id, subject_official_code, paper_no, question_text, marks, topic, cognitive_level, difficulty,
+          created_by, source_year, source_exam_board, source_paper_code, 
+          item_code, question_number, source_reference, staging_batch, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft')`,
         [
+          uuidv4(),
           it.subject_official_code,
-          parseInt(it.paper_no),
+          parseInt(it.paper_no) || null,
           it.question_text.trim(),
           parseInt(it.marks) || 1,
           it.topic || null,
@@ -44,6 +52,9 @@ router.post('/bulk', async (req, res) => {
           it.source_year || null,
           it.source_exam_board || null,
           it.source_paper_code || null,
+          it.item_code || null,
+          it.question_number || null,
+          it.source_reference || null,
           it.batch || 'wizard-' + new Date().toISOString().slice(0, 10)
         ]
       );
@@ -56,21 +67,57 @@ router.post('/bulk', async (req, res) => {
   res.json({ success: true, inserted, skipped, errors, total: items.length });
 });
 
-// approve with tag migration
+// POST /api/staging/bulk-memo — Import Memo items to memo table
+router.post('/bulk-memo', async (req, res) => {
+  const items = req.body;
+  if (!Array.isArray(items) || !items.length)
+    return res.status(400).json({ success: false, error: 'No memo items' });
+
+  let inserted = 0, skipped = 0, errors = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const err = validateMemo(it);
+    if (err) { errors.push({ index: i, error: err }); continue; }
+
+    try {
+      await req.db.query(
+        `INSERT INTO ${QBANK_DB}.qbank_item_memos
+         (memo_id, question_number, answer_text, marks, source_year, source_exam_board, source_paper_code,
+          subject_official_code, paper_no, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft')`,
+        [
+          uuidv4(),
+          it.question_number.trim(),
+          it.answer_text.trim(),
+          parseInt(it.marks) || 1,
+          it.source_year || null,
+          it.source_exam_board || null,
+          it.source_paper_code || null,
+          it.subject_official_code || null,
+          parseInt(it.paper_no) || null
+        ]
+      );
+      inserted++;
+    } catch (e) {
+      if (e.code === 'ER_DUP_ENTRY') skipped++;
+      else errors.push({ index: i, error: e.message });
+    }
+  }
+  res.json({ success: true, inserted, skipped, errors, total: items.length });
+});
+
 router.post('/approve/:id', async (req, res) => {
   const conn = await req.db.getConnection();
   try {
     await conn.beginTransaction();
 
-    // Fetch from staging table in nsc_qbank
     const [stg] = await conn.query(
-      `SELECT * FROM ${QBANK_DB}.qbank_items_staging WHERE id = ?`,
+      `SELECT * FROM ${QBANK_DB}.qbank_items_staging WHERE item_id = ?`,
       [req.params.id]
     );
     if (!stg.length) throw new Error('Staging item not found');
     const r = stg[0];
 
-    // Ensure mandatory fields are filled before approval
     const missing = [];
     if (!r.caps_topic) missing.push('caps_topic');
     if (!r.item_type) missing.push('item_type');
@@ -80,7 +127,6 @@ router.post('/approve/:id', async (req, res) => {
 
     const item_code = r.item_code || `${r.subject_official_code}-P${r.paper_no}-${r.source_year || 'XXXX'}-${String(r.id).padStart(4, '0')}`;
 
-    // Insert into live qbank_items in nsc_qbank
     const [ins] = await conn.query(
       `INSERT INTO ${QBANK_DB}.qbank_items
        (item_id, subject_official_code, paper_no, item_code, question_text, marks,
@@ -93,7 +139,6 @@ router.post('/approve/:id', async (req, res) => {
     );
     const liveId = ins.insertId;
 
-    // Copy tags from staging tags table to live tags table (both in nsc_qbank)
     await conn.query(
       `INSERT INTO ${QBANK_DB}.qbank_item_tags (item_id, tag_type, tag_value)
        SELECT ?, tag_type, tag_value FROM ${QBANK_DB}.qbank_items_staging_tags WHERE item_id = ?`,
@@ -105,10 +150,9 @@ router.post('/approve/:id', async (req, res) => {
       [liveId, r.id]
     );
 
-    // Cleanup staging tables
     await conn.query(`DELETE FROM ${QBANK_DB}.qbank_items_staging_tags WHERE item_id = ?`, [r.id]);
     await conn.query(`DELETE FROM ${QBANK_DB}.qbank_items_staging_curriculum WHERE item_id = ?`, [r.id]);
-    await conn.query(`DELETE FROM ${QBANK_DB}.qbank_items_staging WHERE id = ?`, [r.id]);
+    await conn.query(`DELETE FROM ${QBANK_DB}.qbank_items_staging WHERE item_id = ?`, [r.id]);
 
     await conn.commit();
     res.json({ success: true, live_id: liveId, item_code });
