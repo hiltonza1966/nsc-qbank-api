@@ -5,9 +5,9 @@ require('dotenv').config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
-// DB connection with error handling
+// Database pool
 let pool;
 try {
   pool = mysql.createPool({
@@ -38,21 +38,25 @@ try {
   }
 })();
 
-// 1. Attach DB first
+// Attach DB to all requests
 app.use((req, res, next) => {
   req.db = pool;
   next();
 });
 
-// 2. Then routes
+// Routes
 const stagingRoutes = require('./routes/staging');
 app.use('/api/staging', stagingRoutes);
 
 app.use('/api/qbank/items', require('./routes/items'));
 app.use('/api/qbank/papers', require('./routes/papers'));
 app.use('/api/qbank/specs', require('./routes/specs'));
-app.use('/api/wizard', require('./routes/pdf_parser'));
-app.use('/api/attachments', require('./routes/attachments'));  // NEW: Image upload/download
+app.use('/api/wizard', require('./routes/pdf_parser_structured'));  // Position-based parser (CORRECT)
+app.use('/api/attachments', require('./routes/attachments'));
+
+// QP Comparison Engine routes
+const compareQPRouter = require('./routes/compare-qp');
+app.use('/api/wizard', compareQPRouter);
 
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
