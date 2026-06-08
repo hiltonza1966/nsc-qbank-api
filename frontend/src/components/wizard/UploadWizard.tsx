@@ -1,42 +1,209 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { compareQP } from '../../services/api';
 import ReviewPanel from './ReviewPanel';
+import * as pdfjsLib from 'pdfjs-dist';
+
+interface PaperSpec {
+  subject: string;
+  paper_no: string;
+  exam_year: number;
+  exam_session: string;
+}
+
+const SUBJECTS = [
+  { code: 'LIFE_SC', name: 'Life Sciences' },
+  { code: 'PHYS_SC', name: 'Physical Sciences' },
+  { code: 'MATH', name: 'Mathematics' },
+  { code: 'ACCOUNTING', name: 'Accounting' }
+];
+
+const PAPERS = ['P1', 'P2', 'P3'];
+const YEARS = [2024, 2025, 2026];
+const SESSIONS = ['Nov', 'June', 'July'];
 
 const UploadWizard: React.FC = () => {
+  const [paperSpec, setPaperSpec] = useState<PaperSpec>({
+    subject: 'LIFE_SC',
+    paper_no: 'P1',
+    exam_year: 2025,
+    exam_session: 'Nov'
+  });
+
+  const [qpFile, setQpFile] = useState<File | null>(null);
+  const [memoFile, setMemoFile] = useState<File | null>(null);
+  const [qpDragging, setQpDragging] = useState(false);
+  const [memoDragging, setMemoDragging] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [paperCode, setPaperCode] = useState('LIFE_SC_P1_NOV_2025');
+  const [parseStage, setParseStage] = useState<'idle' | 'parsing' | 'extracting' | 'comparing' | 'reviewing'>('idle');
 
-  const handleTest = async () => {
+  const paperCode = `${paperSpec.subject}_${paperSpec.paper_no}_${paperSpec.exam_session.toUpperCase()}_${paperSpec.exam_year}`;
+
+  // Drag & Drop handlers for QP
+  const handleQpDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setQpDragging(true);
+  }, []);
+
+  const handleQpDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setQpDragging(false);
+  }, []);
+
+  const handleQpDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setQpDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0 && files[0].type === 'application/pdf') {
+      setQpFile(files[0]);
+    }
+  }, []);
+
+  const handleQpFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setQpFile(files[0]);
+    }
+  };
+
+  // Drag & Drop handlers for Memo
+  const handleMemoDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setMemoDragging(true);
+  }, []);
+
+  const handleMemoDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setMemoDragging(false);
+  }, []);
+
+  const handleMemoDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setMemoDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0 && files[0].type === 'application/pdf') {
+      setMemoFile(files[0]);
+    }
+  }, []);
+
+  const handleMemoFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setMemoFile(files[0]);
+    }
+  };
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+  const handleParse = async () => {
+    if (!qpFile) {
+      setError('Please upload a Question Paper PDF');
+      return;
+    }
+
     setLoading(true);
     setError('');
+    setParseStage('parsing');
 
     try {
-      // Simulate parser output (in real use, this comes from pdf_parser_structured.js)
-      const parserOutput = [
-        { question_number: "1.1.1", question_text: "The hormone that prepares the body...", section: "A", type: "MCQ", marks: 2 },
-        { question_number: "1.1.2", question_text: "Which ONE of the following are functions...", section: "A", type: "MCQ", marks: 2 },
-        { question_number: "1.2.1", question_text: "The ovarian hormone that is secreted...", section: "A", type: "Short", marks: 1 },
-        { question_number: "2.1", question_text: "In bird eggs, the yolk is the main source...", section: "B", type: "Extended", marks: 8 },
-        { question_number: "3.5", question_text: "The graph below shows the insulin levels...", section: "B", type: "Extended", marks: 10 }
-      ];
+      // Step 1: Extract text from PDF using pdf.js in browser
+      const arrayBuffer = await qpFile.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-      const result = await compareQP({
-        paper_code: paperCode,
-        paper_id: 1,
-        parser_output: parserOutput,
-        file_name: "LifeSciences_P1_Nov2025.pdf",
-        file_hash: "test_hash_123"
+      const textItems = [];
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const content = await page.getTextContent();
+        for (const item of content.items) {
+          if ('str' in item) {
+            textItems.push({
+              text: item.str,
+              x: item.transform[4],
+              y: item.transform[5],
+              width: item.width,
+              height: item.height,
+              fontName: item.fontName,
+              page: pageNum
+            });
+          }
+        }
+      }
+
+      setParseStage('extracting');
+
+      // Step 2: Extract structure and save to database (STAGE 1)
+      const structureResponse = await fetch('http://localhost:4000/api/wizard/extract-structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          textItems: textItems,
+          paper_code: paperCode,
+          subject_name: SUBJECTS.find(s => s.code === paperSpec.subject)?.name || paperSpec.subject,
+          paper_no: paperSpec.paper_no,
+          exam_year: paperSpec.exam_year,
+          exam_session: paperSpec.exam_session
+        })
       });
 
-      if (result.success) {
-        setSessionId(result.session_id);
+      if (!structureResponse.ok) {
+        const errText = await structureResponse.text();
+        throw new Error('Structure extraction failed: ' + errText);
+      }
+
+      const structureResult = await structureResponse.json();
+
+      if (!structureResult.success) {
+        throw new Error(structureResult.error || 'Structure extraction returned error');
+      }
+
+      console.log('Structure extracted:', structureResult.total_items, 'items,', structureResult.total_marks, 'marks');
+
+      setParseStage('comparing');
+
+      // Step 3: Parse content (STAGE 2)
+      const parseResponse = await fetch('http://localhost:4000/api/wizard/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          textItems: textItems,
+          type: 'QP',
+          subject: paperSpec.subject,
+          paper_no: paperSpec.paper_no,
+          paper_code: paperCode
+        })
+      });
+
+      if (!parseResponse.ok) {
+        const errText = await parseResponse.text();
+        throw new Error('PDF parsing failed: ' + errText);
+      }
+
+      const parseResult = await parseResponse.json();
+
+      if (!parseResult.success) {
+        throw new Error(parseResult.error || 'Parser returned error');
+      }
+
+
+      // Step 4: Compare parser output against extracted structure (STAGE 3)
+      const comparisonResult = await compareQP({
+        paper_code: paperCode,
+        paper_id: parseResult.paper_id || 1,
+        parser_output: parseResult.questions || [],
+        file_name: qpFile.name,
+        file_hash: parseResult.file_hash || 'unknown'
+      });
+
+      if (comparisonResult.success) {
+        setSessionId(comparisonResult.session_id);
+        setParseStage('reviewing');
       } else {
-        setError(result.error || 'Comparison failed');
+        setError(comparisonResult.error || 'Comparison failed');
       }
     } catch (err: any) {
       setError(err.message);
+      setParseStage('idle');
     } finally {
       setLoading(false);
     }
@@ -46,41 +213,129 @@ const UploadWizard: React.FC = () => {
     <div className="upload-wizard">
       <div className="wizard-header">
         <h2>📄 Question Paper Upload & Validation</h2>
-        <div className="paper-selector">
-          <label>Paper Code:</label>
-          <input 
-            type="text" 
-            value={paperCode} 
-            onChange={(e) => setPaperCode(e.target.value)}
-            placeholder="e.g., LIFE_SC_P1_NOV_2025"
-          />
+      </div>
+
+      {/* Paper Specification */}
+      <div className="paper-spec">
+        <h3>Paper Specification</h3>
+        <div className="spec-grid">
+          <div className="form-group">
+            <label>Subject:</label>
+            <select value={paperSpec.subject} onChange={(e) => setPaperSpec({...paperSpec, subject: e.target.value})}>
+              {SUBJECTS.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Paper:</label>
+            <select value={paperSpec.paper_no} onChange={(e) => setPaperSpec({...paperSpec, paper_no: e.target.value})}>
+              {PAPERS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Year:</label>
+            <select value={paperSpec.exam_year} onChange={(e) => setPaperSpec({...paperSpec, exam_year: parseInt(e.target.value)})}>
+              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Session:</label>
+            <select value={paperSpec.exam_session} onChange={(e) => setPaperSpec({...paperSpec, exam_session: e.target.value})}>
+              {SESSIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="paper-code-display">
+          <strong>Paper Code:</strong> <code>{paperCode}</code>
         </div>
       </div>
 
+      {/* Upload Area */}
       <div className="upload-area">
-        <p>Upload a Question Paper PDF to validate against expected structure</p>
-        <button 
-          className="btn-test" 
-          onClick={handleTest}
-          disabled={loading}
+        <h3>Upload Files</h3>
+
+        {/* QP Upload */}
+        <div className="upload-section">
+          <label className="upload-label">Question Paper (PDF):</label>
+          <div
+            className={`drop-zone ${qpDragging ? 'dragging' : ''} ${qpFile ? 'has-file' : ''}`}
+            onDragOver={handleQpDragOver}
+            onDragLeave={handleQpDragLeave}
+            onDrop={handleQpDrop}
+          >
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={handleQpFileSelect}
+              className="file-input"
+              id="qp-upload"
+            />
+            <label htmlFor="qp-upload" className="drop-label">
+              {qpFile ? (
+                <span>✅ {qpFile.name} ({(qpFile.size / 1024).toFixed(1)} KB)</span>
+              ) : (
+                <span>📄 Drop QP PDF here or click to browse</span>
+              )}
+            </label>
+          </div>
+        </div>
+
+        {/* Memo Upload */}
+        <div className="upload-section">
+          <label className="upload-label">Marking Guidelines (PDF) - Optional:</label>
+          <div
+            className={`drop-zone ${memoDragging ? 'dragging' : ''} ${memoFile ? 'has-file' : ''}`}
+            onDragOver={handleMemoDragOver}
+            onDragLeave={handleMemoDragLeave}
+            onDrop={handleMemoDrop}
+          >
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={handleMemoFileSelect}
+              className="file-input"
+              id="memo-upload"
+            />
+            <label htmlFor="memo-upload" className="drop-label">
+              {memoFile ? (
+                <span>✅ {memoFile.name} ({(memoFile.size / 1024).toFixed(1)} KB)</span>
+              ) : (
+                <span>📝 Drop Memo PDF here or click to browse</span>
+              )}
+            </label>
+          </div>
+        </div>
+
+        {/* Parse Button */}
+        <button
+          className="btn-parse"
+          onClick={handleParse}
+          disabled={loading || !qpFile}
         >
-          {loading ? '⏳ Processing...' : '🧪 Test Comparison Engine'}
+          {loading ? (
+            <span>⏳ {parseStage === 'parsing' ? 'Parsing PDF...' : parseStage === 'extracting' ? 'Extracting Structure...' : parseStage === 'comparing' ? 'Comparing...' : 'Processing...'}</span>
+          ) : (
+            <span>🔍 Parse & Validate</span>
+          )}
         </button>
+
+        {error && (
+          <div className="error-message">
+            ❌ {error}
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="error-message">
-          ❌ {error}
-        </div>
-      )}
-
+      {/* Review Panel */}
       {sessionId && (
         <div className="review-section">
-          <ReviewPanel 
-            sessionId={sessionId} 
+          <ReviewPanel
+            sessionId={sessionId}
             onComplete={() => {
-              alert('✅ Corrections saved successfully!');
+              alert('✅ Corrections saved!');
               setSessionId(null);
+              setQpFile(null);
+              setMemoFile(null);
+              setParseStage('idle');
             }}
           />
         </div>
@@ -88,7 +343,7 @@ const UploadWizard: React.FC = () => {
 
       <style>{`
         .upload-wizard {
-          max-width: 1400px;
+          max-width: 1200px;
           margin: 0 auto;
           padding: 20px;
         }
@@ -102,52 +357,130 @@ const UploadWizard: React.FC = () => {
         }
 
         .wizard-header h2 {
-          margin: 0 0 15px 0;
+          margin: 0;
         }
 
-        .paper-selector {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .paper-selector label {
-          font-weight: 600;
-        }
-
-        .paper-selector input {
-          padding: 8px 12px;
-          border-radius: 4px;
-          border: 1px solid #ddd;
-          font-size: 14px;
-          min-width: 250px;
-        }
-
-        .upload-area {
+        .paper-spec {
           background: #f8f9fa;
-          border: 2px dashed #ddd;
+          padding: 20px;
           border-radius: 8px;
-          padding: 40px;
-          text-align: center;
           margin-bottom: 20px;
         }
 
-        .btn-test {
+        .paper-spec h3 {
+          margin-top: 0;
+          color: #1a1a2e;
+        }
+
+        .spec-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 15px;
+          margin-bottom: 15px;
+        }
+
+        .form-group {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .form-group label {
+          font-weight: 600;
+          margin-bottom: 5px;
+          color: #555;
+        }
+
+        .form-group select {
+          padding: 8px 12px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 14px;
+        }
+
+        .paper-code-display {
+          background: white;
+          padding: 10px;
+          border-radius: 4px;
+          border: 1px solid #ddd;
+        }
+
+        .paper-code-display code {
+          background: #e9ecef;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-family: monospace;
+        }
+
+        .upload-area {
+          background: white;
+          border: 2px dashed #ddd;
+          border-radius: 8px;
+          padding: 30px;
+          margin-bottom: 20px;
+        }
+
+        .upload-area h3 {
+          margin-top: 0;
+          color: #1a1a2e;
+        }
+
+        .upload-section {
+          margin-bottom: 20px;
+        }
+
+        .upload-label {
+          display: block;
+          font-weight: 600;
+          margin-bottom: 8px;
+          color: #555;
+        }
+
+        .drop-zone {
+          border: 2px dashed #cbd5e1;
+          border-radius: 8px;
+          padding: 30px;
+          text-align: center;
+          transition: all 0.2s;
+          cursor: pointer;
+          background: #f8f9fa;
+        }
+
+        .drop-zone.dragging {
+          border-color: #2563eb;
+          background: #dbeafe;
+        }
+
+        .drop-zone.has-file {
+          border-color: #27ae60;
+          background: #eafaf1;
+        }
+
+        .file-input {
+          display: none;
+        }
+
+        .drop-label {
+          cursor: pointer;
+          color: #666;
+        }
+
+        .btn-parse {
           background: #3498db;
           color: white;
           border: none;
-          padding: 12px 24px;
+          padding: 12px 30px;
           border-radius: 6px;
           font-size: 16px;
           cursor: pointer;
+          width: 100%;
           transition: background 0.2s;
         }
 
-        .btn-test:hover:not(:disabled) {
+        .btn-parse:hover:not(:disabled) {
           background: #2980b9;
         }
 
-        .btn-test:disabled {
+        .btn-parse:disabled {
           background: #95a5a6;
           cursor: not-allowed;
         }
@@ -157,7 +490,7 @@ const UploadWizard: React.FC = () => {
           color: #721c24;
           padding: 12px;
           border-radius: 6px;
-          margin-bottom: 20px;
+          margin-top: 15px;
         }
 
         .review-section {

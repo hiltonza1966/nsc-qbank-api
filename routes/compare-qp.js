@@ -2,20 +2,12 @@
  * QBank Comparison Engine - /api/wizard/compare-qp
  * 
  * Validates parser output against QB_questionP_Structure (gold standard)
- * Auto-corrects marks when parser differs from expected
- * Flags RED for manual review when auto-correction uncertain
- * 
- * Database: nsc_qbank
- * Table: QB_questionP_Structure (expected), QB_parsed_results (actual), QB_parse_sessions (audit)
+ * Structure is extracted dynamically from each uploaded QP - NO HARDCODES
  */
 
 const express = require('express');
 const router = express.Router();
-const mysql = require('mysql2/promise');
 const crypto = require('crypto');
-
-// Database config - matches existing nsc_qbank connection
-// Database pool provided via req.db from server.js middleware
 
 /**
  * POST /api/wizard/compare-qp
@@ -23,7 +15,7 @@ const crypto = require('crypto');
  *   paper_code: "LIFE_SC_P1_NOV_2025",
  *   paper_id: 123,
  *   parser_output: [
- *     { question_number: "1.1.1", question_text: "...", section: "A", type: "MCQ", marks: 2 },
+ *     { question_number: "1.1.1", question_text: "...", section: "Section A", type: "MCQ", marks: 2 },
  *     ...
  *   ],
  *   file_name: "LifeSciences_P1_Nov2025.pdf",
@@ -42,10 +34,9 @@ router.post('/compare-qp', async (req, res) => {
       return res.status(400).json({ error: 'paper_code and parser_output array required' });
     }
 
-    // Generate session ID for this parse run
     const sessionId = crypto.randomUUID();
 
-    // 1. Load expected structure from QB_questionP_Structure (GOLD STANDARD)
+    // 1. Load expected structure from QB_questionP_Structure (DYNAMICALLY EXTRACTED)
     const [expectedRows] = await conn.execute(
       `SELECT question_number, question_type, section, expected_marks, sequence, parent_question, is_sub_part
        FROM QB_questionP_Structure 
@@ -56,12 +47,11 @@ router.post('/compare-qp', async (req, res) => {
 
     if (expectedRows.length === 0) {
       return res.status(404).json({ 
-        error: 'Paper structure not found in QB_questionP_Structure',
+        error: 'Paper structure not found. Run extract-structure first.',
         paper_code 
       });
     }
 
-    // Create lookup map: question_number -> expected data
     const expectedMap = new Map();
     expectedRows.forEach(row => {
       expectedMap.set(row.question_number, row);
@@ -86,7 +76,6 @@ router.post('/compare-qp', async (req, res) => {
     let totalParserMarks = 0;
     let totalCorrectedMarks = 0;
 
-    // Process each parser item
     for (const parsedItem of parser_output) {
       const qNum = parsedItem.question_number;
       const expected = expectedMap.get(qNum);
@@ -99,12 +88,12 @@ router.post('/compare-qp', async (req, res) => {
           parsed_section: parsedItem.section,
           parsed_type: parsedItem.type,
           parser_extracted_marks: parsedItem.marks || 0,
-          expected_marks: null,
-          auto_corrected_marks: null,
+          expected_marks: 0,
+          auto_corrected_marks: parsedItem.marks || 0,
           correction_status: 'parser_missing',
           variance: null,
           is_red_flag: true,
-          reason: 'Question not found in expected structure'
+          reason: 'Question not found in expected structure - may be extra or misnumbered'
         });
         manualReviewCount++;
         continue;
@@ -117,17 +106,12 @@ router.post('/compare-qp', async (req, res) => {
       let status = 'auto_corrected';
       let reason = '';
 
-      // AUTO-CORRECTION LOGIC
       if (parserMarks !== expected.expected_marks) {
-        // Parser marks differ from expected - AUTO-CORRECT
         correctedMarks = expected.expected_marks;
         autoCorrectedCount++;
         reason = `Parser extracted ${parserMarks}, auto-corrected to ${expected.expected_marks}`;
 
-        // RED FLAG conditions (auto-correction uncertain):
-        // 1. Parser marks = 0 (likely failed extraction)
-        // 2. Parser marks > expected * 2 (way too high, possible batch error)
-        // 3. Parser marks < expected / 2 (way too low)
+        // RED FLAG conditions
         if (parserMarks === 0 || parserMarks > expected.expected_marks * 2 || parserMarks < expected.expected_marks / 2) {
           status = 'manual_review';
           manualReviewCount++;
@@ -154,7 +138,7 @@ router.post('/compare-qp', async (req, res) => {
       });
     }
 
-    // 4. Check for missing questions (in expected but not in parser output)
+    // 4. Check for missing questions
     const parserNumbers = new Set(parser_output.map(p => p.question_number));
     for (const [qNum, expected] of expectedMap) {
       if (!parserNumbers.has(qNum)) {
@@ -163,7 +147,7 @@ router.post('/compare-qp', async (req, res) => {
           question_text: '[NOT FOUND BY PARSER]',
           parsed_section: expected.section,
           parsed_type: expected.question_type,
-          parser_extracted_marks: null,
+          parser_extracted_marks: 0,
           expected_marks: expected.expected_marks,
           auto_corrected_marks: expected.expected_marks,
           correction_status: 'manual_review',
@@ -221,7 +205,6 @@ router.post('/compare-qp', async (req, res) => {
 
     await conn.commit();
 
-    // 8. Return comparison report
     res.json({
       success: true,
       session_id: sessionId,
@@ -250,10 +233,8 @@ router.post('/compare-qp', async (req, res) => {
   }
 });
 
-/**
- * POST /api/wizard/save-corrections
- * Save manual corrections from review UI
- */
+// ... rest of the file remains the same (save-corrections, comparison GET, structure GET/POST)
+
 router.post('/save-corrections', async (req, res) => {
   const conn = await req.db.getConnection();
 
@@ -275,7 +256,6 @@ router.post('/save-corrections', async (req, res) => {
       );
     }
 
-    // Update session status
     await conn.execute(
       `UPDATE QB_parse_sessions SET status = 'completed', completed_at = NOW() WHERE session_id = ?`,
       [session_id]
@@ -292,10 +272,6 @@ router.post('/save-corrections', async (req, res) => {
   }
 });
 
-/**
- * GET /api/wizard/comparison/:session_id
- * Retrieve comparison results for review UI
- */
 router.get('/comparison/:session_id', async (req, res) => {
   try {
     const [results] = await req.db.execute(
@@ -307,13 +283,38 @@ router.get('/comparison/:session_id', async (req, res) => {
       [req.params.session_id]
     );
 
-    const [session] = await req.db.execute(
+    const [sessionRows] = await req.db.execute(
       `SELECT * FROM QB_parse_sessions WHERE session_id = ?`,
       [req.params.session_id]
     );
 
+    const dbSession = sessionRows[0] || null;
+
+    let totalExpectedItems = 0;
+    if (dbSession) {
+      const [countRows] = await req.db.execute(
+        `SELECT COUNT(*) as item_count FROM QB_questionP_Structure WHERE paper_code = ?`,
+        [dbSession.paper_code]
+      );
+      totalExpectedItems = countRows[0].item_count || 0;
+    }
+
+    const session = dbSession ? {
+      session_id: dbSession.session_id,
+      paper_code: dbSession.paper_code,
+      total_expected_items: totalExpectedItems,
+      total_parser_items: dbSession.total_items_found || 0,
+      total_expected_marks: dbSession.total_marks_expected || 0,
+      total_parser_marks: dbSession.total_marks_parser || 0,
+      total_corrected_marks: dbSession.total_marks_corrected || 0,
+      auto_corrected_count: dbSession.auto_corrected_count || 0,
+      manual_review_count: dbSession.manual_review_count || 0,
+      missing_count: dbSession.missing_count || 0,
+      all_correct: (dbSession.auto_corrected_count || 0) === 0 && (dbSession.manual_review_count || 0) === 0 && (dbSession.missing_count || 0) === 0
+    } : null;
+
     res.json({
-      session: session[0] || null,
+      session: session,
       results: results,
       red_flags: results.filter(r => r.is_red_flag || r.correction_status === 'manual_review')
     });
@@ -323,10 +324,6 @@ router.get('/comparison/:session_id', async (req, res) => {
   }
 });
 
-/**
- * GET /api/wizard/structure/:paper_code
- * Get expected structure for a paper (for parser reference)
- */
 router.get('/structure/:paper_code', async (req, res) => {
   try {
     const [rows] = await req.db.execute(
@@ -346,10 +343,6 @@ router.get('/structure/:paper_code', async (req, res) => {
   }
 });
 
-/**
- * POST /api/wizard/structure
- * Add new paper structure (admin only)
- */
 router.post('/structure', async (req, res) => {
   try {
     const { paper_code, subject_name, paper_no, exam_year, exam_session, items } = req.body;
