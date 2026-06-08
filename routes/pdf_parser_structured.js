@@ -1,15 +1,35 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 
-// POST /api/wizard/parse-structured
-// Receives structured text items with positions from pdf.js getTextContent()
-// Returns parsed items with question numbers, text, marks, sections
+const LOG_FILE = path.join(__dirname, '..', 'parser_debug.log');
 
+function log(msg) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] ${msg}\n`;
+  fs.appendFileSync(LOG_FILE, line);
+  console.log(line.trim());
+}
+
+function clearLog() {
+  fs.writeFileSync(LOG_FILE, `Parser Debug Log - ${new Date().toISOString()}\n`);
+}
+
+/**
+ * Parse structured text from pdf.js getTextContent()
+ * SIMPLIFIED: Extracts question numbers and text only
+ * Marks come from QB_questionP_Structure (database), NOT parser
+ */
 function parseStructuredText(textItems, type, subject, paperNo) {
-  // Step 1: Sort items by page, then y (descending - top to bottom), then x (ascending)
+  clearLog();
+  log(`=== PARSER START ===`);
+  log(`Input: ${textItems.length} text items`);
+
+  // Step 1: Sort items by page, then y (descending), then x (ascending)
   const sorted = [...textItems].sort((a, b) => {
     if (a.page !== b.page) return a.page - b.page;
-    if (Math.abs(a.y - b.y) > 5) return b.y - a.y; // Larger y = higher on page (pdf coordinates)
+    if (Math.abs(a.y - b.y) > 5) return b.y - a.y;
     return a.x - b.x;
   });
 
@@ -24,10 +44,10 @@ function parseStructuredText(textItems, type, subject, paperNo) {
       currentY = item.y;
     } else {
       if (currentLine.length > 0) {
-        // Sort line items by x
         currentLine.sort((a, b) => a.x - b.x);
+        const lineText = currentLine.map(i => i.text).join(' ');
         lines.push({
-          text: currentLine.map(i => i.text).join(' '),
+          text: lineText,
           y: currentY,
           page: currentLine[0].page,
           items: currentLine
@@ -39,19 +59,21 @@ function parseStructuredText(textItems, type, subject, paperNo) {
   }
   if (currentLine.length > 0) {
     currentLine.sort((a, b) => a.x - b.x);
+    const lineText = currentLine.map(i => i.text).join(' ');
     lines.push({
-      text: currentLine.map(i => i.text).join(' '),
+      text: lineText,
       y: currentY,
       page: currentLine[0].page,
       items: currentLine
     });
   }
 
-  // Step 3: Detect sections and question numbers
-  const items = [];
+  log(`Grouped into ${lines.length} lines`);
+
+  // Step 3: Extract question items (numbers and text only, NO marks)
+  const rawItems = [];
   let currentSection = 'Section A';
   let currentQuestion = null;
-  let currentText = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -61,155 +83,195 @@ function parseStructuredText(textItems, type, subject, paperNo) {
     const sectionMatch = text.match(/SECTION\s+([A-Z])/i);
     if (sectionMatch) {
       currentSection = 'Section ' + sectionMatch[1];
+      currentQuestion = null;
+      log(`>>> SECTION: ${currentSection}`);
       continue;
     }
 
-    // Detect question numbers
-    // Pattern: X.Y.Z or X.Y at start of line (possibly with some indentation)
-    const qnumMatch = text.match(/^(\d+\.\d+\.\d+|\d+\.\d+)\s+/);
-    if (qnumMatch) {
-      // Save previous question if exists
-      if (currentQuestion) {
-        items.push({
-          question_number: currentQuestion.number,
-          question_text: currentQuestion.text.join(' ').trim(),
-          marks: currentQuestion.marks || 1,
-          section: currentQuestion.section,
-          type: currentQuestion.type,
-          raw_lines: currentQuestion.text
+    // Detect Question 2 / Question 3 headers
+    if (text.match(/QUESTION\s*2/i)) {
+      currentQuestion = 'Q2';
+      log(`>>> QUESTION 2`);
+      continue;
+    }
+    if (text.match(/QUESTION\s*3/i)) {
+      currentQuestion = 'Q3';
+      log(`>>> QUESTION 3`);
+      continue;
+    }
+
+    // Detect sub-part questions: 1.1.1, 2.1.1, 3.1.1 etc.
+    const subPartMatch = text.match(/^(\d+\.\d+\.\d+)\s+(.+)/);
+    if (subPartMatch) {
+      const qnum = subPartMatch[1];
+      const rest = subPartMatch[2];
+      const parts = qnum.split('.');
+
+      if (parts.length === 3) {
+        // Determine type from section and number pattern
+        let itemType = 'Extended';
+        if (parts[0] === '1') {
+          if (parts[1] === '1') itemType = 'MCQ';
+          else if (parts[1] === '2') itemType = 'Short';
+          else if (parts[1] === '3') itemType = 'Matching';
+          else itemType = 'Diagram';
+        }
+
+        rawItems.push({
+          question_number: qnum,
+          question_text: rest,
+          marks: 0, // Marks come from database, NOT parser
+          section: currentSection,
+          type: itemType,
+          parent: parts[0] + '.' + parts[1]
         });
       }
+      continue;
+    }
 
-      // Start new question
-      const qnum = qnumMatch[1];
-      const remainingText = text.substring(qnumMatch[0].length).trim();
+    // Detect parent questions: 1.1, 2.1, 3.1 etc. (no sub-parts)
+    const parentMatch = text.match(/^(\d+\.\d+)\s+(.+)/);
+    if (parentMatch) {
+      const parentNum = parentMatch[1];
+      const parts = parentNum.split('.');
+      if (parts.length === 2) {
+        // Check if next lines have sub-parts
+        let hasSubParts = false;
+        for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+          if (lines[j].text.match(new RegExp(`^${parentNum}\\.\\d+`))) {
+            hasSubParts = true;
+            break;
+          }
+        }
 
-      // Determine type from question number
-      const parts = qnum.split('.');
-      let itemType = 'Extended';
-      if (parts.length === 3) {
-        if (parts[0] === '1' && parts[1] === '1') itemType = 'MCQ';
-        else if (parts[0] === '1') itemType = 'Short';
-        else itemType = 'Sub-part';
-      }
-
-      // Extract marks from end of line
-      let marks = 1;
-      console.log('DEBUG: Question:', qnum, '| remainingText:', remainingText.substring(0, 80));
-      const marksMatch = remainingText.match(/\((\d+)\s*x\s*(\d+)\)\s*\((\d+)\)\s*$/);
-      if (marksMatch) {
-        marks = parseInt(marksMatch[3]);
-        console.log('DEBUG: Batch marks found:', marks, 'for', qnum);
-      } else {
-        const singleMarks = remainingText.match(/\((\d+)\)\s*$/);
-        if (singleMarks) {
-          marks = parseInt(singleMarks[1]);
-          console.log('DEBUG: Single marks found:', marks, 'for', qnum);
-        } else {
-          console.log('DEBUG: No marks found, default 1 for', qnum);
+        if (!hasSubParts) {
+          // This is a standalone parent question (like 3.3)
+          let itemType = parts[0] === '1' ? 'Diagram' : 'Extended';
+          rawItems.push({
+            question_number: parentNum,
+            question_text: parentMatch[2],
+            marks: 0,
+            section: currentSection,
+            type: itemType,
+            parent: null
+          });
+          log(`  STANDALONE PARENT ${parentNum}: no sub-parts`);
         }
       }
-
-      currentQuestion = {
-        number: qnum,
-        text: [remainingText],
-        marks: marks,
-        section: currentSection,
-        type: itemType
-      };
-    } else if (currentQuestion) {
-      // Add text to current question
-      currentQuestion.text.push(text);
     }
   }
 
-  // Save last question
-  if (currentQuestion) {
-    items.push({
-      question_number: currentQuestion.number,
-      question_text: currentQuestion.text.join(' ').trim(),
-      marks: currentQuestion.marks || 1,
-      section: currentQuestion.section,
-      type: currentQuestion.type,
-      raw_lines: currentQuestion.text
+  log(`\n=== RAW ITEMS: ${rawItems.length} ===`);
+
+  // Step 4: Build final items
+  const finalItems = [];
+  let sequence = 1;
+
+  for (const item of rawItems) {
+    finalItems.push({
+      question_number: item.question_number,
+      question_text: item.question_text,
+      marks: 0, // NO marks from parser - will be auto-corrected by compare-qp
+      section: item.section,
+      type: item.type,
+      sequence: sequence++,
+      images: [],
+      parent: item.parent
     });
   }
 
-  // Step 4: Build parent-child relationships
-  // For items like 2.1, 2.2, 3.1, etc. (parents), find their sub-parts (2.1.1, 2.1.2, etc.)
-  const parentItems = [];
-  const childItems = [];
-
-  for (const item of items) {
-    const parts = item.question_number.split('.');
-    if (parts.length === 2 && parts[0] in ['2', '3']) {
-      parentItems.push(item);
-    } else if (parts.length === 3 && parts[0] in ['2', '3']) {
-      childItems.push(item);
-    } else {
-      parentItems.push(item); // Standalone items (1.x.x)
-    }
-  }
-
-  // Group children under parents
-  for (const parent of parentItems) {
-    const parentNum = parent.question_number;
-    const children = childItems.filter(c => c.question_number.startsWith(parentNum + '.'));
-    if (children.length > 0) {
-      parent.child_sub_parts = children.map(c => ({
-        number: c.question_number,
-        text: c.question_text,
-        marks: c.marks
-      }));
-      parent.marks = children.reduce((sum, c) => sum + c.marks, 0);
-      parent.type = 'Extended';
-    }
-  }
-
-  // Step 5: Clean up and finalize
-  const finalItems = parentItems.map((item, idx) => ({
-    question_number: item.question_number,
-    question_text: item.question_text,
-    marks: item.marks,
-    section: item.section,
-    type: item.type,
-    sequence: idx + 1,
-    images: [],
-    sub_parts: [],
-    child_sub_parts: item.child_sub_parts || []
-  }));
-
-  // DEBUG: Show final items with marks
-  console.log('\n=== DEBUG: Final Items ===');
-  finalItems.forEach(item => {
-    console.log(item.question_number, '|', item.type, '| marks:', item.marks, '|', item.question_text.substring(0, 60));
-  });
-  console.log('Total marks:', finalItems.reduce((sum, i) => sum + i.marks, 0));
-  console.log('========================\n');
-
+  log(`=== PARSER END: ${finalItems.length} items ===\n`);
   return finalItems;
 }
 
-router.post('/parse-structured', async (req, res) => {
+// ============================================
+// ROUTE: POST /api/wizard/parse
+// Body: { textItems: [...], type: 'QP', subject: 'LIFE_SC', paper_no: 'P1' }
+// ============================================
+router.post('/parse', (req, res) => {
   try {
     const { textItems, type, subject, paper_no } = req.body;
-
-    if (!textItems || !Array.isArray(textItems) || textItems.length === 0) {
-      return res.status(400).json({ success: false, error: 'No text items provided' });
+    
+    if (!Array.isArray(textItems)) {
+      return res.status(400).json({ error: 'textItems array required' });
     }
 
-    const items = parseStructuredText(textItems, type, subject, paper_no);
+    const questions = parseStructuredText(textItems, type || 'QP', subject, paper_no);
+    
+    res.json({
+      success: true,
+      questions: questions,
+      total_items: questions.length,
+      note: 'Marks are placeholder (0) - will be auto-corrected by comparison engine'
+    });
+
+  } catch (error) {
+    console.error('Parse error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// ROUTE: POST /api/wizard/extract-structure
+// Saves detected structure to QB_questionP_Structure
+// ============================================
+router.post('/extract-structure', async (req, res) => {
+  const conn = await req.db.getConnection();
+  
+  try {
+    const { textItems, paper_code, subject_name, paper_no, exam_year, exam_session } = req.body;
+    
+    if (!Array.isArray(textItems) || !paper_code) {
+      return res.status(400).json({ error: 'textItems and paper_code required' });
+    }
+
+    // Parse to get question numbers
+    const questions = parseStructuredText(textItems, 'QP', subject_name, paper_no);
+    
+    await conn.beginTransaction();
+
+    // Clear existing structure for this paper
+    await conn.execute(
+      'DELETE FROM QB_questionP_Structure WHERE paper_code = ?',
+      [paper_code]
+    );
+
+    // Insert detected structure (marks will be set to 0, user must correct via ReviewPanel)
+    let sequence = 1;
+    for (const q of questions) {
+      const parts = q.question_number.split('.');
+      const isSubPart = parts.length === 3;
+      const parentQuestion = isSubPart ? parts[0] + '.' + parts[1] : null;
+
+      await conn.execute(
+        `INSERT INTO QB_questionP_Structure 
+         (paper_code, subject_name, paper_no, exam_year, exam_session, 
+          question_number, question_type, section, expected_marks, sequence, 
+          parent_question, is_sub_part)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          paper_code, subject_name, paper_no, exam_year, exam_session,
+          q.question_number, q.type, q.section, 0, sequence++,
+          parentQuestion, isSubPart
+        ]
+      );
+    }
+
+    await conn.commit();
 
     res.json({
       success: true,
-      extraction_method: 'position-based',
-      total_pages: Math.max(...textItems.map(i => i.page || 1)),
-      total_items: items.length,
-      total_marks: items.reduce((sum, i) => sum + i.marks, 0),
-      items: items
+      total_items: questions.length,
+      total_marks: 0,
+      message: 'Structure extracted. Marks are set to 0 - use ReviewPanel to set correct marks.'
     });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+
+  } catch (error) {
+    await conn.rollback();
+    console.error('Extract structure error:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
   }
 });
 
