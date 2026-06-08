@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
@@ -65,9 +65,11 @@ app.use('/api/items', require('./routes/workflow'));      // Review workflow
 app.use('/api/templates', require('./routes/templates')); // Paper templates
 app.use('/api/taxonomy', require('./routes/taxonomy'));   // Tag taxonomy
 app.use('/api/usage', require('./routes/usage'));         // Exposure tracking
-app.use('/api/wizard', require('./routes/memo-compare')); // Memo comparison
+app.use('/api/wizard', require('./routes/memo-parser')); // Memo parser and comparison
 
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`QBank API running on port ${PORT}`));
+
+

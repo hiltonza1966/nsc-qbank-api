@@ -1,4 +1,4 @@
-/**
+﻿/**
  * QBank Review Panel - Comparison Results UI
  * 
  * Shows parser output vs expected structure with RED highlighting for errors
@@ -112,15 +112,15 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
       const data = await saveCorrections(sessionId, correctionsPayload);
 
       if (data.success) {
-        setSaveMessage('✅ All corrections saved successfully!');
+        setSaveMessage('âœ… All corrections saved successfully!');
         setTimeout(() => {
           onComplete?.();
         }, 1500);
       } else {
-        setSaveMessage('❌ Failed to save: ' + data.error);
+        setSaveMessage('âŒ Failed to save: ' + data.error);
       }
     } catch (error) {
-      setSaveMessage('❌ Error saving corrections');
+      setSaveMessage('âŒ Error saving corrections');
       console.error(error);
     } finally {
       setSaving(false);
@@ -154,7 +154,7 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
     <div className="review-panel">
       {/* Header / Summary */}
       <div className="review-header">
-        <h2>📋 Question Paper Validation Review</h2>
+        <h2>ðŸ“‹ Question Paper Validation Review</h2>
         <div className="session-info">
           <span>Session: <code>{sessionId?.slice(0, 8)}...</code></span>
           <span>Paper: <strong>{session?.paper_code}</strong></span>
@@ -201,13 +201,13 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
             className={filter === 'red_flags' ? 'active' : ''} 
             onClick={() => setFilter('red_flags')}
           >
-            🔴 Red Flags ({redFlagCount})
+            ðŸ”´ Red Flags ({redFlagCount})
           </button>
           <button 
             className={filter === 'auto_corrected' ? 'active' : ''} 
             onClick={() => setFilter('auto_corrected')}
           >
-            ✅ Auto-Corrected ({results.filter(r => r.correction_status === 'auto_corrected' && !r.is_red_flag).length})
+            âœ… Auto-Corrected ({results.filter(r => r.correction_status === 'auto_corrected' && !r.is_red_flag).length})
           </button>
         </div>
       </div>
@@ -243,7 +243,7 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
                   <td className="seq">{result.question_number}</td>
                   <td className="question-text">
                     {isMissing ? (
-                      <span className="missing-text">⚠️ NOT FOUND BY PARSER</span>
+                      <span className="missing-text">âš ï¸ NOT FOUND BY PARSER</span>
                     ) : (
                       <span className="text-preview">
                         {result.question_text?.substring(0, 60) || 'No text'}...
@@ -275,16 +275,16 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
                   </td>
                   <td className="status">
                     {result.correction_status === 'auto_corrected' && !isRed && (
-                      <span className="badge green">✅ Auto</span>
+                      <span className="badge green">âœ… Auto</span>
                     )}
                     {result.correction_status === 'manual_review' && (
-                      <span className="badge red">🔴 Review</span>
+                      <span className="badge red">ðŸ”´ Review</span>
                     )}
                     {result.correction_status === 'parser_missing' && (
-                      <span className="badge orange">⚠️ Missing</span>
+                      <span className="badge orange">âš ï¸ Missing</span>
                     )}
                     {result.correction_status === 'validated' && (
-                      <span className="badge blue">✓ Saved</span>
+                      <span className="badge blue">âœ“ Saved</span>
                     )}
                   </td>
                   <td className="notes">
@@ -310,10 +310,10 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
               </td>
               <td colSpan={2}>
                 {totalCorrected === (session?.total_expected_marks || 0) ? (
-                  <span className="badge green">✅ MATCH</span>
+                  <span className="badge green">âœ… MATCH</span>
                 ) : (
                   <span className="badge red">
-                    Δ {totalCorrected - (session?.total_expected_marks || 0)}
+                    Î” {totalCorrected - (session?.total_expected_marks || 0)}
                   </span>
                 )}
               </td>
@@ -331,14 +331,14 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
             onClick={fetchComparisonResults}
             disabled={saving}
           >
-            🔄 Refresh
+            ðŸ”„ Refresh
           </button>
           <button 
             className="btn-primary" 
             onClick={handleSave}
-            disabled={saving || redFlagCount === 0}
+            disabled={saving}
           >
-            {saving ? '💾 Saving...' : `💾 Save Corrections (${redFlagCount} flagged)`}
+            {saving ? 'ðŸ’¾ Saving...' : `ðŸ’¾ Save Corrections (${redFlagCount} flagged)`}
           </button>
         </div>
       </div>
@@ -662,3 +662,4 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
 };
 
 export default ReviewPanel;
+

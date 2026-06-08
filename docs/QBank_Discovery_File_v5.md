@@ -118,7 +118,7 @@ D prolactin.
 | C | 3.5 | Extended | 10 | Sub-parts: 3.5.1(1), 3.5.2(1), 3.5.3(5), 3.5.4(2), 3.5.5(2) |
 | **Total** | **38 items** | | **150 marks** | |
 
-### 4.2 Memo Structure (Same 38 items, with marking guidelines)
+### 4.2 Memo Structure (Same 63 items, with marking guidelines)
 - Each item linked by question_number
 - Sub-parts have individual marks and answers
 - Parent totals match QP totals
@@ -221,9 +221,9 @@ sc-qbank
 ### 7.2 Testing Criteria
 | Test | Expected | Pass Criteria |
 |------|----------|---------------|
-| QP Item Count | 38 | Exactly 38 items |
+| QP Item Count | 63 | Exactly 63 items |
 | QP Marks Total | 150 | Exactly 150 marks |
-| Memo Item Count | 38 | Exactly 38 items |
+| Memo Item Count | 63 | Exactly 63 items |
 | Memo Marks Total | 150 | Exactly 150 marks |
 | Section Detection | A/B/C | Correct sections assigned |
 | Marks Per Item | Varies | Correct marks for each item |

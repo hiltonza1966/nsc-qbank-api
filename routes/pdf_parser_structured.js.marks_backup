@@ -1,0 +1,386 @@
+﻿const express = require('express');
+const router = express.Router();
+const fs = require('fs');
+const path = require('path');
+
+const LOG_FILE = path.join(__dirname, '..', 'parser_debug.log');
+
+function log(msg) {
+  const timestamp = new Date().toISOString();
+  const line = '[' + timestamp + '] ' + msg + '\n';
+  fs.appendFileSync(LOG_FILE, line);
+  console.log(line.trim());
+}
+
+function clearLog() {
+  fs.writeFileSync(LOG_FILE, 'Parser Debug Log - ' + new Date().toISOString() + '\n');
+}
+
+/**
+ * Parse structured text from pdf.js getTextContent()
+ * ATOMIC ITEM EXTRACTION - NO HARDCODED EXPECTATIONS
+ */
+function parseStructuredText(textItems, type, subject, paperNo) {
+  clearLog();
+  log('=== PARSER START (Dynamic Items) ===');
+  log('Input: ' + textItems.length + ' text items');
+
+  // Step 1: Sort items by page, then y (descending), then x (ascending)
+  const sorted = [...textItems].sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page;
+    if (Math.abs(a.y - b.y) > 5) return b.y - a.y;
+    return a.x - b.x;
+  });
+
+  // Step 2: Group items into lines by y-position proximity
+  const lines = [];
+  let currentLine = [];
+  let currentY = null;
+
+  for (const item of sorted) {
+    if (currentY === null || Math.abs(item.y - currentY) < 5) {
+      currentLine.push(item);
+      currentY = item.y;
+    } else {
+      if (currentLine.length > 0) {
+        currentLine.sort((a, b) => a.x - b.x);
+        const lineText = currentLine.map(i => i.text).join(' ');
+        lines.push({
+          text: lineText,
+          y: currentY,
+          page: currentLine[0].page,
+          items: currentLine
+        });
+      }
+      currentLine = [item];
+      currentY = item.y;
+    }
+  }
+  if (currentLine.length > 0) {
+    currentLine.sort((a, b) => a.x - b.x);
+    const lineText = currentLine.map(i => i.text).join(' ');
+    lines.push({
+      text: lineText,
+      y: currentY,
+      page: currentLine[0].page,
+      items: currentLine
+    });
+  }
+
+  log('Grouped into ' + lines.length + ' lines');
+
+  // Step 3: Extract ALL question numbers from lines
+  const detectedQuestions = [];
+  let currentSection = 'Section A';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const text = line.text.trim();
+
+    // Detect section headers
+    const sectionMatch = text.match(/SECTION\s+([A-Z])/i);
+    if (sectionMatch) {
+      currentSection = 'Section ' + sectionMatch[1];
+      log('>>> SECTION HEADER: ' + currentSection);
+      continue;
+    }
+
+    // Detect Question 2 / Question 3 headers
+    const q2Match = text.match(/^QUESTION\s*2\b/i);
+    const q3Match = text.match(/^QUESTION\s*3\b/i);
+    
+    if (q2Match) {
+      currentSection = 'Section B';
+      log('>>> QUESTION 2 HEADER -> Section B');
+      continue;
+    }
+    if (q3Match) {
+      currentSection = 'Section C';
+      log('>>> QUESTION 3 HEADER -> Section C');
+      continue;
+    }
+
+    // Match any question number pattern at start of line
+    const qMatch = text.match(/^(\d+\.\d+(?:\.\d+)?)\s*(.*)/);
+    if (qMatch) {
+      const qnum = qMatch[1];
+      const rest = qMatch[2];
+      const parts = qnum.split('.');
+      const majorQuestion = parseInt(parts[0]);
+
+      // Infer section from major question number if not explicitly set
+      if (majorQuestion === 2 && currentSection === 'Section A') {
+        currentSection = 'Section B';
+        log('>>> INFERRED Section B from question ' + qnum);
+      }
+      if (majorQuestion === 3 && currentSection !== 'Section C') {
+        currentSection = 'Section C';
+        log('>>> INFERRED Section C from question ' + qnum);
+      }
+      
+      detectedQuestions.push({
+        number: qnum,
+        text: rest,
+        section: currentSection,
+        lineIndex: i
+      });
+      
+      log('  DETECTED: ' + qnum + ' | Section: ' + currentSection);
+    }
+  }
+
+  log('\nDetected ' + detectedQuestions.length + ' question numbers');
+
+  // Step 4: Group into atomic items
+  const atomicItems = [];
+  const parentItems = {};
+  const standaloneItems = [];
+  
+  // Identify all parent numbers (X.Y) that have sub-parts (X.Y.Z)
+  const parentNumbers = new Set();
+  const allNumbers = detectedQuestions.map(q => q.number);
+  
+  for (const qnum of allNumbers) {
+    const parts = qnum.split('.');
+    if (parts.length === 3) {
+      parentNumbers.add(parts[0] + '.' + parts[1]);
+    }
+  }
+  
+  log('Parent numbers with sub-parts: ' + (Array.from(parentNumbers).join(', ') || 'None'));
+
+  // Categorize each detected question
+  for (const q of detectedQuestions) {
+    const parts = q.number.split('.');
+    
+    if (parts.length === 3) {
+      const parentNum = parts[0] + '.' + parts[1];
+      
+      if (parentNumbers.has(parentNum)) {
+        if (!parentItems[parentNum]) {
+          parentItems[parentNum] = {
+            text: '',
+            subParts: [],
+            section: q.section
+          };
+        }
+        parentItems[parentNum].subParts.push({
+          number: q.number,
+          text: q.text,
+          section: q.section
+        });
+      }
+    } else if (parts.length === 2) {
+      const parentNum = q.number;
+      
+      if (parentNumbers.has(parentNum)) {
+        if (!parentItems[parentNum]) {
+          parentItems[parentNum] = {
+            text: q.text,
+            subParts: [],
+            section: q.section
+          };
+        } else {
+          parentItems[parentNum].text = q.text;
+        }
+      } else {
+        standaloneItems.push({
+          number: q.number,
+          text: q.text,
+          section: q.section,
+          type: 'Extended'
+        });
+      }
+    }
+  }
+
+  // Step 5: Build atomic items
+  let sequence = 1;
+
+  // 5a: Add standalone sub-parts (1.1.1, 1.2.1, etc.) as individual items
+  for (const [parentNum, parentInfo] of Object.entries(parentItems)) {
+    const parts = parentNum.split('.');
+    
+    const isStandaloneParent = ['1.1', '1.2', '1.3'].includes(parentNum);
+    
+    if (isStandaloneParent) {
+      for (const sp of parentInfo.subParts.sort((a, b) => a.number.localeCompare(b.number))) {
+        let itemType = 'Extended';
+        if (parentNum === '1.1') itemType = 'MCQ';
+        else if (parentNum === '1.2') itemType = 'Short';
+        else if (parentNum === '1.3') itemType = 'Matching';
+
+        atomicItems.push({
+          question_number: sp.number,
+          question_text: sp.text,
+          marks: 0,
+          section: sp.section,
+          type: itemType,
+          sequence: sequence++,
+          images: [],
+          parent: null,
+          sub_parts: [],
+          has_sub_parts: false,
+          is_standalone: true
+        });
+        
+        log('  STANDALONE ITEM ' + sp.number + ' | ' + itemType + ' | ' + sp.section);
+      }
+    } else {
+      // Parent item with grouped sub-parts
+      let itemType = 'Extended';
+      if (parts[0] === '1') itemType = 'Diagram';
+
+      let fullText = parentInfo.text || '';
+      if (parentInfo.subParts.length > 0) {
+        fullText += '\n\nSub-parts:\n';
+        for (const sp of parentInfo.subParts.sort((a, b) => a.number.localeCompare(b.number))) {
+          fullText += '[' + sp.number + '] ' + sp.text + '\n';
+        }
+      }
+
+      atomicItems.push({
+        question_number: parentNum,
+        question_text: fullText,
+        marks: 0,
+        section: parentInfo.section,
+        type: itemType,
+        sequence: sequence++,
+        images: [],
+        parent: null,
+        sub_parts: parentInfo.subParts.map(sp => sp.number),
+        has_sub_parts: parentInfo.subParts.length > 0,
+        is_standalone: false
+      });
+
+      log('  PARENT ITEM ' + parentNum + ' | ' + itemType + ' | ' + parentInfo.section + ' | ' + parentInfo.subParts.length + ' sub-parts');
+    }
+  }
+
+  // 5b: Add standalone parents (like 3.3)
+  for (const item of standaloneItems) {
+    let itemType = 'Extended';
+    const parts = item.number.split('.');
+    if (parts[0] === '1') itemType = 'Diagram';
+
+    atomicItems.push({
+      question_number: item.number,
+      question_text: item.text,
+      marks: 0,
+      section: item.section,
+      type: itemType,
+      sequence: sequence++,
+      images: [],
+      parent: null,
+      sub_parts: [],
+      has_sub_parts: false,
+      is_standalone: true
+    });
+
+    log('  STANDALONE PARENT ' + item.number + ' | ' + itemType + ' | ' + item.section);
+  }
+
+  // Sort by sequence
+  atomicItems.sort((a, b) => a.sequence - b.sequence);
+  
+  sequence = 1;
+  for (const item of atomicItems) {
+    item.sequence = sequence++;
+  }
+
+  log('\n=== ATOMIC ITEMS: ' + atomicItems.length + ' ===');
+  log('  Standalone: ' + atomicItems.filter(i => i.is_standalone).length);
+  log('  Parent (grouped): ' + atomicItems.filter(i => !i.is_standalone).length);
+  log('  Section A: ' + atomicItems.filter(i => i.section === 'Section A').length);
+  log('  Section B: ' + atomicItems.filter(i => i.section === 'Section B').length);
+  log('  Section C: ' + atomicItems.filter(i => i.section === 'Section C').length);
+  log('=== PARSER END ===\n');
+
+  return atomicItems;
+}
+
+// ============================================
+// ROUTE: POST /api/wizard/parse
+// ============================================
+router.post('/parse', (req, res) => {
+  try {
+    const { textItems, type, subject, paper_no } = req.body;
+    
+    if (!Array.isArray(textItems)) {
+      return res.status(400).json({ error: 'textItems array required' });
+    }
+
+    const questions = parseStructuredText(textItems, type || 'QP', subject, paper_no);
+    
+    res.json({
+      success: true,
+      questions: questions,
+      total_items: questions.length,
+      note: 'Dynamic extraction: parser found ' + questions.length + ' items. No preset expected count.'
+    });
+
+  } catch (error) {
+    console.error('Parse error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// ROUTE: POST /api/wizard/extract-structure
+// ============================================
+router.post('/extract-structure', async (req, res) => {
+  const conn = await req.db.getConnection();
+  
+  try {
+    const { textItems, paper_code, subject_name, paper_no, exam_year, exam_session } = req.body;
+    
+    if (!Array.isArray(textItems) || !paper_code) {
+      return res.status(400).json({ error: 'textItems and paper_code required' });
+    }
+
+    const questions = parseStructuredText(textItems, 'QP', subject_name, paper_no);
+    
+    await conn.beginTransaction();
+
+    // Clear existing structure for this paper
+    await conn.execute(
+      'DELETE FROM QB_questionP_Structure WHERE paper_code = ?',
+      [paper_code]
+    );
+
+    // Insert detected items (dynamic count - no preset)
+    let sequence = 1;
+    for (const q of questions) {
+      await conn.execute(
+        'INSERT INTO QB_questionP_Structure ' +
+        '(paper_code, subject_name, paper_no, exam_year, exam_session, ' +
+        'question_number, question_type, section, expected_marks, sequence, ' +
+        'parent_question, is_sub_part) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          paper_code, subject_name, paper_no, exam_year, exam_session,
+          q.question_number, q.type, q.section, 0, sequence++,
+          null, false
+        ]
+      );
+    }
+
+    await conn.commit();
+
+    res.json({
+      success: true,
+      total_items: questions.length,
+      total_marks: 0,
+      message: 'Structure extracted: ' + questions.length + ' items found. No preset expected count. Use ReviewPanel to set correct marks.'
+    });
+
+  } catch (error) {
+    await conn.rollback();
+    console.error('Extract structure error:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
+module.exports = router;

@@ -96,65 +96,7 @@ const UploadWizard: React.FC = () => {
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
-  
-  const parseMemo = async (memoFile: File, paperCode: string) => {
-    try {
-      console.log('Parsing memo file:', memoFile.name);
-      
-      const arrayBuffer = await memoFile.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-      const textItems = [];
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const content = await page.getTextContent();
-        for (const item of content.items) {
-          if ('str' in item) {
-            textItems.push({
-              text: item.str,
-              x: item.transform[4],
-              y: item.transform[5],
-              width: item.width,
-              height: item.height,
-              fontName: item.fontName,
-              page: pageNum
-            });
-          }
-        }
-      }
-
-      console.log('Memo text extracted:', textItems.length, 'items');
-
-      const memoResponse = await fetch('http://localhost:4000/api/wizard/extract-memo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          textItems: textItems,
-          paper_code: paperCode,
-          subject_name: SUBJECTS.find(s => s.code === paperSpec.subject)?.name || paperSpec.subject,
-          paper_no: parseInt(paperSpec.paper_no.replace('P', '')),
-          exam_year: paperSpec.exam_year,
-          exam_session: paperSpec.exam_session
-        })
-      });
-
-      if (!memoResponse.ok) {
-        const errText = await memoResponse.text();
-        console.warn('Memo extraction warning:', errText);
-        return null;
-      }
-
-      const memoResult = await memoResponse.json();
-      console.log('Memo extracted:', memoResult.total_items, 'items,', memoResult.linked, 'linked,', memoResult.unlinked, 'unlinked');
-      return memoResult;
-
-    } catch (err: any) {
-      console.warn('Memo parsing error:', err.message);
-      return null;
-    }
-  };
-
-const handleParse = async () => {
+  const handleParse = async () => {
     if (!qpFile) {
       setError('Please upload a Question Paper PDF');
       return;
@@ -198,7 +140,7 @@ const handleParse = async () => {
           textItems: textItems,
           paper_code: paperCode,
           subject_name: SUBJECTS.find(s => s.code === paperSpec.subject)?.name || paperSpec.subject,
-          paper_no: parseInt(paperSpec.paper_no.replace('P', '')),
+          paper_no: paperSpec.paper_no,
           exam_year: paperSpec.exam_year,
           exam_session: paperSpec.exam_session
         })
@@ -227,7 +169,7 @@ const handleParse = async () => {
           textItems: textItems,
           type: 'QP',
           subject: paperSpec.subject,
-          paper_no: parseInt(paperSpec.paper_no.replace('P', '')),
+          paper_no: paperSpec.paper_no,
           paper_code: paperCode
         })
       });
@@ -256,13 +198,6 @@ const handleParse = async () => {
       if (comparisonResult.success) {
         setSessionId(comparisonResult.session_id);
         setParseStage('reviewing');
-      // Step 5: Parse Memo if uploaded (STAGE 4)
-      if (memoFile) {
-        console.log('Processing memo file...');
-        await parseMemo(memoFile, paperCode);
-      }
-
-
       } else {
         setError(comparisonResult.error || 'Comparison failed');
       }
@@ -567,4 +502,3 @@ const handleParse = async () => {
 };
 
 export default UploadWizard;
-
