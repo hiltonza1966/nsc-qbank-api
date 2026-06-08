@@ -15,16 +15,7 @@ const mysql = require('mysql2/promise');
 const crypto = require('crypto');
 
 // Database config - matches existing nsc_qbank connection
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: 'nsc_qbank',
-  port: process.env.DB_PORT || 3306,
-  connectionLimit: 10
-};
-
-const pool = mysql.createPool(dbConfig);
+// Database pool provided via req.db from server.js middleware
 
 /**
  * POST /api/wizard/compare-qp
@@ -40,7 +31,7 @@ const pool = mysql.createPool(dbConfig);
  * }
  */
 router.post('/compare-qp', async (req, res) => {
-  const conn = await pool.getConnection();
+  const conn = await req.db.getConnection();
 
   try {
     await conn.beginTransaction();
@@ -264,7 +255,7 @@ router.post('/compare-qp', async (req, res) => {
  * Save manual corrections from review UI
  */
 router.post('/save-corrections', async (req, res) => {
-  const conn = await pool.getConnection();
+  const conn = await req.db.getConnection();
 
   try {
     const { session_id, corrections } = req.body;
@@ -307,7 +298,7 @@ router.post('/save-corrections', async (req, res) => {
  */
 router.get('/comparison/:session_id', async (req, res) => {
   try {
-    const [results] = await pool.execute(
+    const [results] = await req.db.execute(
       `SELECT r.*, s.subject_name, s.paper_no
        FROM QB_parsed_results r
        JOIN QB_questionP_Structure s ON r.question_number = s.question_number AND r.paper_code = s.paper_code
@@ -316,7 +307,7 @@ router.get('/comparison/:session_id', async (req, res) => {
       [req.params.session_id]
     );
 
-    const [session] = await pool.execute(
+    const [session] = await req.db.execute(
       `SELECT * FROM QB_parse_sessions WHERE session_id = ?`,
       [req.params.session_id]
     );
@@ -338,7 +329,7 @@ router.get('/comparison/:session_id', async (req, res) => {
  */
 router.get('/structure/:paper_code', async (req, res) => {
   try {
-    const [rows] = await pool.execute(
+    const [rows] = await req.db.execute(
       `SELECT * FROM QB_questionP_Structure WHERE paper_code = ? ORDER BY sequence`,
       [req.params.paper_code]
     );
@@ -363,7 +354,7 @@ router.post('/structure', async (req, res) => {
   try {
     const { paper_code, subject_name, paper_no, exam_year, exam_session, items } = req.body;
 
-    const conn = await pool.getConnection();
+    const conn = await req.db.getConnection();
     await conn.beginTransaction();
 
     for (const item of items) {

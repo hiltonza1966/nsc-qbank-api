@@ -48,14 +48,8 @@ CREATE TABLE IF NOT EXISTS QB_parsed_results (
     auto_corrected_marks INT DEFAULT NULL COMMENT 'Marks after auto-correction',
     correction_status ENUM('auto_corrected','manual_review','validated','parser_missing') 
         DEFAULT 'auto_corrected',
-    variance INT GENERATED ALWAYS AS (
-        COALESCE(auto_corrected_marks, parser_extracted_marks, 0) - expected_marks
-    ) STORED,
-    is_red_flag BOOLEAN GENERATED ALWAYS AS (
-        correction_status = 'manual_review' OR 
-        correction_status = 'parser_missing' OR
-        variance != 0
-    ) STORED,
+    -- variance and is_red_flag calculated in application code
+    -- not as DB generated columns for MySQL 5.6 compatibility
     user_corrected_marks INT DEFAULT NULL COMMENT 'Manual override by reviewer',
     reviewer_notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

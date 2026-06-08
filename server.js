@@ -51,7 +51,7 @@ app.use('/api/staging', stagingRoutes);
 app.use('/api/qbank/items', require('./routes/items'));
 app.use('/api/qbank/papers', require('./routes/papers'));
 app.use('/api/qbank/specs', require('./routes/specs'));
-app.use('/api/wizard', require('./routes/pdf_parser_structured'));  // Position-based parser (CORRECT)
+app.use('/api/wizard', require('./routes/pdf_parser_structured'));  // Position-based parser
 app.use('/api/attachments', require('./routes/attachments'));
 
 // QP Comparison Engine routes
