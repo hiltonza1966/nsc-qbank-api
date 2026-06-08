@@ -1,10 +1,12 @@
 # QBank Discovery File v4.0 — Corporate Edition
-**Generated:** 7 June 2026 20:08 SAST
+**Generated:** 8 June 2026 10:24 SAST
+**Updated By:** AI K2.6 Session
+**Status:** Comparison Engine Implemented
 **Database:** nsc_qbank (MySQL 8.0.45)
 **Repo:** C:\dev
 sc-qbank
 **Branch:** main
-**Status:** Parser Rewrite Required — Position-Based Approach
+**Status:** Comparison Engine Complete — Parser Integration Pending
 
 ---
 
@@ -75,6 +77,9 @@ D prolactin.
 | qbank_paper_items | 3 | Paper-item associations |
 | qbank_paper_specs | 4 | Paper specifications |
 | qbank_users | 0 | System users |
+| QB_questionP_Structure | 38 | Expected QP structure (gold standard) |
+| QB_parsed_results | 76 | Parser output with auto-correction |
+| QB_parse_sessions | 2 | Audit trail for parse runs |
 | question_reviews | 0 | Review workflow (legacy) |
 | accounting_questions | 10 | Pre-QBank legacy |
 | questions | 3 | Pre-QBank legacy |
@@ -122,7 +127,7 @@ D prolactin.
 
 ## 5. PARSER IMPLEMENTATION STATUS
 
-### 5.1 Current Implementation (FAILED)
+### 5.1 Current Implementation (Comparison Engine Added)
 | Component | Approach | Status |
 |-----------|----------|--------|
 | Text Extraction | pdf-parse + pdf2json | ❌ Produces garbled text |
@@ -130,11 +135,13 @@ D prolactin.
 | Marks Extraction | Regex on flat text | ❌ All default to 1 or 0 |
 | Section Detection | Regex on flat text | ❌ All show Section A |
 | Parent-Child | Regex grouping | ❌ Produces 49 items instead of 38 |
+| **Comparison Engine** | **Database-driven validation** | **✅ Auto-corrects + RED flags** |
+| **Manual Review UI** | **React + RED highlighting** | **✅ Editable marks + save** |
 
-### 5.2 New Implementation (Required)
+### 5.2 Parser Integration (Next Phase)
 | Component | Approach | Status |
 |-----------|----------|--------|
-| Text Extraction | pdf.js getTextContent() | 🔄 Pending |
+| Text Extraction | pdf.js getTextContent() | 🔄 Next Phase |
 | Layout Analysis | Position-based sorting | 🔄 Pending |
 | Question Detection | Position + font analysis | 🔄 Pending |
 | Marks Extraction | Position-based (right-aligned) | 🔄 Pending |
@@ -181,10 +188,18 @@ sc-qbank
 ├── routes/
 │   ├── items.js                  (Item CRUD)
 │   ├── papers.js                 (Paper generation)
-│   ├── pdf_parser.js             (NEEDS REWRITE - position-based)
+│   ├── pdf_parser_structured.js  (Position-based parser - CURRENT)
+│   ├── compare-qp.js             (NEW - Comparison engine)
+│   ├── qp-structure-extractor.js (NEW - Future paper extraction)
 │   ├── specs.js                  (Specs GET)
 │   ├── staging.js                (Staging + memo import)
-│   └── attachments.js            (NEW - Image upload/download)
+│   └── attachments.js            (Image upload/download)
+│
+├── frontend/                     (NEW - React + Vite)
+│   ├── src/components/wizard/
+│   │   ├── UploadWizard.tsx      (Test integration)
+│   │   └── ReviewPanel.tsx       (RED error highlighting)
+│   └── src/services/api.ts       (API calls)
 │
 ├── wizard/
 │   ├── index.html                (NEEDS REWRITE - position-based extraction)
