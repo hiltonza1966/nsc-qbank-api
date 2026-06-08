@@ -7,24 +7,84 @@ const LOG_FILE = path.join(__dirname, '..', 'parser_debug.log');
 
 function log(msg) {
   const timestamp = new Date().toISOString();
-  const line = `[${timestamp}] ${msg}\n`;
+  const line = '[' + timestamp + '] ' + msg + '\n';
   fs.appendFileSync(LOG_FILE, line);
   console.log(line.trim());
 }
 
 function clearLog() {
-  fs.writeFileSync(LOG_FILE, `Parser Debug Log - ${new Date().toISOString()}\n`);
+  fs.writeFileSync(LOG_FILE, 'Parser Debug Log - ' + new Date().toISOString() + '\n');
+}
+
+/**
+ * Extract marks from a block of text
+ * PRIORITY: Item-level marks before section totals
+ */
+function extractMarksFromBlock(text, questionNumber) {
+  // Priority 1: Batch marks with total: (10x 2)(20) or (8x 1)(8)
+  const batchTotalMatch = text.match(/\((\d+)\s*x\s*(\d+)\)\s*\((\d+)\)/);
+  if (batchTotalMatch) {
+    return { marks: parseInt(batchTotalMatch[3]), confidence: 'high', pattern: 'batch_total' };
+  }
+
+  // Priority 2: Look for item total (number) BEFORE section total [number]
+  // Find all (number) and [number] patterns
+  const parenMatches = [...text.matchAll(/\((\d+)\)/g)];
+  const bracketMatches = [...text.matchAll(/\[(\d+)\]/g)];
+  
+  if (parenMatches.length > 0 && bracketMatches.length > 0) {
+    // Get positions of last parenthesis match and first bracket match
+    const lastParen = parenMatches[parenMatches.length - 1];
+    const firstBracket = bracketMatches[0];
+    
+    const lastParenIndex = lastParen.index;
+    const firstBracketIndex = firstBracket.index;
+    
+    // If last (number) appears BEFORE first [number], it's the item total
+    if (lastParenIndex < firstBracketIndex) {
+      const marks = parseInt(lastParen[1]);
+      if (marks <= 25) {
+        return { marks: marks, confidence: 'high', pattern: 'item_total_before_section' };
+      }
+    }
+  }
+
+  // Priority 3: Last (number) if no brackets found
+  if (parenMatches.length > 0) {
+    const lastMatch = parenMatches[parenMatches.length - 1];
+    const marks = parseInt(lastMatch[1]);
+    if (marks <= 25) {
+      return { marks: marks, confidence: 'high', pattern: 'item_total_last' };
+    }
+  }
+
+  // Priority 4: Single (number) at end
+  const singleMatch = text.match(/\((\d+)\)\s*$/);
+  if (singleMatch) {
+    const marks = parseInt(singleMatch[1]);
+    if (marks <= 25) {
+      return { marks: marks, confidence: 'medium', pattern: 'single' };
+    }
+  }
+
+  // Priority 5: Section total [number] - skip if > 25
+  const sectionMatch = text.match(/\[(\d+)\]/);
+  if (sectionMatch) {
+    const marks = parseInt(sectionMatch[1]);
+    log('  WARNING: Section total [' + marks + '] found for ' + questionNumber + ' - using 0');
+    return { marks: 0, confidence: 'low', pattern: 'section_total_skipped' };
+  }
+
+  return { marks: 0, confidence: 'low', pattern: 'none' };
 }
 
 /**
  * Parse structured text from pdf.js getTextContent()
- * SIMPLIFIED: Extracts question numbers and text only
- * Marks come from QB_questionP_Structure (database), NOT parser
  */
 function parseStructuredText(textItems, type, subject, paperNo) {
   clearLog();
-  log(`=== PARSER START ===`);
-  log(`Input: ${textItems.length} text items`);
+  log('=== PARSER START (Item Total Before Section) ===');
+  log('Input: ' + textItems.length + ' text items');
 
   // Step 1: Sort items by page, then y (descending), then x (ascending)
   const sorted = [...textItems].sort((a, b) => {
@@ -68,12 +128,11 @@ function parseStructuredText(textItems, type, subject, paperNo) {
     });
   }
 
-  log(`Grouped into ${lines.length} lines`);
+  log('Grouped into ' + lines.length + ' lines');
 
-  // Step 3: Extract question items (numbers and text only, NO marks)
-  const rawItems = [];
+  // Step 3: First pass - detect ALL question numbers and their positions
+  const questionPositions = [];
   let currentSection = 'Section A';
-  let currentQuestion = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -83,110 +142,262 @@ function parseStructuredText(textItems, type, subject, paperNo) {
     const sectionMatch = text.match(/SECTION\s+([A-Z])/i);
     if (sectionMatch) {
       currentSection = 'Section ' + sectionMatch[1];
-      currentQuestion = null;
-      log(`>>> SECTION: ${currentSection}`);
+      log('>>> SECTION HEADER: ' + currentSection);
       continue;
     }
 
     // Detect Question 2 / Question 3 headers
-    if (text.match(/QUESTION\s*2/i)) {
-      currentQuestion = 'Q2';
-      log(`>>> QUESTION 2`);
+    if (text.match(/^QUESTION\s*2\b/i)) {
+      currentSection = 'Section B';
+      log('>>> QUESTION 2 HEADER -> Section B');
       continue;
     }
-    if (text.match(/QUESTION\s*3/i)) {
-      currentQuestion = 'Q3';
-      log(`>>> QUESTION 3`);
+    if (text.match(/^QUESTION\s*3\b/i)) {
+      currentSection = 'Section C';
+      log('>>> QUESTION 3 HEADER -> Section C');
       continue;
     }
 
-    // Detect sub-part questions: 1.1.1, 2.1.1, 3.1.1 etc.
-    const subPartMatch = text.match(/^(\d+\.\d+\.\d+)\s+(.+)/);
-    if (subPartMatch) {
-      const qnum = subPartMatch[1];
-      const rest = subPartMatch[2];
+    // Match question number pattern at start of line
+    const qMatch = text.match(/^(\d+\.\d+(?:\.\d+)?)\s*(.*)/);
+    if (qMatch) {
+      const qnum = qMatch[1];
+      const rest = qMatch[2];
       const parts = qnum.split('.');
+      const majorQuestion = parseInt(parts[0]);
 
-      if (parts.length === 3) {
-        // Determine type from section and number pattern
-        let itemType = 'Extended';
-        if (parts[0] === '1') {
-          if (parts[1] === '1') itemType = 'MCQ';
-          else if (parts[1] === '2') itemType = 'Short';
-          else if (parts[1] === '3') itemType = 'Matching';
-          else itemType = 'Diagram';
-        }
-
-        rawItems.push({
-          question_number: qnum,
-          question_text: rest,
-          marks: 0, // Marks come from database, NOT parser
-          section: currentSection,
-          type: itemType,
-          parent: parts[0] + '.' + parts[1]
-        });
+      // Infer section from major question number
+      if (majorQuestion === 2 && currentSection === 'Section A') {
+        currentSection = 'Section B';
+        log('>>> INFERRED Section B from question ' + qnum);
       }
-      continue;
-    }
-
-    // Detect parent questions: 1.1, 2.1, 3.1 etc. (no sub-parts)
-    const parentMatch = text.match(/^(\d+\.\d+)\s+(.+)/);
-    if (parentMatch) {
-      const parentNum = parentMatch[1];
-      const parts = parentNum.split('.');
-      if (parts.length === 2) {
-        // Check if next lines have sub-parts
-        let hasSubParts = false;
-        for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-          if (lines[j].text.match(new RegExp(`^${parentNum}\\.\\d+`))) {
-            hasSubParts = true;
-            break;
-          }
-        }
-
-        if (!hasSubParts) {
-          // This is a standalone parent question (like 3.3)
-          let itemType = parts[0] === '1' ? 'Diagram' : 'Extended';
-          rawItems.push({
-            question_number: parentNum,
-            question_text: parentMatch[2],
-            marks: 0,
-            section: currentSection,
-            type: itemType,
-            parent: null
-          });
-          log(`  STANDALONE PARENT ${parentNum}: no sub-parts`);
-        }
+      if (majorQuestion === 3 && currentSection !== 'Section C') {
+        currentSection = 'Section C';
+        log('>>> INFERRED Section C from question ' + qnum);
       }
+
+      questionPositions.push({
+        number: qnum,
+        text: rest,
+        fullText: text,
+        section: currentSection,
+        lineIndex: i,
+        parts: parts
+      });
     }
   }
 
-  log(`\n=== RAW ITEMS: ${rawItems.length} ===`);
+  log('Detected ' + questionPositions.length + ' question positions');
 
-  // Step 4: Build final items
-  const finalItems = [];
+  // Step 4: Identify parent questions (X.Y) and their sub-parts (X.Y.Z)
+  const parentNumbers = new Set();
+  for (const q of questionPositions) {
+    if (q.parts.length === 3) {
+      parentNumbers.add(q.parts[0] + '.' + q.parts[1]);
+    }
+  }
+  log('Parent numbers with sub-parts: ' + Array.from(parentNumbers).join(', '));
+
+  // Step 5: Extract marks for each parent question from its block
+  const parentMarks = {};
+
+  for (let i = 0; i < questionPositions.length; i++) {
+    const q = questionPositions[i];
+    const parts = q.parts;
+
+    // Only process parent-level questions (X.Y)
+    if (parts.length === 2) {
+      const parentNum = q.number;
+      
+      // Find the next parent or section boundary
+      let endIndex = lines.length;
+      for (let j = i + 1; j < questionPositions.length; j++) {
+        const nextQ = questionPositions[j];
+        if (nextQ.parts.length === 2) {
+          endIndex = nextQ.lineIndex;
+          break;
+        }
+      }
+
+      // Extract text block from this parent to next parent
+      let blockText = '';
+      for (let k = q.lineIndex; k < endIndex && k < lines.length; k++) {
+        blockText += lines[k].text + ' ';
+      }
+
+      // Extract marks from this block
+      const marksResult = extractMarksFromBlock(blockText, parentNum);
+      parentMarks[parentNum] = marksResult;
+      
+      log('  PARENT ' + parentNum + ' marks: ' + marksResult.marks + ' (confidence: ' + marksResult.confidence + ', pattern: ' + marksResult.pattern + ')');
+    }
+  }
+
+  // Step 6: Build atomic items
+  const atomicItems = [];
+  const parentItems = {};
+  const standaloneItems = [];
   let sequence = 1;
 
-  for (const item of rawItems) {
-    finalItems.push({
-      question_number: item.question_number,
-      question_text: item.question_text,
-      marks: 0, // NO marks from parser - will be auto-corrected by compare-qp
-      section: item.section,
-      type: item.type,
-      sequence: sequence++,
-      images: [],
-      parent: item.parent
-    });
+  // Categorize each detected question
+  for (const q of questionPositions) {
+    const parts = q.parts;
+
+    if (parts.length === 3) {
+      const parentNum = parts[0] + '.' + parts[1];
+      
+      if (parentNumbers.has(parentNum)) {
+        if (!parentItems[parentNum]) {
+          parentItems[parentNum] = {
+            text: '',
+            subParts: [],
+            section: q.section,
+            marks: 0
+          };
+        }
+        parentItems[parentNum].subParts.push({
+          number: q.number,
+          text: q.text,
+          section: q.section
+        });
+      }
+    } else if (parts.length === 2) {
+      const parentNum = q.number;
+      
+      if (parentNumbers.has(parentNum)) {
+        if (!parentItems[parentNum]) {
+          parentItems[parentNum] = {
+            text: q.text,
+            subParts: [],
+            section: q.section,
+            marks: parentMarks[parentNum] ? parentMarks[parentNum].marks : 0
+          };
+        } else {
+          parentItems[parentNum].text = q.text;
+          parentItems[parentNum].marks = parentMarks[parentNum] ? parentMarks[parentNum].marks : 0;
+        }
+      } else {
+        const marksResult = parentMarks[parentNum] || { marks: 0, confidence: 'low' };
+        standaloneItems.push({
+          number: q.number,
+          text: q.text,
+          section: q.section,
+          marks: marksResult.marks,
+          marksConfidence: marksResult.confidence
+        });
+      }
+    }
   }
 
-  log(`=== PARSER END: ${finalItems.length} items ===\n`);
-  return finalItems;
+  // Build final items
+  for (const [parentNum, parentInfo] of Object.entries(parentItems)) {
+    const parts = parentNum.split('.');
+    const isStandaloneParent = ['1.1', '1.2', '1.3'].includes(parentNum);
+    
+    if (isStandaloneParent) {
+      const parentMarks = parentInfo.marks;
+      const subPartCount = parentInfo.subParts.length;
+      const marksPerSubPart = subPartCount > 0 && parentMarks > 0 ? Math.floor(parentMarks / subPartCount) : 0;
+      
+      for (const sp of parentInfo.subParts.sort((a, b) => a.number.localeCompare(b.number))) {
+        let itemType = 'Extended';
+        if (parentNum === '1.1') itemType = 'MCQ';
+        else if (parentNum === '1.2') itemType = 'Short';
+        else if (parentNum === '1.3') itemType = 'Matching';
+
+        atomicItems.push({
+          question_number: sp.number,
+          question_text: sp.text,
+          marks: marksPerSubPart,
+          section: sp.section,
+          type: itemType,
+          sequence: sequence++,
+          images: [],
+          parent: null,
+          sub_parts: [],
+          has_sub_parts: false,
+          is_standalone: true
+        });
+        
+        log('  STANDALONE ITEM ' + sp.number + ' | ' + itemType + ' | ' + sp.section + ' | Marks: ' + marksPerSubPart);
+      }
+    } else {
+      let itemType = 'Extended';
+      if (parts[0] === '1') itemType = 'Diagram';
+
+      let fullText = parentInfo.text || '';
+      if (parentInfo.subParts.length > 0) {
+        fullText += '\n\nSub-parts:\n';
+        for (const sp of parentInfo.subParts.sort((a, b) => a.number.localeCompare(b.number))) {
+          fullText += '[' + sp.number + '] ' + sp.text + '\n';
+        }
+      }
+
+      atomicItems.push({
+        question_number: parentNum,
+        question_text: fullText,
+        marks: parentInfo.marks,
+        section: parentInfo.section,
+        type: itemType,
+        sequence: sequence++,
+        images: [],
+        parent: null,
+        sub_parts: parentInfo.subParts.map(sp => sp.number),
+        has_sub_parts: parentInfo.subParts.length > 0,
+        is_standalone: false
+      });
+
+      log('  PARENT ITEM ' + parentNum + ' | ' + itemType + ' | ' + parentInfo.section + ' | Marks: ' + parentInfo.marks + ' | ' + parentInfo.subParts.length + ' sub-parts');
+    }
+  }
+
+  // Add standalone parents
+  for (const item of standaloneItems) {
+    let itemType = 'Extended';
+    const parts = item.number.split('.');
+    if (parts[0] === '1') itemType = 'Diagram';
+
+    atomicItems.push({
+      question_number: item.number,
+      question_text: item.text,
+      marks: item.marks,
+      section: item.section,
+      type: itemType,
+      sequence: sequence++,
+      images: [],
+      parent: null,
+      sub_parts: [],
+      has_sub_parts: false,
+      is_standalone: true
+    });
+
+    log('  STANDALONE PARENT ' + item.number + ' | ' + itemType + ' | ' + item.section + ' | Marks: ' + item.marks);
+  }
+
+  // Sort by sequence
+  atomicItems.sort((a, b) => a.sequence - b.sequence);
+  
+  sequence = 1;
+  for (const item of atomicItems) {
+    item.sequence = sequence++;
+  }
+
+  const totalMarks = atomicItems.reduce((sum, item) => sum + item.marks, 0);
+
+  log('\n=== ATOMIC ITEMS: ' + atomicItems.length + ' ===');
+  log('  Standalone: ' + atomicItems.filter(i => i.is_standalone).length);
+  log('  Parent (grouped): ' + atomicItems.filter(i => !i.is_standalone).length);
+  log('  Section A: ' + atomicItems.filter(i => i.section === 'Section A').length);
+  log('  Section B: ' + atomicItems.filter(i => i.section === 'Section B').length);
+  log('  Section C: ' + atomicItems.filter(i => i.section === 'Section C').length);
+  log('  TOTAL MARKS: ' + totalMarks);
+  log('=== PARSER END ===\n');
+
+  return atomicItems;
 }
 
 // ============================================
 // ROUTE: POST /api/wizard/parse
-// Body: { textItems: [...], type: 'QP', subject: 'LIFE_SC', paper_no: 'P1' }
 // ============================================
 router.post('/parse', (req, res) => {
   try {
@@ -197,12 +408,14 @@ router.post('/parse', (req, res) => {
     }
 
     const questions = parseStructuredText(textItems, type || 'QP', subject, paper_no);
+    const totalMarks = questions.reduce((sum, item) => sum + item.marks, 0);
     
     res.json({
       success: true,
       questions: questions,
       total_items: questions.length,
-      note: 'Marks are placeholder (0) - will be auto-corrected by comparison engine'
+      total_marks: totalMarks,
+      note: 'Dynamic extraction with item-total marks. Total marks found: ' + totalMarks
     });
 
   } catch (error) {
@@ -213,7 +426,6 @@ router.post('/parse', (req, res) => {
 
 // ============================================
 // ROUTE: POST /api/wizard/extract-structure
-// Saves detected structure to QB_questionP_Structure
 // ============================================
 router.post('/extract-structure', async (req, res) => {
   const conn = await req.db.getConnection();
@@ -225,8 +437,8 @@ router.post('/extract-structure', async (req, res) => {
       return res.status(400).json({ error: 'textItems and paper_code required' });
     }
 
-    // Parse to get question numbers
     const questions = parseStructuredText(textItems, 'QP', subject_name, paper_no);
+    const totalMarks = questions.reduce((sum, item) => sum + item.marks, 0);
     
     await conn.beginTransaction();
 
@@ -236,23 +448,19 @@ router.post('/extract-structure', async (req, res) => {
       [paper_code]
     );
 
-    // Insert detected structure (marks will be set to 0, user must correct via ReviewPanel)
+    // Insert detected items WITH EXTRACTED MARKS
     let sequence = 1;
     for (const q of questions) {
-      const parts = q.question_number.split('.');
-      const isSubPart = parts.length === 3;
-      const parentQuestion = isSubPart ? parts[0] + '.' + parts[1] : null;
-
       await conn.execute(
-        `INSERT INTO QB_questionP_Structure 
-         (paper_code, subject_name, paper_no, exam_year, exam_session, 
-          question_number, question_type, section, expected_marks, sequence, 
-          parent_question, is_sub_part)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        'INSERT INTO QB_questionP_Structure ' +
+        '(paper_code, subject_name, paper_no, exam_year, exam_session, ' +
+        'question_number, question_type, section, expected_marks, sequence, ' +
+        'parent_question, is_sub_part) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           paper_code, subject_name, paper_no, exam_year, exam_session,
-          q.question_number, q.type, q.section, 0, sequence++,
-          parentQuestion, isSubPart
+          q.question_number, q.type, q.section, q.marks, sequence++,
+          null, false
         ]
       );
     }
@@ -262,8 +470,8 @@ router.post('/extract-structure', async (req, res) => {
     res.json({
       success: true,
       total_items: questions.length,
-      total_marks: 0,
-      message: 'Structure extracted. Marks are set to 0 - use ReviewPanel to set correct marks.'
+      total_marks: totalMarks,
+      message: 'Structure extracted: ' + questions.length + ' items, ' + totalMarks + ' marks found from PDF.'
     });
 
   } catch (error) {
