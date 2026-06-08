@@ -85,15 +85,10 @@
       <h3 class="font-semibold text-sm mb-2">Parsed QP Items (<span id="qpCount">0</span>)</h3>
       <div class="overflow-auto max-h-40 border text-sm">
         <table class="w-full">
-          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Type</th><th class="p-1">Section</th><th class="p-1">Marks</th><th class="p-1">Images</th><th class="p-1">Preview</th></tr></thead>
+          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Type</th><th class="p-1">Section</th><th class="p-1">Marks</th><th class="p-1">Preview</th></tr></thead>
           <tbody id="qpPreviewBody"></tbody>
         </table>
       </div>
-    </div>
-    <div id="qpDebug" class="mt-4 hidden">
-      <h3 class="font-semibold text-sm mb-2 text-red-600">Debug: Extracted Text Preview (first 2000 chars)</h3>
-      <div class="debug-text" id="qpDebugText"></div>
-      <p class="text-xs text-gray-500 mt-1">If few items were parsed, check this text to see what the PDF extractor found. You may need to use OCR for scanned PDFs.</p>
     </div>
   </section>
 
@@ -114,14 +109,10 @@
       <h3 class="font-semibold text-sm mb-2">Parsed Memo Items (<span id="memoCount">0</span>)</h3>
       <div class="overflow-auto max-h-40 border text-sm">
         <table class="w-full">
-          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Marks</th><th class="p-1">Sub-parts</th><th class="p-1">Preview</th></tr></thead>
+          <thead class="bg-gray-100"><tr><th class="p-1">#</th><th class="p-1">Q.No</th><th class="p-1">Marks</th><th class="p-1">Preview</th></tr></thead>
           <tbody id="memoPreviewBody"></tbody>
         </table>
       </div>
-    </div>
-    <div id="memoDebug" class="mt-4 hidden">
-      <h3 class="font-semibold text-sm mb-2 text-red-600">Debug: Extracted Text Preview (first 2000 chars)</h3>
-      <div class="debug-text" id="memoDebugText"></div>
     </div>
   </section>
 
@@ -256,13 +247,53 @@ function renderPDF(file, containerId){
   reader.readAsArrayBuffer(file);
 }
 
+// NEW: Extract text with positions using pdf.js getTextContent()
+async function extractTextWithPositions(file) {
+  const reader = new FileReader();
+  const arrayBuffer = await new Promise((resolve, reject) => {
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+
+  const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+  const allTextItems = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+
+    for (const item of textContent.items) {
+      // Extract position from transform matrix
+      // transform = [a, b, c, d, e, f] where e = x, f = y
+      const transform = item.transform;
+      const x = transform[4];
+      const y = transform[5];
+      const fontHeight = item.height || 12;
+      const fontName = item.fontName || 'unknown';
+
+      allTextItems.push({
+        text: item.str,
+        x: Math.round(x * 100) / 100,
+        y: Math.round(y * 100) / 100,
+        width: Math.round(item.width * 100) / 100,
+        height: Math.round(fontHeight * 100) / 100,
+        fontName: fontName,
+        page: pageNum
+      });
+    }
+  }
+
+  return allTextItems;
+}
+
 document.getElementById('qpFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   qpPDFFile = file;
   renderPDF(file, 'qpViewer');
   document.getElementById('parseQPBtn').disabled = false;
-  document.getElementById('qpParseStatus').innerHTML = '<span class="text-gray-600">PDF loaded. Click "Parse QP" to extract questions.</span>';
+  document.getElementById('qpParseStatus').innerHTML = '<span class="text-gray-600">PDF loaded. Click "Parse QP" to extract questions with position-based parsing.</span>';
 });
 
 document.getElementById('memoFile').addEventListener('change', (e) => {
@@ -271,7 +302,7 @@ document.getElementById('memoFile').addEventListener('change', (e) => {
   memoPDFFile = file;
   renderPDF(file, 'memoViewer');
   document.getElementById('parseMemoBtn').disabled = false;
-  document.getElementById('memoParseStatus').innerHTML = '<span class="text-gray-600">PDF loaded. Click "Parse Memo" to extract marking guidelines.</span>';
+  document.getElementById('memoParseStatus').innerHTML = '<span class="text-gray-600">PDF loaded. Click "Parse Memo" to extract marking guidelines with position-based parsing.</span>';
 });
 
 async function parseQP() {
@@ -279,48 +310,89 @@ async function parseQP() {
 
   const btn = document.getElementById('parseQPBtn');
   const status = document.getElementById('qpParseStatus');
-  const debugDiv = document.getElementById('qpDebug');
-  const debugText = document.getElementById('qpDebugText');
   btn.disabled = true;
-  status.innerHTML = '<span class="loading text-blue-600">Parsing Question Paper... please wait</span>';
-  debugDiv.classList.add('hidden');
-
-  const formData = new FormData();
-  formData.append('pdf', qpPDFFile);
+  status.innerHTML = '<span class="loading text-blue-600">Extracting text with positions... please wait</span>';
 
   try {
-    const res = await fetch('http://localhost:4000/api/wizard/parse-pdf', {
+    // Step 1: Extract text with positions using pdf.js
+    const textItems = await extractTextWithPositions(qpPDFFile);
+    status.innerHTML = '<span class="text-blue-600">Extracted ' + textItems.length + ' text items. Sending to parser...</span>';
+
+    // Step 2: Send structured text to backend
+    // CORRECTED ENDPOINT: server.js mounts at /api/wizard, so path is /api/wizard/parse-structured
+    const res = await fetch('http://localhost:4000/api/wizard/parse-structured', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        textItems: textItems,
+        type: 'qp',
+        subject: document.getElementById('subject').value,
+        paper_no: parseInt(document.getElementById('paper_no').value)
+      })
     });
+
     const data = await res.json();
 
     if (data.success) {
       state.qpItems = data.items || [];
       saveState();
-      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' questions (' + data.total_marks + ' marks) using ' + (data.extraction_method || 'unknown') + '. ' + (data.total_images_detected || 0) + ' images detected.</span>';
-
-      // Show debug text if few items parsed
-      if (data.debug_text_preview && data.total_items < 10) {
-        debugDiv.classList.remove('hidden');
-        debugText.textContent = data.debug_text_preview;
-      }
-
+      updateButtonStates();
+      renderQPPreview();
+      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' questions (' + data.total_marks + ' marks) using position-based extraction. ' +
+        (data.validation ? 'Variance: ' + data.validation.item_variance + ' items, ' + data.validation.marks_variance + ' marks from expected.' : '') + '</span>';
       updateButtonStates();
       renderQPPreview();
     } else {
       status.innerHTML = '<span class="text-red-700">Parse error: ' + data.error + '</span>';
-      if (data.ocr_required) {
-        status.innerHTML += '<br><span class="text-orange-600">This PDF appears to be image-based (scanned). OCR is required.</span>';
-      }
-      if (data.debug_text_preview) {
-        debugDiv.classList.remove('hidden');
-        debugText.textContent = data.debug_text_preview;
-      }
       btn.disabled = false;
     }
   } catch (err) {
-    status.innerHTML = '<span class="text-red-700">Network error: ' + err.message + '. Is API running on port 4000?</span>';
+    status.innerHTML = '<span class="text-red-700">Error: ' + err.message + '. Is API running on port 4000?</span>';
+    btn.disabled = false;
+  }
+}
+
+async function parseMemo() {
+  if (!memoPDFFile) { alert('Please select a Memo PDF first'); return; }
+
+  const btn = document.getElementById('parseMemoBtn');
+  const status = document.getElementById('memoParseStatus');
+  btn.disabled = true;
+  status.innerHTML = '<span class="loading text-blue-600">Extracting text with positions... please wait</span>';
+
+  try {
+    const textItems = await extractTextWithPositions(memoPDFFile);
+    status.innerHTML = '<span class="text-blue-600">Extracted ' + textItems.length + ' text items. Sending to parser...</span>';
+
+    // CORRECTED ENDPOINT: /api/wizard/parse-structured
+    const res = await fetch('http://localhost:4000/api/wizard/parse-structured', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        textItems: textItems,
+        type: 'memo',
+        subject: document.getElementById('subject').value,
+        paper_no: parseInt(document.getElementById('paper_no').value)
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      state.memoItems = data.items || [];
+      saveState();
+      updateButtonStates();
+      renderMemoPreview();
+      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' memo items (' + data.total_marks + ' marks) using position-based extraction. ' +
+        (data.validation ? 'Variance: ' + data.validation.item_variance + ' items, ' + data.validation.marks_variance + ' marks from expected.' : '') + '</span>';
+      updateButtonStates();
+      renderMemoPreview();
+    } else {
+      status.innerHTML = '<span class="text-red-700">Parse error: ' + data.error + '</span>';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    status.innerHTML = '<span class="text-red-700">Error: ' + err.message + '. Is API running on port 4000?</span>';
     btn.disabled = false;
   }
 }
@@ -339,67 +411,16 @@ function renderQPPreview() {
   state.qpItems.forEach((it, i) => {
     const tr = document.createElement('tr');
     tr.className = 'border-t';
-    const imgCount = it.images ? it.images.length : 0;
     const subPartCount = it.sub_parts ? it.sub_parts.length : 0;
+    const childCount = it.child_sub_parts ? it.child_sub_parts.length : 0;
     tr.innerHTML = '<td class="p-1">' + (i+1) + '</td>' +
       '<td class="p-1 font-mono">' + (it.question_number || '-') + '</td>' +
       '<td class="p-1">' + (it.type || 'Unknown') + '</td>' +
       '<td class="p-1">' + (it.section || '-') + '</td>' +
       '<td class="p-1">' + it.marks + '</td>' +
-      '<td class="p-1">' + (imgCount > 0 ? imgCount + ' detected' : '-') + '</td>' +
       '<td class="p-1 text-gray-600">' + escapeHtml((it.question_text || '').substring(0, 60)) + '...</td>';
     tbody.appendChild(tr);
   });
-}
-
-async function parseMemo() {
-  if (!memoPDFFile) { alert('Please select a Memo PDF first'); return; }
-
-  const btn = document.getElementById('parseMemoBtn');
-  const status = document.getElementById('memoParseStatus');
-  const debugDiv = document.getElementById('memoDebug');
-  const debugText = document.getElementById('memoDebugText');
-  btn.disabled = true;
-  status.innerHTML = '<span class="loading text-blue-600">Parsing Marking Guidelines... please wait</span>';
-  debugDiv.classList.add('hidden');
-
-  const formData = new FormData();
-  formData.append('pdf', memoPDFFile);
-
-  try {
-    const res = await fetch('http://localhost:4000/api/wizard/parse-memo', {
-      method: 'POST',
-      body: formData
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      state.memoItems = data.items || [];
-      saveState();
-      status.innerHTML = '<span class="text-green-700">Parsed ' + data.total_items + ' memo items (' + data.total_marks + ' marks) using ' + (data.extraction_method || 'unknown') + '.</span>';
-
-      if (data.debug_text_preview && data.total_items < 10) {
-        debugDiv.classList.remove('hidden');
-        debugText.textContent = data.debug_text_preview;
-      }
-
-      updateButtonStates();
-      renderMemoPreview();
-    } else {
-      status.innerHTML = '<span class="text-red-700">Parse error: ' + data.error + '</span>';
-      if (data.ocr_required) {
-        status.innerHTML += '<br><span class="text-orange-600">This PDF appears to be image-based (scanned). OCR is required.</span>';
-      }
-      if (data.debug_text_preview) {
-        debugDiv.classList.remove('hidden');
-        debugText.textContent = data.debug_text_preview;
-      }
-      btn.disabled = false;
-    }
-  } catch (err) {
-    status.innerHTML = '<span class="text-red-700">Network error: ' + err.message + '. Is API running on port 4000?</span>';
-    btn.disabled = false;
-  }
 }
 
 function renderMemoPreview() {
@@ -416,12 +437,10 @@ function renderMemoPreview() {
   state.memoItems.forEach((it, i) => {
     const tr = document.createElement('tr');
     tr.className = 'border-t';
-    const subPartCount = it.sub_parts ? it.sub_parts.length : 0;
     tr.innerHTML = '<td class="p-1">' + (i+1) + '</td>' +
       '<td class="p-1 font-mono">' + (it.question_number || '-') + '</td>' +
       '<td class="p-1">' + it.marks + '</td>' +
-      '<td class="p-1">' + (subPartCount > 0 ? subPartCount + ' parts' : '-') + '</td>' +
-      '<td class="p-1 text-gray-600">' + escapeHtml((it.answer_text || '').substring(0, 60)) + '...</td>';
+      '<td class="p-1 text-gray-600">' + escapeHtml((it.question_text || '').substring(0, 60)) + '...</td>';
     tbody.appendChild(tr);
   });
 }
@@ -433,7 +452,7 @@ function linkItems() {
     linked.push({
       question_number: qp.question_number,
       question_text: qp.question_text,
-      answer_text: memo ? memo.answer_text : '',
+      answer_text: memo ? memo.question_text : '', // Memo uses question_text field for answer content
       marks: qp.marks,
       memo_marks: memo ? memo.marks : qp.marks,
       section: qp.section || '',
@@ -621,7 +640,7 @@ function renderItems(){
           '<div class="text-xs text-gray-500">Preview:</div>' +
           '<div class="md-preview p-1 text-xs" id="preview-q-' + i + '">' + markdownPreview(it.question_text||'') + '</div>' +
           subPartsHtml +
-        childSubPartsHtml +
+          childSubPartsHtml +
         '</div>' +
       '</td>' +
       '<td class="p-1">' +
@@ -672,10 +691,10 @@ function renderItems(){
       const qNum = state.qpItems[i].question_number;
       let memo = state.memoItems.find(m => m.question_number === qNum);
       if (!memo) {
-        memo = { question_number: qNum, answer_text: '', marks: state.qpItems[i].marks, sub_parts: [] };
+        memo = { question_number: qNum, question_text: '', marks: state.qpItems[i].marks, sub_parts: [] };
         state.memoItems.push(memo);
       }
-      memo.answer_text = e.target.value;
+      memo.question_text = e.target.value; // Store answer in question_text field for memo
       document.getElementById('preview-m-'+i).innerHTML=markdownPreview(e.target.value);
       saveState();
       validateItems();
@@ -920,7 +939,7 @@ async function importItems(){
 
       const memoPayload = state.memoItems.map(it => ({
         question_number: it.question_number || '',
-        answer_text: it.answer_text.trim(),
+        answer_text: (it.question_text || '').trim(), // Memo answer stored in question_text field
         marks: parseInt(it.marks)||1,
         source_year: parseInt(document.getElementById('source_year').value)||null,
         source_exam_board: document.getElementById('source_exam_board').value,
