@@ -27,31 +27,4 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-
-// POST /api/templates - Create new paper template
-router.post('/', async (req, res) => {
-  try {
-    const {
-      template_code, template_name, year_id, grade_id, subject_id, paper_id,
-      assessment_type_id, assessment_body_id, total_marks, total_items,
-      duration_minutes, description, created_by
-    } = req.body;
-
-    const [result] = await req.db.execute(
-      `INSERT INTO paper_templates (
-        template_code, template_name, year_id, grade_id, subject_id, paper_id,
-        assessment_type_id, assessment_body_id, total_marks, total_items,
-        duration_minutes, description, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [template_code, template_name, year_id, grade_id, subject_id, paper_id,
-       assessment_type_id, assessment_body_id, total_marks, total_items,
-       duration_minutes || 180, description, created_by]
-    );
-
-    res.json({ success: true, template_id: result.insertId });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
 module.exports = router;

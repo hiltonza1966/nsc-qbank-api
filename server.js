@@ -67,6 +67,27 @@ app.use('/api/taxonomy', require('./routes/taxonomy'));   // Tag taxonomy
 app.use('/api/usage', require('./routes/usage'));         // Exposure tracking
 app.use('/api/wizard', require('./routes/memo-parser')); // Memo parser and comparison
 
+// Routes - Phase 2 (lookup tables)
+app.get('/api/lookup/:table', async (req, res) => {
+  const allowedTables = [
+    'lookup_years', 'lookup_grades', 'lookup_subjects', 'lookup_papers',
+    'lookup_assessment_types', 'lookup_assessment_bodies',
+    'lookup_cognitive_levels', 'lookup_difficulty_levels', 'lookup_item_types',
+    'lookup_languages', 'lookup_exam_sessions', 'lookup_marking_schemes',
+    'lookup_caps_topics', 'lookup_caps_subtopics', 'lookup_tag_taxonomy'
+  ];
+  const table = req.params.table;
+  if (!allowedTables.includes(table)) {
+    return res.status(400).json({ error: 'Invalid lookup table' });
+  }
+  try {
+    const [rows] = await req.db.execute(`SELECT * FROM ${table} WHERE is_active = 1`);
+    res.json({ success: true, count: rows.length, data: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 const PORT = process.env.PORT || 4000;
