@@ -30,10 +30,10 @@ router.post('/compare-memo', async (req, res) => {
 
     const sessionId = crypto.randomUUID();
 
-    // 1. Load QP structure (gold standard)
+    // 1. Load QP structure (gold standard) - uses new table name
     const [expectedRows] = await conn.execute(
-      `SELECT question_number, question_type, section, expected_marks, sequence
-       FROM QB_questionP_Structure WHERE paper_code = ? ORDER BY sequence`,
+      `SELECT question_number, question_type_id, section, expected_marks, sequence
+       FROM parse_expected_structure WHERE paper_code = ? ORDER BY sequence`,
       [paper_code]
     );
 
@@ -44,9 +44,9 @@ router.post('/compare-memo', async (req, res) => {
     const expectedMap = new Map();
     expectedRows.forEach(row => expectedMap.set(row.question_number, row));
 
-    // 2. Create session
+    // 2. Create session - uses new table name
     await conn.execute(
-      `INSERT INTO QB_parse_sessions (session_id, paper_code, file_name, file_hash, parser_version, total_marks_expected, status)
+      `INSERT INTO parse_sessions (session_id, paper_code, file_name, file_hash, parser_version, total_marks_expected, status)
        VALUES (?, ?, ?, ?, 'memo-1.0', ?, 'comparing')`,
       [sessionId, paper_code, file_name || 'unknown', file_hash || 'unknown', expectedRows.reduce((s, r) => s + r.expected_marks, 0)]
     );
@@ -101,9 +101,9 @@ router.post('/compare-memo', async (req, res) => {
       }
     }
 
-    // 4. Update session
+    // 4. Update session - uses new table name
     await conn.execute(
-      `UPDATE QB_parse_sessions SET total_items_found = ?, auto_corrected_count = ?, manual_review_count = ?, missing_count = ?, status = 'completed' WHERE session_id = ?`,
+      `UPDATE parse_sessions SET total_items_found = ?, auto_corrected_count = ?, manual_review_count = ?, missing_count = ?, status = 'completed' WHERE session_id = ?`,
       [memo_output.length, alignedCount, mismatchCount, missingCount, sessionId]
     );
 

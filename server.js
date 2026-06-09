@@ -66,6 +66,7 @@ app.use('/api/templates', require('./routes/templates')); // Paper templates
 app.use('/api/taxonomy', require('./routes/taxonomy'));   // Tag taxonomy
 app.use('/api/usage', require('./routes/usage'));         // Exposure tracking
 app.use('/api/wizard', require('./routes/memo-parser')); // Memo parser and comparison
+app.use('/api/wizard', require('./routes/memo-compare'));  // Memo comparison engine
 
 // Routes - Phase 2 (lookup tables)
 app.get('/api/lookup/:table', async (req, res) => {

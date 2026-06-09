@@ -12,7 +12,7 @@ const crypto = require('crypto');
 /**
  * POST /api/wizard/compare-qp
  * Body: {
- *   paper_code: "LIFE_SC_P1_NOV_2025",
+ *   paper_id: "LIFE_SC_P1_NOV_2025",
  *   paper_id: 123,
  *   parser_output: [
  *     { question_number: "1.1.1", question_text: "...", section: "Section A", type: "MCQ", marks: 2 },
@@ -28,10 +28,10 @@ router.post('/compare-qp', async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const { paper_code, paper_id, parser_output, file_name, file_hash } = req.body;
+    const { paper_id, paper_id, parser_output, file_name, file_hash } = req.body;
 
-    if (!paper_code || !Array.isArray(parser_output)) {
-      return res.status(400).json({ error: 'paper_code and parser_output array required' });
+    if (!paper_id || !Array.isArray(parser_output)) {
+      return res.status(400).json({ error: 'paper_id and parser_output array required' });
     }
 
     const sessionId = crypto.randomUUID();
@@ -40,15 +40,15 @@ router.post('/compare-qp', async (req, res) => {
     const [expectedRows] = await conn.execute(
       `SELECT question_number, question_type, section, expected_marks, sequence, parent_question, is_sub_part
        FROM parse_expected_structure 
-       WHERE paper_code = ? 
+       WHERE paper_id = ? 
        ORDER BY sequence`,
-      [paper_code]
+      [paper_id]
     );
 
     if (expectedRows.length === 0) {
       return res.status(404).json({ 
         error: 'Paper structure not found. Run extract-structure first.',
-        paper_code 
+        paper_id 
       });
     }
 
@@ -63,9 +63,9 @@ router.post('/compare-qp', async (req, res) => {
     // 2. Create parse session record
     await conn.execute(
       `INSERT INTO parse_sessions 
-       (session_id, paper_code, file_name, file_hash, parser_version, total_marks_expected, status)
+       (session_id, paper_id, file_name, file_hash, parser_version, total_marks_expected, status)
        VALUES (?, ?, ?, ?, '1.0', ?, 'comparing')`,
-      [sessionId, paper_code, file_name || 'unknown', file_hash || 'unknown', totalExpectedMarks]
+      [sessionId, paper_id, file_name || 'unknown', file_hash || 'unknown', totalExpectedMarks]
     );
 
     // 3. Compare parser output against expected structure
@@ -172,14 +172,14 @@ router.post('/compare-qp', async (req, res) => {
     for (const result of results) {
       await conn.execute(
         `INSERT INTO parse_results 
-         (paper_id, parse_session_id, paper_code, question_number, question_text, 
+         (paper_id, parse_session_id, paper_id, question_number, question_text, 
           parsed_type, parsed_section, parser_extracted_marks, expected_marks, 
           auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
         [
           paper_id || 0,
           sessionId,
-          paper_code,
+          paper_id,
           result.question_number,
           result.question_text,
           result.parsed_type,
@@ -208,7 +208,7 @@ router.post('/compare-qp', async (req, res) => {
     res.json({
       success: true,
       session_id: sessionId,
-      paper_code,
+      paper_id,
       summary: {
         total_expected_items: totalExpectedItems,
         total_parser_items: parser_output.length,
@@ -277,7 +277,7 @@ router.get('/comparison/:session_id', async (req, res) => {
     const [results] = await req.db.execute(
       `SELECT r.*, s.subject_name, s.paper_no
        FROM parse_results r
-       JOIN parse_expected_structure s ON r.question_number = s.question_number AND r.paper_code = s.paper_code
+       JOIN parse_expected_structure s ON r.question_number = s.question_number AND r.paper_id = s.paper_id
        WHERE r.parse_session_id = ?
        ORDER BY s.sequence`,
       [req.params.session_id]
@@ -293,15 +293,15 @@ router.get('/comparison/:session_id', async (req, res) => {
     let totalExpectedItems = 0;
     if (dbSession) {
       const [countRows] = await req.db.execute(
-        `SELECT COUNT(*) as item_count FROM parse_expected_structure WHERE paper_code = ?`,
-        [dbSession.paper_code]
+        `SELECT COUNT(*) as item_count FROM parse_expected_structure WHERE paper_id = ?`,
+        [dbSession.paper_id]
       );
       totalExpectedItems = countRows[0].item_count || 0;
     }
 
     const session = dbSession ? {
       session_id: dbSession.session_id,
-      paper_code: dbSession.paper_code,
+      paper_id: dbSession.paper_id,
       total_expected_items: totalExpectedItems,
       total_parser_items: dbSession.total_items_found || 0,
       total_expected_marks: dbSession.total_marks_expected || 0,
@@ -324,15 +324,15 @@ router.get('/comparison/:session_id', async (req, res) => {
   }
 });
 
-router.get('/structure/:paper_code', async (req, res) => {
+router.get('/structure/:paper_id', async (req, res) => {
   try {
     const [rows] = await req.db.execute(
-      `SELECT * FROM parse_expected_structure WHERE paper_code = ? ORDER BY sequence`,
-      [req.params.paper_code]
+      `SELECT * FROM parse_expected_structure WHERE paper_id = ? ORDER BY sequence`,
+      [req.params.paper_id]
     );
 
     res.json({
-      paper_code: req.params.paper_code,
+      paper_id: req.params.paper_id,
       total_items: rows.length,
       total_marks: rows.reduce((s, r) => s + r.expected_marks, 0),
       items: rows
@@ -345,7 +345,7 @@ router.get('/structure/:paper_code', async (req, res) => {
 
 router.post('/structure', async (req, res) => {
   try {
-    const { paper_code, subject_name, paper_no, exam_year, exam_session, items } = req.body;
+    const { paper_id, subject_name, paper_no, exam_year, exam_session, items } = req.body;
 
     const conn = await req.db.getConnection();
     await conn.beginTransaction();
@@ -353,13 +353,13 @@ router.post('/structure', async (req, res) => {
     for (const item of items) {
       await conn.execute(
         `INSERT INTO parse_expected_structure 
-         (paper_code, subject_name, paper_no, exam_year, exam_session, question_number, 
+         (paper_id, subject_name, paper_no, exam_year, exam_session, question_number, 
           question_type, section, expected_marks, sequence, parent_question, is_sub_part)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
          expected_marks = VALUES(expected_marks), question_type = VALUES(question_type), 
          section = VALUES(section), updated_at = NOW()`,
-        [paper_code, subject_name, paper_no, exam_year, exam_session, item.question_number,
+        [paper_id, subject_name, paper_no, exam_year, exam_session, item.question_number,
          item.question_type, item.section, item.expected_marks, item.sequence, 
          item.parent_question || null, item.is_sub_part || false]
       );

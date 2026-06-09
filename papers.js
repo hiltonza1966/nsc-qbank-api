@@ -43,11 +43,11 @@ router.post('/generate', async (req, res) => {
     }
 
     // 2. Create paper with spec_id linkage
-    const paper_id = uuidv4();
+    const paper_no = uuidv4();
     await conn.execute(
-      `INSERT INTO paper_templates (paper_id, spec_id, subject_official_code, paper_no, title, total_marks, duration_minutes, status, created_by)
+      `INSERT INTO paper_templates (paper_no, spec_id, subject_official_code, paper_no, title, total_marks, duration_minutes, status, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', 1)`,
-      [paper_id, spec.spec_id, subject_official_code, paper_no, title, spec.total_marks, spec.duration_minutes]
+      [paper_no, spec.spec_id, subject_official_code, paper_no, title, spec.total_marks, spec.duration_minutes]
     );
 
     // 3. Select items per section (spec-driven, not hardcoded LIMIT 20)
@@ -88,7 +88,7 @@ router.post('/generate', async (req, res) => {
       let sectionItemCount = 0;
 
       for (const it of items) {
-        // CRITICAL: Skip if item already used in this paper (PK constraint: paper_id + item_id)
+        // CRITICAL: Skip if item already used in this paper (PK constraint: paper_no + item_id)
         if (usedItemIds.has(it.item_id)) continue;
         if (sectionAllocated >= sectionMarks) break;
 
@@ -105,9 +105,9 @@ router.post('/generate', async (req, res) => {
         const allocateMarks = Math.min(itemMarks, sectionMarks - sectionAllocated);
 
         await conn.execute(
-          `INSERT INTO generated_paper_items (paper_id, item_id, section_name, position, marks_allocated)
+          `INSERT INTO generated_paper_items (paper_no, item_id, section_name, position, marks_allocated)
            VALUES (?, ?, ?, ?, ?)`,
-          [paper_id, it.item_id, sec.name || 'Section', pos++, allocateMarks]
+          [paper_no, it.item_id, sec.name || 'Section', pos++, allocateMarks]
         );
 
         usedItemIds.add(it.item_id); // Mark as used
@@ -141,7 +141,7 @@ router.post('/generate', async (req, res) => {
     await conn.commit();
     res.json({
       success: true,
-      paper_id,
+      paper_no,
       spec_id: spec.spec_id,
       total_items: totalItems,
       total_allocated_marks: totalAllocatedMarks,
@@ -161,7 +161,7 @@ router.get('/:id', async (req, res) => {
   const db = req.db;
   try {
     const [p] = await db.execute(
-      `SELECT * FROM paper_templates WHERE paper_id = ?`,
+      `SELECT * FROM paper_templates WHERE paper_no = ?`,
       [req.params.id]
     );
     if (!p.length) {
@@ -172,12 +172,71 @@ router.get('/:id', async (req, res) => {
       `SELECT pi.*, i.question_text
        FROM generated_paper_items pi
        JOIN item_master i ON pi.item_id = i.item_id
-       WHERE pi.paper_id = ?
+       WHERE pi.paper_no = ?
        ORDER BY pi.position`,
       [req.params.id]
     );
 
     res.json({ success: true, ...p[0], items });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// POST /api/papers/assemble - Assemble paper from template
+router.post('/assemble', async (req, res) => {
+  try {
+    const { template_id, year_id, grade_id, subject_official_code, paper_no, assessment_type_id, assessment_origin, paper_title, assembled_by } = req.body;
+
+    // Get template details
+    const [templates] = await req.db.execute('SELECT * FROM paper_templates WHERE template_id = ?', [template_id]);
+    if (!templates.length) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
+    }
+
+    const template = templates[0];
+
+    // Create generated paper
+    const [paperResult] = await req.db.execute(
+      `INSERT INTO generated_papers (
+        template_id, year_id, grade_id, subject_official_code, paper_no_lookup, assessment_type_id, assessment_origin,
+        paper_title, total_marks, assembled_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [template_id, year_id, grade_id, subject_official_code, paper_no, assessment_type_id, assessment_origin,
+       paper_title || template.template_name, template.total_marks, assembled_by]
+    );
+
+    // Get the UUID of the created paper
+    const [papers] = await req.db.execute('SELECT paper_no FROM generated_papers WHERE id = ?', [paperResult.insertId]);
+    const paper_uuid = papers[0].paper_no;
+
+    // Get template sections
+    const [sections] = await req.db.execute('SELECT * FROM paper_template_sections WHERE template_id = ? ORDER BY section_order', [template_id]);
+
+    // For each section, find suitable items from item_master
+    for (const section of sections) {
+      const [items] = await req.db.execute(
+        `SELECT item_id FROM item_master 
+         WHERE year_id = ? AND grade_id = ? AND subject_official_code = ? AND paper_no = ? 
+         AND assessment_type_id = ? AND assessment_origin = ?
+         AND item_type_id = ? AND status = 'published'
+         AND is_retired = 0
+         ORDER BY RAND()
+         LIMIT ?`,
+        [year_id, grade_id, subject_official_code, paper_no, assessment_type_id, assessment_origin, section.item_type_id, section.item_count]
+      );
+
+      // Insert items into generated_paper_items
+      for (let i = 0; i < items.length; i++) {
+        await req.db.execute(
+          'INSERT INTO generated_paper_items (paper_no, item_id, section_id, display_order, marks_as_allocated) VALUES (?, ?, ?, ?, ?)',
+          [paper_uuid, items[i].item_id, section.section_id, i + 1, 0]
+        );
+      }
+    }
+
+    res.json({ success: true, paper_no: paper_uuid });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }

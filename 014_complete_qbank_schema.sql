@@ -9,6 +9,56 @@
 -- 1. CORE DIMENSION LOOKUP TABLES (6 tables)
 -- ============================================================
 
+-- Rename old tables to legacy before creating new ones
+-- ============================================================
+-- DROP OLD TABLES THAT CONFLICT WITH NEW SCHEMA
+-- These will be recreated with correct structure
+-- Data is preserved in legacy tables or can be repopulated
+-- ============================================================
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- Drop old tables that have same names as new tables but different structure
+DROP TABLE IF EXISTS qbank_users;
+DROP TABLE IF EXISTS qbank_paper_templates;
+DROP TABLE IF EXISTS qbank_paper_template_sections;
+
+-- Drop old parser tables (replaced by new parse_* tables)
+DROP TABLE IF EXISTS qb_questionp_structure;
+DROP TABLE IF EXISTS qb_parsed_results;
+DROP TABLE IF EXISTS qb_parse_sessions;
+
+-- Drop old item tables (replaced by item_* tables)
+DROP TABLE IF EXISTS qbank_items;
+DROP TABLE IF EXISTS qbank_item_attachments;
+DROP TABLE IF EXISTS qbank_item_curriculum;
+DROP TABLE IF EXISTS qbank_item_memos;
+DROP TABLE IF EXISTS qbank_item_reviews;
+DROP TABLE IF EXISTS qbank_item_tags;
+DROP TABLE IF EXISTS qbank_item_usage;
+DROP TABLE IF EXISTS qbank_item_versions;
+DROP TABLE IF EXISTS qbank_items_staging;
+DROP TABLE IF EXISTS qbank_items_staging_curriculum;
+DROP TABLE IF EXISTS qbank_items_staging_tags;
+
+-- Drop old paper tables (replaced by paper_* tables)
+DROP TABLE IF EXISTS qbank_papers;
+DROP TABLE IF EXISTS qbank_paper_items;
+DROP TABLE IF EXISTS qbank_paper_specs;
+
+-- Drop old review/workflow tables
+DROP TABLE IF EXISTS qbank_review_workflow;
+DROP TABLE IF EXISTS question_reviews;
+
+-- Drop old taxonomy table (replaced by lookup_tag_taxonomy)
+DROP TABLE IF EXISTS qbank_tag_taxonomy;
+
+-- Drop old questions tables
+DROP TABLE IF EXISTS questions;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- ============================================================
 CREATE TABLE IF NOT EXISTS lookup_years (
   year_id INT AUTO_INCREMENT PRIMARY KEY,
   year_value INT NOT NULL,
@@ -19,7 +69,7 @@ CREATE TABLE IF NOT EXISTS lookup_years (
   UNIQUE KEY uk_year_value (year_value)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_years (year_value, year_label, is_current, is_active) VALUES
+INSERT IGNORE INTO lookup_years (year_value, year_label, is_current, is_active) VALUES
 (2020, '2020', 0, 1),
 (2021, '2021', 0, 1),
 (2022, '2022', 0, 1),
@@ -42,30 +92,54 @@ CREATE TABLE IF NOT EXISTS lookup_grades (
   UNIQUE KEY uk_grade_value (grade_value)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_grades (grade_value, grade_label, grade_code, is_active) VALUES
+INSERT IGNORE INTO lookup_grades (grade_value, grade_label, grade_code, is_active) VALUES
 (10, 'Grade 10', 'G10', 1),
 (11, 'Grade 11', 'G11', 1),
 (12, 'Grade 12', 'G12', 1);
 
+DROP TABLE IF EXISTS lookup_subjects;
 CREATE TABLE IF NOT EXISTS lookup_subjects (
-  subject_id INT AUTO_INCREMENT PRIMARY KEY,
-  subject_official_code VARCHAR(20) NOT NULL,
+  subject_id INT NOT NULL PRIMARY KEY,
+  subject_id VARCHAR(20) NOT NULL,
   subject_name VARCHAR(255) NOT NULL,
   subject_alpha_code VARCHAR(10) DEFAULT NULL,
   description TEXT,
   is_active TINYINT(1) DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_subject_official_code (subject_official_code)
+  UNIQUE KEY uk_subject_id (subject_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- NOTE: lookup_subjects will be synced from nsc_registration_v3.lookup_subjects
--- Run this after migration:
--- INSERT INTO lookup_subjects (subject_official_code, subject_name, subject_alpha_code, is_active)
--- SELECT subject_alpha_code, subject_name, subject_alpha_code, 1 FROM nsc_registration_v3.lookup_subjects;
+-- Stored procedure for manual sync from nsc_registration_v3
+-- Run this via: CALL sync_lookup_subjects();
+-- Can be triggered by Superadmin user when needed
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS sync_lookup_subjects()
+BEGIN
+  -- Insert new subjects that don't exist
+  INSERT IGNORE INTO lookup_subjects (subject_id, subject_name, subject_alpha_code, is_active)
+  SELECT subject_alpha_code, subject_name, subject_alpha_code, 1
+  FROM nsc_registration_v3.lookup_subjects;
 
+  -- Update existing subjects that have changed
+  UPDATE lookup_subjects l
+  JOIN nsc_registration_v3.lookup_subjects r ON l.subject_id = r.subject_alpha_code
+  SET l.subject_name = r.subject_name,
+      l.updated_at = NOW()
+  WHERE l.subject_name != r.subject_name;
+
+  -- Mark subjects as inactive if removed from registration (optional)
+  -- UPDATE lookup_subjects SET is_active = 0 
+  -- WHERE subject_id NOT IN (SELECT subject_alpha_code FROM nsc_registration_v3.lookup_subjects);
+END //
+DELIMITER ;
+
+-- Initial sync (run automatically during migration)
+CALL sync_lookup_subjects();
+
+DROP TABLE IF EXISTS lookup_papers;
 CREATE TABLE IF NOT EXISTS lookup_papers (
-  paper_id INT AUTO_INCREMENT PRIMARY KEY,
+  paper_id INT NOT NULL PRIMARY KEY,
   paper_code VARCHAR(10) NOT NULL,
   paper_name VARCHAR(50) NOT NULL,
   paper_type VARCHAR(20) NOT NULL,
@@ -76,7 +150,7 @@ CREATE TABLE IF NOT EXISTS lookup_papers (
   UNIQUE KEY uk_paper_code (paper_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_papers (paper_code, paper_name, paper_type, duration_minutes, is_active, display_order) VALUES
+INSERT IGNORE INTO lookup_papers (paper_code, paper_name, paper_type, duration_minutes, is_active, display_order) VALUES
 ('P1', 'Paper 1', 'written', 180, 1, 1),
 ('P2', 'Paper 2', 'written', 180, 1, 2),
 ('P3', 'Paper 3', 'written', 180, 1, 3),
@@ -95,7 +169,7 @@ CREATE TABLE IF NOT EXISTS lookup_assessment_types (
   UNIQUE KEY uk_type_code (type_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_assessment_types (type_code, type_name, description, is_active) VALUES
+INSERT IGNORE INTO lookup_assessment_types (type_code, type_name, description, is_active) VALUES
 ('EXAM', 'Examination', 'Final examination', 1),
 ('TEST', 'Test', 'Class test or controlled test', 1),
 ('SBA', 'School-Based Assessment', 'Internal school assessment', 1),
@@ -104,8 +178,9 @@ INSERT INTO lookup_assessment_types (type_code, type_name, description, is_activ
 ('DIAGNOSTIC', 'Diagnostic', 'Diagnostic assessment', 1),
 ('BASELINE', 'Baseline', 'Baseline assessment', 1);
 
+DROP TABLE IF EXISTS lookup_assessment_bodies;
 CREATE TABLE IF NOT EXISTS lookup_assessment_bodies (
-  assessment_body_id INT AUTO_INCREMENT PRIMARY KEY,
+  assessment_body_id INT NOT NULL PRIMARY KEY,
   body_code VARCHAR(20) NOT NULL,
   body_name VARCHAR(100) NOT NULL,
   body_full_name VARCHAR(255) NOT NULL,
@@ -114,7 +189,7 @@ CREATE TABLE IF NOT EXISTS lookup_assessment_bodies (
   UNIQUE KEY uk_body_code (body_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_assessment_bodies (body_code, body_name, body_full_name, is_active) VALUES
+INSERT IGNORE INTO lookup_assessment_bodies (body_code, body_name, body_full_name, is_active) VALUES
 ('DBE', 'DBE', 'Department of Basic Education', 1),
 ('IEB', 'IEB', 'Independent Examinations Board', 1),
 ('SACAI', 'SACAI', 'SACAI', 1),
@@ -136,7 +211,7 @@ CREATE TABLE IF NOT EXISTS lookup_cognitive_levels (
   UNIQUE KEY uk_level_code (level_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_cognitive_levels (level_code, level_name, bloom_level, caps_weighting, description, is_active) VALUES
+INSERT IGNORE INTO lookup_cognitive_levels (level_code, level_name, bloom_level, caps_weighting, description, is_active) VALUES
 ('REMEMBER', 'Remember', 1, 40.00, 'Retrieve relevant knowledge from long-term memory', 1),
 ('UNDERSTAND', 'Understand', 2, 25.00, 'Construct meaning from instructional messages', 1),
 ('APPLY', 'Apply', 3, 20.00, 'Carry out or use a procedure in a given situation', 1),
@@ -156,7 +231,7 @@ CREATE TABLE IF NOT EXISTS lookup_difficulty_levels (
   UNIQUE KEY uk_difficulty_code (difficulty_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_difficulty_levels (difficulty_code, difficulty_name, p_value_min, p_value_max, description, is_active) VALUES
+INSERT IGNORE INTO lookup_difficulty_levels (difficulty_code, difficulty_name, p_value_min, p_value_max, description, is_active) VALUES
 ('EASY', 'Easy', 70.00, 100.00, '70-100% of learners answer correctly', 1),
 ('MEDIUM', 'Medium', 40.00, 69.99, '40-69% of learners answer correctly', 1),
 ('HARD', 'Hard', 0.00, 39.99, '0-39% of learners answer correctly', 1);
@@ -172,7 +247,7 @@ CREATE TABLE IF NOT EXISTS lookup_item_types (
   UNIQUE KEY uk_type_code (type_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_item_types (type_code, type_name, type_category, description, is_active) VALUES
+INSERT IGNORE INTO lookup_item_types (type_code, type_name, type_category, description, is_active) VALUES
 ('MCQ', 'Multiple Choice', 'selected_response', 'Selected response item with options A-D', 1),
 ('SHORT', 'Short Answer', 'constructed_response', 'Brief constructed response (1-2 sentences)', 1),
 ('MEDIUM', 'Medium Response', 'constructed_response', 'Medium constructed response (3-5 sentences)', 1),
@@ -193,7 +268,7 @@ CREATE TABLE IF NOT EXISTS lookup_languages (
   UNIQUE KEY uk_language_code (language_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_languages (language_code, language_name, is_official, is_active) VALUES
+INSERT IGNORE INTO lookup_languages (language_code, language_name, is_official, is_active) VALUES
 ('EN', 'English', 1, 1),
 ('AF', 'Afrikaans', 1, 1),
 ('ZU', 'isiZulu', 1, 1),
@@ -216,7 +291,7 @@ CREATE TABLE IF NOT EXISTS lookup_exam_sessions (
   UNIQUE KEY uk_session_code (session_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_exam_sessions (session_code, session_name, session_month, description, is_active) VALUES
+INSERT IGNORE INTO lookup_exam_sessions (session_code, session_name, session_month, description, is_active) VALUES
 ('JUNE', 'June', 6, 'June examination session', 1),
 ('NOV', 'November', 11, 'November examination session', 1),
 ('TRIAL', 'Trial', 8, 'Trial examination', 1),
@@ -233,7 +308,7 @@ CREATE TABLE IF NOT EXISTS lookup_marking_schemes (
   UNIQUE KEY uk_scheme_code (scheme_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_marking_schemes (scheme_code, scheme_name, description, is_active) VALUES
+INSERT IGNORE INTO lookup_marking_schemes (scheme_code, scheme_name, description, is_active) VALUES
 ('HOLISTIC', 'Holistic', 'Overall impression marking', 1),
 ('ANALYTIC', 'Analytic', 'Marking by individual criteria', 1),
 ('RUBRIC', 'Rubric', 'Rubric-based marking', 1),
@@ -247,28 +322,28 @@ INSERT INTO lookup_marking_schemes (scheme_code, scheme_name, description, is_ac
 
 CREATE TABLE IF NOT EXISTS lookup_caps_topics (
   topic_id INT AUTO_INCREMENT PRIMARY KEY,
-  subject_official_code VARCHAR(20) NOT NULL,
+  subject_id VARCHAR(20) NOT NULL,
   grade_id INT NOT NULL,
-  strand VARCHAR(50) NOT NULL,
+  strand VARCHAR(100) NOT NULL,
   term VARCHAR(10) NOT NULL,
   topic_code VARCHAR(20) NOT NULL,
   topic_name VARCHAR(255) NOT NULL,
   topic_weighting DECIMAL(5,2) DEFAULT NULL,
   time_weeks DECIMAL(4,1) DEFAULT NULL,
-  paper_no INT DEFAULT 1,
+  paper_id INT DEFAULT 1,
   description TEXT,
   is_active TINYINT(1) DEFAULT 1,
   display_order INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_subject_grade_topic (subject_official_code, grade_id, topic_code),
-  KEY idx_subject_grade (subject_official_code, grade_id),
+  UNIQUE KEY uk_subject_grade_topic (subject_id, grade_id, topic_code),
+  KEY idx_subject_grade (subject_id, grade_id),
   KEY idx_strand (strand),
   KEY idx_term (term)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Grade 12 Life Sciences Topics (from CAPS document)
-INSERT INTO lookup_caps_topics (subject_official_code, grade_id, strand, term, topic_code, topic_name, topic_weighting, time_weeks, paper_no, description, display_order) VALUES
+INSERT IGNORE INTO lookup_caps_topics (subject_id, grade_id, strand, term, topic_code, topic_name, topic_weighting, time_weeks, paper_id, description, display_order) VALUES
 ('LIFE_SC', 12, 'Strand 1: Life at Molecular, Cellular and Tissue Level', 'T1', 'LIFE_12_1_1', 'DNA: Code of Life', 19.0, 2.5, 2, 'DNA structure, RNA, protein synthesis, genetic code', 1),
 ('LIFE_SC', 12, 'Strand 1: Life at Molecular, Cellular and Tissue Level', 'T1', 'LIFE_12_1_2', 'Meiosis', 7.0, 1.0, 1, 'Process of reduction division, genetic variation', 2),
 ('LIFE_SC', 12, 'Strand 2: Life Processes in Plants and Animals', 'T1', 'LIFE_12_2_1', 'Reproduction in Vertebrates', 4.0, 0.5, 1, 'Diversity of reproductive strategies', 3),
@@ -320,7 +395,7 @@ CREATE TABLE IF NOT EXISTS lookup_tag_taxonomy (
   CONSTRAINT fk_tag_parent FOREIGN KEY (parent_tag_id) REFERENCES lookup_tag_taxonomy(tag_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO lookup_tag_taxonomy (tag_code, tag_name, tag_level, tag_category, description, is_active) VALUES
+INSERT IGNORE INTO lookup_tag_taxonomy (tag_code, tag_name, tag_level, tag_category, description, is_active) VALUES
 ('COG_REMEMBER', 'Remember', 'cognitive_level', 'assessment', 'Bloom level 1: Retrieve knowledge', 1),
 ('COG_UNDERSTAND', 'Understand', 'cognitive_level', 'assessment', 'Bloom level 2: Construct meaning', 1),
 ('COG_APPLY', 'Apply', 'cognitive_level', 'assessment', 'Bloom level 3: Use procedures', 1),
@@ -353,10 +428,10 @@ CREATE TABLE IF NOT EXISTS item_master (
   item_id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   year_id INT NOT NULL,
   grade_id INT NOT NULL,
-  subject_id INT NOT NULL,
+  subject_id VARCHAR(20) NOT NULL,
   paper_id INT NOT NULL,
   assessment_type_id INT NOT NULL,
-  assessment_body_id INT NOT NULL,
+  assessment_body_id VARCHAR(20) NOT NULL,
   item_code VARCHAR(50) NOT NULL,
   question_number VARCHAR(20) NOT NULL,
   parent_question VARCHAR(20) DEFAULT NULL,
@@ -475,10 +550,10 @@ CREATE TABLE IF NOT EXISTS item_stimuli (
   stimulus_id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   year_id INT NOT NULL,
   grade_id INT NOT NULL,
-  subject_id INT NOT NULL,
+  subject_id VARCHAR(20) NOT NULL,
   paper_id INT NOT NULL,
   assessment_type_id INT NOT NULL,
-  assessment_body_id INT NOT NULL,
+  assessment_body_id VARCHAR(20) NOT NULL,
   stimulus_type ENUM('text','diagram','graph','table','case_study','data_set','image','map','cartoon','quote') NOT NULL,
   stimulus_text TEXT,
   attachment_id INT DEFAULT NULL,
@@ -587,10 +662,10 @@ CREATE TABLE IF NOT EXISTS paper_templates (
   template_name VARCHAR(255) NOT NULL,
   year_id INT NOT NULL,
   grade_id INT NOT NULL,
-  subject_id INT NOT NULL,
+  subject_id VARCHAR(20) NOT NULL,
   paper_id INT NOT NULL,
   assessment_type_id INT NOT NULL,
-  assessment_body_id INT NOT NULL,
+  assessment_body_id VARCHAR(20) NOT NULL,
   total_marks INT NOT NULL,
   total_items INT NOT NULL,
   duration_minutes INT DEFAULT 180,
@@ -632,10 +707,10 @@ CREATE TABLE IF NOT EXISTS generated_papers (
   template_id INT NOT NULL,
   year_id INT NOT NULL,
   grade_id INT NOT NULL,
-  subject_id INT NOT NULL,
-  paper_id_lookup INT NOT NULL,
+  subject_id VARCHAR(20) NOT NULL,
+  paper_id INT NOT NULL,
   assessment_type_id INT NOT NULL,
-  assessment_body_id INT NOT NULL,
+  assessment_body_id VARCHAR(20) NOT NULL,
   paper_title VARCHAR(200) NOT NULL,
   total_marks INT NOT NULL,
   status ENUM('draft','assembled','reviewed','approved','published','archived') DEFAULT 'draft',
@@ -681,10 +756,10 @@ CREATE TABLE IF NOT EXISTS parse_sessions (
   session_id VARCHAR(64) PRIMARY KEY,
   year_id INT NOT NULL,
   grade_id INT NOT NULL,
-  subject_id INT NOT NULL,
+  subject_id VARCHAR(20) NOT NULL,
   paper_id INT NOT NULL,
   assessment_type_id INT NOT NULL,
-  assessment_body_id INT NOT NULL,
+  assessment_body_id VARCHAR(20) NOT NULL,
   file_name VARCHAR(255) NOT NULL,
   file_hash VARCHAR(64) NOT NULL,
   parser_version VARCHAR(20) DEFAULT '1.0',
@@ -712,10 +787,11 @@ CREATE TABLE IF NOT EXISTS parse_expected_structure (
   structure_id INT AUTO_INCREMENT PRIMARY KEY,
   year_id INT NOT NULL,
   grade_id INT NOT NULL,
-  subject_id INT NOT NULL,
+  subject_id VARCHAR(20) NOT NULL,
   paper_id INT NOT NULL,
   assessment_type_id INT NOT NULL,
-  assessment_body_id INT NOT NULL,
+  assessment_body_id VARCHAR(20) NOT NULL,
+  paper_code VARCHAR(50) NOT NULL DEFAULT '',
   question_number VARCHAR(20) NOT NULL,
   question_type_id INT NOT NULL,
   section VARCHAR(20) NOT NULL,
@@ -728,6 +804,7 @@ CREATE TABLE IF NOT EXISTS parse_expected_structure (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_dimensions_question (year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id, question_number),
+  KEY idx_paper_code (paper_code),
   KEY idx_dimensions (year_id, grade_id, subject_id, paper_id),
   CONSTRAINT fk_expected_year FOREIGN KEY (year_id) REFERENCES lookup_years(year_id),
   CONSTRAINT fk_expected_grade FOREIGN KEY (grade_id) REFERENCES lookup_grades(grade_id),
@@ -738,7 +815,19 @@ CREATE TABLE IF NOT EXISTS parse_expected_structure (
   CONSTRAINT fk_expected_question_type FOREIGN KEY (question_type_id) REFERENCES lookup_item_types(item_type_id),
   CONSTRAINT fk_expected_cognitive FOREIGN KEY (cognitive_level_id) REFERENCES lookup_cognitive_levels(cognitive_level_id),
   CONSTRAINT fk_expected_caps_subtopic FOREIGN KEY (caps_subtopic_id) REFERENCES lookup_caps_subtopics(subtopic_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8
+
+-- Add paper_code column to existing table (if upgrading from old schema)
+ALTER TABLE parse_expected_structure ADD COLUMN paper_code VARCHAR(50) NOT NULL DEFAULT '' AFTER assessment_body_id;
+ALTER TABLE parse_expected_structure ADD KEY idx_paper_code (paper_code);
+
+
+
+-- Add paper_code column for wizard compatibility
+ALTER TABLE parse_expected_structure ADD COLUMN IF NOT EXISTS paper_code VARCHAR(10) NOT NULL DEFAULT '' AFTER assessment_body_id;
+ALTER TABLE parse_expected_structure ADD KEY IF NOT EXISTS idx_paper_code (paper_code);
+
+mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS parse_results (
   result_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -782,7 +871,7 @@ CREATE TABLE IF NOT EXISTS qbank_users (
 CREATE TABLE IF NOT EXISTS user_subject_assignments (
   assignment_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
-  subject_id INT NOT NULL,
+  subject_id VARCHAR(20) NOT NULL,
   grade_id INT DEFAULT NULL,
   is_primary_expert TINYINT(1) DEFAULT 0,
   assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -801,58 +890,58 @@ CREATE TABLE IF NOT EXISTS user_subject_assignments (
 -- year_id = 6 for 2025, grade_id = 3 for Grade 12, paper_id = 1 for P1
 -- assessment_type_id = 1 for EXAM, assessment_body_id = 1 for DBE
 
-INSERT INTO parse_expected_structure (year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id, question_number, question_type_id, section, expected_marks, sequence, parent_question, is_sub_part, cognitive_level_id) VALUES
+INSERT IGNORE INTO parse_expected_structure (year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id, paper_code, question_number, question_type_id, section, expected_marks, sequence, parent_question, is_sub_part, cognitive_level_id) VALUES
 -- Section A: MCQs (1.1.1 - 1.1.10, 2 marks each = 20)
-(6, 3, 1, 1, 1, 1, '1.1.1', 1, 'A', 2, 1, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.2', 1, 'A', 2, 2, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.3', 1, 'A', 2, 3, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.4', 1, 'A', 2, 4, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.5', 1, 'A', 2, 5, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.6', 1, 'A', 2, 6, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.7', 1, 'A', 2, 7, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.8', 1, 'A', 2, 8, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.9', 1, 'A', 2, 9, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.1.10', 1, 'A', 2, 10, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.1', 1, 'A', 2, 1, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.2', 1, 'A', 2, 2, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.3', 1, 'A', 2, 3, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.4', 1, 'A', 2, 4, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.5', 1, 'A', 2, 5, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.6', 1, 'A', 2, 6, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.7', 1, 'A', 2, 7, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.8', 1, 'A', 2, 8, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.9', 1, 'A', 2, 9, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.1.10', 1, 'A', 2, 10, NULL, 0, 1),
 
 -- Section A: Short Answer (1.2.1 - 1.2.8, 1 mark each = 8)
-(6, 3, 1, 1, 1, 1, '1.2.1', 2, 'A', 1, 11, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.2.2', 2, 'A', 1, 12, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.2.3', 2, 'A', 1, 13, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.2.4', 2, 'A', 1, 14, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.2.5', 2, 'A', 1, 15, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.2.6', 2, 'A', 1, 16, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.2.7', 2, 'A', 1, 17, NULL, 0, 1),
-(6, 3, 1, 1, 1, 1, '1.2.8', 2, 'A', 1, 18, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.2.1', 2, 'A', 1, 11, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.2.2', 2, 'A', 1, 12, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.2.3', 2, 'A', 1, 13, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.2.4', 2, 'A', 1, 14, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.2.5', 2, 'A', 1, 15, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.2.6', 2, 'A', 1, 16, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.2.7', 2, 'A', 1, 17, NULL, 0, 1),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.2.8', 2, 'A', 1, 18, NULL, 0, 1),
 
 -- Section A: Matching (1.3.1 - 1.3.3, 2 marks each = 6)
-(6, 3, 1, 1, 1, 1, '1.3.1', 7, 'A', 2, 19, NULL, 0, 2),
-(6, 3, 1, 1, 1, 1, '1.3.2', 7, 'A', 2, 20, NULL, 0, 2),
-(6, 3, 1, 1, 1, 1, '1.3.3', 7, 'A', 2, 21, NULL, 0, 2),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.3.1', 7, 'A', 2, 19, NULL, 0, 2),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.3.2', 7, 'A', 2, 20, NULL, 0, 2),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.3.3', 7, 'A', 2, 21, NULL, 0, 2),
 
 -- Section A: Diagrams (1.4.1 - 1.4.3, 8 marks total)
-(6, 3, 1, 1, 1, 1, '1.4.1', 6, 'A', 3, 22, '1.4', 1, 3),
-(6, 3, 1, 1, 1, 1, '1.4.2', 6, 'A', 3, 23, '1.4', 1, 3),
-(6, 3, 1, 1, 1, 1, '1.4.3', 6, 'A', 2, 24, '1.4', 1, 3),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.4.1', 6, 'A', 3, 22, '1.4', 1, 3),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.4.2', 6, 'A', 3, 23, '1.4', 1, 3),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.4.3', 6, 'A', 2, 24, '1.4', 1, 3),
 
 -- Section A: Diagrams (1.5.1 - 1.5.4, 8 marks total)
-(6, 3, 1, 1, 1, 1, '1.5.1', 6, 'A', 2, 25, '1.5', 1, 3),
-(6, 3, 1, 1, 1, 1, '1.5.2', 6, 'A', 2, 26, '1.5', 1, 3),
-(6, 3, 1, 1, 1, 1, '1.5.3', 6, 'A', 2, 27, '1.5', 1, 3),
-(6, 3, 1, 1, 1, 1, '1.5.4', 6, 'A', 2, 28, '1.5', 1, 3),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.5.1', 6, 'A', 2, 25, '1.5', 1, 3),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.5.2', 6, 'A', 2, 26, '1.5', 1, 3),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.5.3', 6, 'A', 2, 27, '1.5', 1, 3),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '1.5.4', 6, 'A', 2, 28, '1.5', 1, 3),
 
 -- Section B: Extended (2.1 - 2.5, 50 marks total)
-(6, 3, 1, 1, 1, 1, '2.1', 4, 'B', 8, 29, NULL, 0, 4),
-(6, 3, 1, 1, 1, 1, '2.2', 4, 'B', 11, 30, NULL, 0, 4),
-(6, 3, 1, 1, 1, 1, '2.3', 4, 'B', 14, 31, NULL, 0, 4),
-(6, 3, 1, 1, 1, 1, '2.4', 4, 'B', 6, 32, NULL, 0, 3),
-(6, 3, 1, 1, 1, 1, '2.5', 4, 'B', 11, 33, NULL, 0, 4),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '2.1', 4, 'B', 8, 29, NULL, 0, 4),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '2.2', 4, 'B', 11, 30, NULL, 0, 4),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '2.3', 4, 'B', 14, 31, NULL, 0, 4),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '2.4', 4, 'B', 6, 32, NULL, 0, 3),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '2.5', 4, 'B', 11, 33, NULL, 0, 4),
 
 -- Section C: Extended (3.1 - 3.5, 50 marks total)
-(6, 3, 1, 1, 1, 1, '3.1', 4, 'C', 8, 34, NULL, 0, 5),
-(6, 3, 1, 1, 1, 1, '3.2', 4, 'C', 13, 35, NULL, 0, 5),
-(6, 3, 1, 1, 1, 1, '3.3', 4, 'C', 5, 36, NULL, 0, 5),
-(6, 3, 1, 1, 1, 1, '3.4', 4, 'C', 14, 37, NULL, 0, 5),
-(6, 3, 1, 1, 1, 1, '3.5', 4, 'C', 10, 38, NULL, 0, 5);
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '3.1', 4, 'C', 8, 34, NULL, 0, 5),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '3.2', 4, 'C', 13, 35, NULL, 0, 5),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '3.3', 4, 'C', 5, 36, NULL, 0, 5),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '3.4', 4, 'C', 14, 37, NULL, 0, 5),
+(6, 3, 'LIFE_SC', 1, 1, 'DBE', 'LIFE_SC_P1_NOV_2025', 'LIFE_SC_P1_NOV_2025', '3.5', 4, 'C', 10, 38, NULL, 0, 5);
 
 -- ============================================================
 -- END OF MIGRATION 014

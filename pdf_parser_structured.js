@@ -431,10 +431,10 @@ router.post('/extract-structure', async (req, res) => {
   const conn = await req.db.getConnection();
   
   try {
-    const { textItems, paper_code, subject_name, paper_no, exam_year, exam_session } = req.body;
+    const { textItems, paper_id, subject_name, paper_no, exam_year, exam_session } = req.body;
     
-    if (!Array.isArray(textItems) || !paper_code) {
-      return res.status(400).json({ error: 'textItems and paper_code required' });
+    if (!Array.isArray(textItems) || !paper_id) {
+      return res.status(400).json({ error: 'textItems and paper_id required' });
     }
 
     const questions = parseStructuredText(textItems, 'QP', subject_name, paper_no);
@@ -444,8 +444,8 @@ router.post('/extract-structure', async (req, res) => {
 
     // Clear existing structure for this paper
     await conn.execute(
-      'DELETE FROM parse_expected_structure WHERE paper_code = ?',
-      [paper_code]
+      'DELETE FROM parse_expected_structure WHERE paper_id = ?',
+      [paper_id]
     );
 
     // Insert detected items WITH EXTRACTED MARKS
@@ -453,12 +453,12 @@ router.post('/extract-structure', async (req, res) => {
     for (const q of questions) {
       await conn.execute(
         'INSERT INTO parse_expected_structure ' +
-        '(paper_code, subject_name, paper_no, exam_year, exam_session, ' +
-        'question_number, question_type, section, expected_marks, sequence, ' +
+        '(paper_code, subject_id, paper_id, year_id, assessment_type_id, ' +
+        'question_number, question_type_id, section, expected_marks, sequence, ' +
         'parent_question, is_sub_part) ' +
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
-          paper_code, subject_name, paper_no, exam_year, exam_session,
+          paper_id, subject_id, paper_no, exam_year, exam_session,
           q.question_number, q.type, q.section, q.marks, sequence++,
           null, false
         ]
