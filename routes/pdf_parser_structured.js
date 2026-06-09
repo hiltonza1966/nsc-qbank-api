@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
@@ -451,16 +451,16 @@ router.post('/extract-structure', async (req, res) => {
     // Insert detected items WITH EXTRACTED MARKS
     let sequence = 1;
     for (const q of questions) {
+      // Map question type string to ID
+      const typeMap = { 'MCQ': 1, 'Short': 2, 'Matching': 3, 'Diagram': 4, 'Extended': 5 };
+      const questionTypeId = typeMap[q.type] || 5;
+
       await conn.execute(
         'INSERT INTO parse_expected_structure ' +
-        '(paper_code, subject_name, paper_no, exam_year, exam_session, ' +
-        'question_number, question_type, section, expected_marks, sequence, ' +
-        'parent_question, is_sub_part) ' +
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        '(paper_code, question_number, question_type_id, section, expected_marks, sequence, parent_question, is_sub_part) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [
-          paper_code, subject_name, paper_no, exam_year, exam_session,
-          q.question_number, q.type, q.section, q.marks, sequence++,
-          null, false
+          paper_code, q.question_number, questionTypeId, q.section, q.marks, sequence++, q.parent || null, q.has_sub_parts ? 1 : 0
         ]
       );
     }
