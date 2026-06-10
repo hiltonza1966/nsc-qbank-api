@@ -71,6 +71,10 @@ app.use('/api/wizard', require('./routes/memo-parser')); // Memo parser and comp
 app.use('/api/wizard', require('./routes/memo-compare'));  // Memo comparison engine
 
 app.use('/api/dashboard', require('./routes/dashboard'));  // Paper upload dashboard
+
+// CAPS Parse Wizard routes
+const capsParserRoutes = require('./routes/capsParser');
+app.use('/api/caps', capsParserRoutes);
 // Routes - Phase 2 (lookup tables)
 app.get('/api/lookup/:table', async (req, res) => {
   const allowedTables = [
