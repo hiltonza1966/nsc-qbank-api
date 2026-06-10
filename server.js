@@ -53,6 +53,7 @@ app.use('/api/qbank/items', require('./routes/items'));
 app.use('/api/qbank/papers', require('./routes/papers'));
 app.use('/api/qbank/specs', require('./routes/specs'));
 app.use('/api/wizard', require('./routes/pdf_parser_structured'));  // Position-based parser
+app.use('/api/curriculum', require('./routes/curriculum'));
 app.use('/api/attachments', require('./routes/attachments'));
 
 // Routes - Phase 1 (comparison engine)
@@ -69,6 +70,7 @@ app.use('/api/usage', require('./routes/usage'));         // Exposure tracking
 app.use('/api/wizard', require('./routes/memo-parser')); // Memo parser and comparison
 app.use('/api/wizard', require('./routes/memo-compare'));  // Memo comparison engine
 
+app.use('/api/dashboard', require('./routes/dashboard'));  // Paper upload dashboard
 // Routes - Phase 2 (lookup tables)
 app.get('/api/lookup/:table', async (req, res) => {
   const allowedTables = [
