@@ -9,3 +9,8 @@ coverage/
 *.sql
 backup_*.sql
 *.zip
+fix_*.js
+fix_*.py
+fix_*.ps1
+test_*.json
+*.bak
