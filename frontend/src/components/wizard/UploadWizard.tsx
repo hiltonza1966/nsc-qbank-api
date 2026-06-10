@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback, useEffect } from 'react';
 import { compareQP } from '../../services/api';
 import ReviewPanel from './ReviewPanel';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -10,18 +10,22 @@ interface PaperSpec {
   exam_session: string;
 }
 
-const SUBJECTS = [
-  { code: 'LIFE_SC', name: 'Life Sciences' },
-  { code: 'PHYS_SC', name: 'Physical Sciences' },
-  { code: 'MATH', name: 'Mathematics' },
-  { code: 'ACCOUNTING', name: 'Accounting' }
-];
+interface Subject {
+  subject_official_code: string;
+  subject_name: string;
+}
+
+
+
 
 const PAPERS = ['P1', 'P2', 'P3'];
 const YEARS = [2024, 2025, 2026];
 const SESSIONS = ['Nov', 'June', 'July'];
 
 const UploadWizard: React.FC = () => {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(true);
+
   const [paperSpec, setPaperSpec] = useState<PaperSpec>({
     subject: 'LIFE_SC',
     paper_no: 'P1',
@@ -39,6 +43,31 @@ const UploadWizard: React.FC = () => {
   const [parseStage, setParseStage] = useState<'idle' | 'parsing' | 'extracting' | 'comparing' | 'reviewing'>('idle');
 
   const paperCode = `${paperSpec.subject}_${paperSpec.paper_no}_${paperSpec.exam_session.toUpperCase()}_${paperSpec.exam_year}`;
+
+
+  // Load subjects from database on mount
+  useEffect(() => {
+    fetch('http://localhost:4000/api/lookup/lookup_subjects')
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load subjects');
+        return res.json();
+      })
+      .then(data => {
+        if (data.data && Array.isArray(data.data)) {
+          setSubjects(data.data);
+          // If current subject not in list, default to first
+          if (data.data.length > 0 && !data.data.find((s: Subject) => s.subject_official_code === paperSpec.subject)) {
+            setPaperSpec(prev => ({ ...prev, subject: data.data[0].subject_official_code }));
+          }
+        }
+      })
+      .catch(err => {
+        console.error('Subjects load error:', err);
+        setError('Failed to load subjects from database. Please refresh.');
+      })
+      .finally(() => setSubjectsLoading(false));
+  }, []);
+
 
   // Drag & Drop handlers for QP
   const handleQpDragOver = useCallback((e: React.DragEvent) => {
@@ -131,7 +160,7 @@ const UploadWizard: React.FC = () => {
         body: JSON.stringify({
           textItems: textItems,
           paper_code: paperCode,
-          subject_name: SUBJECTS.find(s => s.code === paperSpec.subject)?.name || paperSpec.subject,
+          subject_name: subjects.find(s => s.subject_official_code === paperSpec.subject)?.subject_name || paperSpec.subject,
           paper_no: parseInt(paperSpec.paper_no.replace('P', '')),
           exam_year: paperSpec.exam_year,
           exam_session: paperSpec.exam_session
@@ -188,6 +217,13 @@ const handleParse = async () => {
         }
       }
 
+      console.log('PDF text extracted:', textItems.length, 'items');
+
+      // DIAGNOSTIC: Fail fast if PDF has no text layer
+      if (textItems.length === 0) {
+        throw new Error('No text found in PDF. The PDF may be scanned images without a text layer. Please use a PDF with embedded text.');
+      }
+
       setParseStage('extracting');
 
       // Step 2: Extract structure and save to database (STAGE 1)
@@ -197,7 +233,7 @@ const handleParse = async () => {
         body: JSON.stringify({
           textItems: textItems,
           paper_code: paperCode,
-          subject_name: SUBJECTS.find(s => s.code === paperSpec.subject)?.name || paperSpec.subject,
+          subject_name: subjects.find(s => s.subject_official_code === paperSpec.subject)?.subject_name || paperSpec.subject,
           paper_no: parseInt(paperSpec.paper_no.replace('P', '')),
           exam_year: paperSpec.exam_year,
           exam_session: paperSpec.exam_session
@@ -250,7 +286,8 @@ const handleParse = async () => {
         paper_id: parseResult.paper_id || 1,
         parser_output: parseResult.questions || [],
         file_name: qpFile.name,
-        file_hash: parseResult.file_hash || 'unknown'
+        file_hash: parseResult.file_hash || 'unknown',
+        force_overwrite: true
       });
 
       if (comparisonResult.success) {
@@ -277,7 +314,7 @@ const handleParse = async () => {
   return (
     <div className="upload-wizard">
       <div className="wizard-header">
-        <h2>ðŸ“„ Question Paper Upload & Validation</h2>
+        <h2>📄 Question Paper Upload & Validation</h2>
       </div>
 
       {/* Paper Specification */}
@@ -286,8 +323,18 @@ const handleParse = async () => {
         <div className="spec-grid">
           <div className="form-group">
             <label>Subject:</label>
-            <select value={paperSpec.subject} onChange={(e) => setPaperSpec({...paperSpec, subject: e.target.value})}>
-              {SUBJECTS.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
+            <select 
+              value={paperSpec.subject} 
+              onChange={(e) => setPaperSpec({...paperSpec, subject: e.target.value})}
+              disabled={subjectsLoading}
+            >
+              {subjectsLoading ? (
+                <option>Loading subjects...</option>
+              ) : subjects.length === 0 ? (
+                <option>No subjects found</option>
+              ) : (
+                subjects.map(s => <option key={s.subject_official_code} value={s.subject_official_code}>{s.subject_name}</option>)
+              )}
             </select>
           </div>
           <div className="form-group">
@@ -336,9 +383,9 @@ const handleParse = async () => {
             />
             <label htmlFor="qp-upload" className="drop-label">
               {qpFile ? (
-                <span>âœ… {qpFile.name} ({(qpFile.size / 1024).toFixed(1)} KB)</span>
+                <span>✅ {qpFile.name} ({(qpFile.size / 1024).toFixed(1)} KB)</span>
               ) : (
-                <span>ðŸ“„ Drop QP PDF here or click to browse</span>
+                <span>📄 Drop QP PDF here or click to browse</span>
               )}
             </label>
           </div>
@@ -362,9 +409,9 @@ const handleParse = async () => {
             />
             <label htmlFor="memo-upload" className="drop-label">
               {memoFile ? (
-                <span>âœ… {memoFile.name} ({(memoFile.size / 1024).toFixed(1)} KB)</span>
+                <span>✅ {memoFile.name} ({(memoFile.size / 1024).toFixed(1)} KB)</span>
               ) : (
-                <span>ðŸ“ Drop Memo PDF here or click to browse</span>
+                <span>📝 Drop Memo PDF here or click to browse</span>
               )}
             </label>
           </div>
@@ -374,18 +421,18 @@ const handleParse = async () => {
         <button
           className="btn-parse"
           onClick={handleParse}
-          disabled={loading || !qpFile}
+          disabled={loading || !qpFile || subjectsLoading}
         >
           {loading ? (
-            <span>â³ {parseStage === 'parsing' ? 'Parsing PDF...' : parseStage === 'extracting' ? 'Extracting Structure...' : parseStage === 'comparing' ? 'Comparing...' : 'Processing...'}</span>
+            <span>⏳ {parseStage === 'parsing' ? 'Parsing PDF...' : parseStage === 'extracting' ? 'Extracting Structure...' : parseStage === 'comparing' ? 'Comparing...' : 'Processing...'}</span>
           ) : (
-            <span>ðŸ” Parse & Validate</span>
+            <span>🔍 Parse & Validate</span>
           )}
         </button>
 
         {error && (
           <div className="error-message">
-            âŒ {error}
+            ❌ {error}
           </div>
         )}
       </div>
@@ -396,7 +443,7 @@ const handleParse = async () => {
           <ReviewPanel
             sessionId={sessionId}
             onComplete={() => {
-              alert('âœ… Corrections saved!');
+              alert('✅ Corrections saved!');
               setSessionId(null);
               setQpFile(null);
               setMemoFile(null);

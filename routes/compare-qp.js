@@ -194,25 +194,29 @@ router.post('/compare-qp', async (req, res) => {
     });
 
     // 6. Save all results to parse_results
+    const typeMap = { 'MCQ': 1, 'Short': 2, 'Matching': 3, 'Diagram': 4, 'Extended': 5 };
+
     for (const result of results) {
+      const parsedTypeId = typeMap[result.parsed_type] || null;
+
       await conn.execute(
         `INSERT INTO parse_results 
-         (session_id, question_number, question_text, 
+         (session_id, paper_code, question_number, question_text, 
           parsed_type_id, parsed_section, parser_extracted_marks, expected_marks, 
           auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          paper_id || 0,
           sessionId,
           paper_code,
           result.question_number,
           result.question_text,
-          result.parsed_type,
+          parsedTypeId,
           result.parsed_section,
           result.parser_extracted_marks,
           result.expected_marks,
           result.auto_corrected_marks,
           result.correction_status,
+          null,
           result.reason
         ]
       );
