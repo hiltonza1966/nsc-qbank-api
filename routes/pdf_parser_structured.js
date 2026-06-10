@@ -431,13 +431,13 @@ router.post('/extract-structure', async (req, res) => {
   const conn = await req.db.getConnection();
   
   try {
-    const { textItems, paper_code, subject_name, paper_no, exam_year, exam_session } = req.body;
+    const { textItems, paper_code } = req.body;
     
     if (!Array.isArray(textItems) || !paper_code) {
       return res.status(400).json({ error: 'textItems and paper_code required' });
     }
 
-    const questions = parseStructuredText(textItems, 'QP', subject_name, paper_no);
+    const questions = parseStructuredText(textItems, 'QP', '', '');
     const totalMarks = questions.reduce((sum, item) => sum + item.marks, 0);
     
     await conn.beginTransaction();

@@ -28,17 +28,42 @@ router.post('/compare-qp', async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const { paper_code, paper_id, parser_output, file_name, file_hash } = req.body;
+    const { paper_code, paper_id, parser_output, file_name, file_hash, force_overwrite } = req.body;
 
     if (!paper_code || !Array.isArray(parser_output)) {
       return res.status(400).json({ error: 'paper_code and parser_output array required' });
+    }
+
+    // Check for existing parse session
+    const [existingSession] = await conn.execute(
+      `SELECT session_id, created_at, total_items_found, status, total_marks_expected
+       FROM parse_sessions 
+       WHERE paper_code = ? 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [paper_code]
+    );
+
+    if (existingSession.length > 0 && !force_overwrite) {
+      await conn.rollback();
+      return res.status(409).json({
+        error: 'Paper already parsed',
+        paper_code,
+        existing_session: existingSession[0],
+        message: 'Use force_overwrite=true to create new parse session'
+      });
+    }
+
+    if (force_overwrite && existingSession.length > 0) {
+      await conn.execute(`DELETE FROM parse_results WHERE session_id = ?`, [existingSession[0].session_id]);
+      await conn.execute(`DELETE FROM parse_sessions WHERE session_id = ?`, [existingSession[0].session_id]);
     }
 
     const sessionId = crypto.randomUUID();
 
     // 1. Load expected structure from parse_expected_structure (DYNAMICALLY EXTRACTED)
     const [expectedRows] = await conn.execute(
-      `SELECT question_number, question_type, section, expected_marks, sequence, parent_question, is_sub_part
+      `SELECT question_number, question_type_id, section, expected_marks, sequence, parent_question, is_sub_part
        FROM parse_expected_structure 
        WHERE paper_code = ? 
        ORDER BY sequence`,
@@ -172,8 +197,8 @@ router.post('/compare-qp', async (req, res) => {
     for (const result of results) {
       await conn.execute(
         `INSERT INTO parse_results 
-         (paper_id, parse_session_id, paper_code, question_number, question_text, 
-          parsed_type, parsed_section, parser_extracted_marks, expected_marks, 
+         (session_id, question_number, question_text, 
+          parsed_type_id, parsed_section, parser_extracted_marks, expected_marks, 
           auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
         [
@@ -251,7 +276,7 @@ router.post('/save-corrections', async (req, res) => {
       await conn.execute(
         `UPDATE parse_results 
          SET user_corrected_marks = ?, correction_status = 'validated', reviewer_notes = ?
-         WHERE parse_session_id = ? AND question_number = ?`,
+         WHERE session_id = ? AND question_number = ?`,
         [correction.user_corrected_marks, correction.notes || '', session_id, correction.question_number]
       );
     }
@@ -275,10 +300,10 @@ router.post('/save-corrections', async (req, res) => {
 router.get('/comparison/:session_id', async (req, res) => {
   try {
     const [results] = await req.db.execute(
-      `SELECT r.*, s.subject_name, s.paper_no
+      `SELECT r.*, s.question_type_id, s.sequence
        FROM parse_results r
        JOIN parse_expected_structure s ON r.question_number = s.question_number AND r.paper_code = s.paper_code
-       WHERE r.parse_session_id = ?
+       WHERE r.session_id = ?
        ORDER BY s.sequence`,
       [req.params.session_id]
     );
@@ -344,34 +369,83 @@ router.get('/structure/:paper_code', async (req, res) => {
 });
 
 router.post('/structure', async (req, res) => {
-  try {
-    const { paper_code, subject_name, paper_no, exam_year, exam_session, items } = req.body;
+  const { paper_code, items, force_overwrite } = req.body;
 
-    const conn = await req.db.getConnection();
+  if (!paper_code || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'paper_code and items array required' });
+  }
+
+  const conn = await req.db.getConnection();
+
+  try {
     await conn.beginTransaction();
+
+    // Check for existing structure
+    const [existing] = await conn.execute(
+      `SELECT COUNT(*) as item_count, MIN(created_at) as first_loaded, MAX(updated_at) as last_updated
+       FROM parse_expected_structure 
+       WHERE paper_code = ?`,
+      [paper_code]
+    );
+
+    if (existing[0].item_count > 0 && !force_overwrite) {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({
+        error: 'Paper structure already exists',
+        paper_code,
+        existing_items: existing[0].item_count,
+        first_loaded: existing[0].first_loaded,
+        last_updated: existing[0].last_updated,
+        message: 'Use force_overwrite=true to replace existing data'
+      });
+    }
+
+    if (force_overwrite) {
+      await conn.execute(
+        `DELETE FROM parse_expected_structure WHERE paper_code = ?`,
+        [paper_code]
+      );
+    }
 
     for (const item of items) {
       await conn.execute(
-        `INSERT INTO parse_expected_structure 
-         (paper_code, subject_name, paper_no, exam_year, exam_session, question_number, 
-          question_type, section, expected_marks, sequence, parent_question, is_sub_part)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO parse_expected_structure
+         (paper_code, question_number, question_type_id, section, expected_marks, sequence, parent_question, is_sub_part)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
-         expected_marks = VALUES(expected_marks), question_type = VALUES(question_type), 
-         section = VALUES(section), updated_at = NOW()`,
-        [paper_code, subject_name, paper_no, exam_year, exam_session, item.question_number,
-         item.question_type, item.section, item.expected_marks, item.sequence, 
-         item.parent_question || null, item.is_sub_part || false]
+         expected_marks = VALUES(expected_marks), 
+         question_type_id = VALUES(question_type_id),
+         section = VALUES(section), 
+         updated_at = NOW()`,
+        [
+          paper_code, 
+          item.question_number, 
+          item.question_type_id || 5,
+          item.section, 
+          item.expected_marks, 
+          item.sequence,
+          item.parent_question || null, 
+          item.is_sub_part || false
+        ]
       );
     }
 
     await conn.commit();
-    conn.release();
 
-    res.json({ success: true, message: 'Structure saved', items_count: items.length });
+    res.json({ 
+      success: true, 
+      message: force_overwrite ? 'Structure overwritten' : 'Structure saved', 
+      items_count: items.length,
+      paper_code
+    });
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    await conn.rollback();
+    console.error('Structure Save Error:', error);
+    res.status(500).json({ error: 'Failed to save structure', details: error.message });
+  } finally {
+    conn.release();
   }
 });
 
