@@ -138,6 +138,44 @@ class CAPSParserService {
   }
 
   generateMigrationSQL(capsData) {
+    console.log('=== generateMigrationSQL START ===');
+    console.log('Input grades count: ' + capsData.grades.length);
+
+    // Deduplicate assessments: same grade+term+type = keep only first
+    const dedupedData = JSON.parse(JSON.stringify(capsData));
+    console.log('After deep clone, dedupedData grades: ' + dedupedData.grades.length);
+
+    for (const grade of dedupedData.grades) {
+      if (grade.assessments && Array.isArray(grade.assessments)) {
+        const originalCount = grade.assessments.length;
+        const seen = new Set();
+        const removed = [];
+
+        grade.assessments = grade.assessments.filter((a, index) => {
+          const type = (a.assessment_type || 'test').toLowerCase().trim();
+          const term = (a.term || '1').toString().trim();
+          const key = (grade.grade_id || grade.grade_value || '0') + '-' + term + '-' + type;
+
+          if (seen.has(key)) {
+            removed.push({ index: index, key: key, type: type, term: term, name: a.assessment_name });
+            return false;
+          }
+          seen.add(key);
+          return true;
+        });
+
+        console.log('Grade ' + (grade.grade_value || grade.grade_id) + ':');
+        console.log('  Original: ' + originalCount + ' assessments');
+        console.log('  After dedup: ' + grade.assessments.length + ' assessments');
+        console.log('  Removed: ' + removed.length);
+        if (removed.length > 0) {
+          removed.forEach(function(r) {
+            console.log('    - [' + r.key + '] ' + (r.name || 'unnamed'));
+          });
+        }
+      }
+    }
+
     const lines = [];
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const migrationNumber = this.generateMigrationNumber();
@@ -163,10 +201,32 @@ class CAPSParserService {
     lines.push('-- ============================================================');
     lines.push('');
 
-    for (const grade of capsData.grades) {
+    console.log('=== SQL GENERATION ===');
+    for (const grade of dedupedData.grades) {
       lines.push('-- Grade ' + (grade.grade_value || grade.grade_id) + ' (' + grade.grade_id + ')');
+      console.log('Grade ' + (grade.grade_value || grade.grade_id) + ' generating ' + grade.assessments.length + ' INSERTs');
 
       for (const assessment of grade.assessments) {
+        console.log('  INSERT: ' + (assessment.assessment_type || 'test') + ' | term=' + (assessment.term || '1') + ' | name=' + (assessment.assessment_name || 'unnamed'));
+        // Apply defaults for missing fields
+        const safeAssessment = {
+          assessment_type: assessment.assessment_type || 'test',
+          assessment_name: assessment.assessment_name || this.generateAssessmentName(assessment.assessment_type, assessment.term),
+          term: assessment.term || '1',
+          weighting_percent: assessment.weighting_percent !== undefined && assessment.weighting_percent !== null ? assessment.weighting_percent : 0,
+          total_marks: assessment.total_marks !== undefined && assessment.total_marks !== null ? assessment.total_marks : 0,
+          duration_hours: assessment.duration_hours || null,
+          paper_number: assessment.paper_number || null,
+          description: assessment.description || null,
+          is_formal: assessment.is_formal !== false,
+          is_examination: assessment.is_examination === true,
+          is_practical: assessment.is_practical === true,
+          is_compulsory: assessment.is_compulsory !== false,
+          covers_topics: assessment.covers_topics || null,
+          cognitive_level_distribution: assessment.cognitive_level_distribution || null,
+          ...assessment
+        };
+
         const fields = [];
         const values = [];
 
@@ -177,59 +237,59 @@ class CAPSParserService {
         values.push(grade.grade_id);
 
         fields.push('assessment_type');
-        values.push("'" + assessment.assessment_type + "'");
+        values.push("'" + safeAssessment.assessment_type + "'");
 
         fields.push('assessment_name');
-        values.push("'" + this.escapeSQL(assessment.assessment_name) + "'");
+        values.push("'" + this.escapeSQL(safeAssessment.assessment_name) + "'");
 
         fields.push('term');
-        values.push("'" + assessment.term + "'");
+        values.push("'" + safeAssessment.term + "'");
 
         fields.push('weighting_percent');
-        values.push(assessment.weighting_percent);
+        values.push(safeAssessment.weighting_percent);
 
-        if (assessment.total_marks !== undefined) {
+        if (safeAssessment.total_marks !== undefined && safeAssessment.total_marks !== null) {
           fields.push('total_marks');
-          values.push(assessment.total_marks);
+          values.push(safeAssessment.total_marks);
         }
 
-        if (assessment.duration_hours !== undefined) {
+        if (safeAssessment.duration_hours !== undefined && safeAssessment.duration_hours !== null) {
           fields.push('duration_hours');
-          values.push(assessment.duration_hours);
+          values.push(safeAssessment.duration_hours);
         }
 
-        if (assessment.paper_number !== undefined) {
+        if (safeAssessment.paper_number !== undefined && safeAssessment.paper_number !== null) {
           fields.push('paper_number');
-          values.push(assessment.paper_number);
+          values.push(safeAssessment.paper_number);
         }
 
-        if (assessment.description) {
+        if (safeAssessment.description) {
           fields.push('description');
-          values.push("'" + this.escapeSQL(assessment.description) + "'");
+          values.push("'" + this.escapeSQL(safeAssessment.description) + "'");
         }
 
         fields.push('is_formal');
-        values.push(assessment.is_formal !== false ? 'TRUE' : 'FALSE');
+        values.push(safeAssessment.is_formal !== false ? 'TRUE' : 'FALSE');
 
         fields.push('is_examination');
-        values.push(assessment.is_examination === true ? 'TRUE' : 'FALSE');
+        values.push(safeAssessment.is_examination === true ? 'TRUE' : 'FALSE');
 
-        if (assessment.is_practical !== undefined) {
+        if (safeAssessment.is_practical !== undefined) {
           fields.push('is_practical');
-          values.push(assessment.is_practical === true ? 'TRUE' : 'FALSE');
+          values.push(safeAssessment.is_practical === true ? 'TRUE' : 'FALSE');
         }
 
         fields.push('is_compulsory');
-        values.push(assessment.is_compulsory !== false ? 'TRUE' : 'FALSE');
+        values.push(safeAssessment.is_compulsory !== false ? 'TRUE' : 'FALSE');
 
-        if (assessment.covers_topics) {
+        if (safeAssessment.covers_topics) {
           fields.push('covers_topics');
-          values.push("'" + this.escapeSQL(assessment.covers_topics) + "'");
+          values.push("'" + this.escapeSQL(safeAssessment.covers_topics) + "'");
         }
 
-        if (assessment.cognitive_level_distribution) {
+        if (safeAssessment.cognitive_level_distribution) {
           fields.push('cognitive_level_distribution');
-          values.push("'" + assessment.cognitive_level_distribution + "'");
+          values.push("'" + safeAssessment.cognitive_level_distribution + "'");
         }
 
         lines.push('INSERT INTO assessment_programme (' + fields.join(', ') + ') VALUES (' + values.join(', ') + ');');
@@ -242,7 +302,10 @@ class CAPSParserService {
     lines.push('-- ============================================================');
     lines.push('');
 
-    for (const grade of capsData.grades) {
+    for (const grade of dedupedData.grades) {
+      if (!grade.papers || !Array.isArray(grade.papers) || grade.papers.length === 0) {
+        continue;
+      }
       for (const paper of grade.papers) {
         const fields = [
           'subject_official_code', 'grade_id', 'paper_number', 'paper_name',
@@ -291,8 +354,14 @@ class CAPSParserService {
     lines.push('-- ============================================================');
     lines.push('');
 
-    for (const grade of capsData.grades) {
+    for (const grade of dedupedData.grades) {
+      if (!grade.papers || !Array.isArray(grade.papers) || grade.papers.length === 0) {
+        continue;
+      }
       for (const paper of grade.papers) {
+        if (!paper.sections || !Array.isArray(paper.sections) || paper.sections.length === 0) {
+          continue;
+        }
         for (const section of paper.sections) {
           const fields = [
             'subject_official_code', 'grade_id', 'paper_number', 'section_letter',
@@ -361,28 +430,110 @@ class CAPSParserService {
 
   async executeSQL(sql, db) {
     try {
+      console.log('=== executeSQL START ===');
+      console.log('Total statements: ' + sql.split(';').filter(s => s.trim().length > 0).length);
+
       const statements = sql.split(';').filter(s => s.trim().length > 0);
       const results = [];
 
-      for (const statement of statements) {
+      for (let i = 0; i < statements.length; i++) {
+        const statement = statements[i];
         const trimmed = statement.trim();
-        if (trimmed.startsWith('--') || trimmed.startsWith('/*') || trimmed === '') continue;
-        if (trimmed.startsWith('SET FOREIGN_KEY_CHECKS')) continue;
-        if (trimmed.startsWith('SELECT')) {
-          const [rows] = await db.query(trimmed + ';');
-          results.push({ type: 'select', statement: trimmed.substring(0, 50), rows });
-        } else if (trimmed.startsWith('DELETE') || trimmed.startsWith('INSERT')) {
-          const [result] = await db.query(trimmed + ';');
-          results.push({ 
-            type: 'modify', 
-            statement: trimmed.substring(0, 50), 
-            affectedRows: result.affectedRows 
-          });
+
+        console.log('Statement ' + (i + 1) + '/' + statements.length + ': ' + trimmed.substring(0, 70));
+
+        if (trimmed === '') {
+          console.log('  -> SKIPPED (empty)');
+          continue;
+        }
+        // Check if this is a pure comment line (no SQL after it)
+        const lines = trimmed.split('\n');
+        const hasSQL = lines.some(line => {
+          const clean = line.trim();
+          return clean.length > 0 && !clean.startsWith('--') && !clean.startsWith('/*');
+        });
+        if (!hasSQL) {
+          console.log('  -> SKIPPED (pure comment)');
+          continue;
+        }
+        // Strip comments to get the actual SQL for type checking
+        const sqlLines = trimmed.split('\n').filter(line => {
+          const clean = line.trim();
+          return clean.length > 0 && !clean.startsWith('--') && !clean.startsWith('/*');
+        });
+        const sqlOnly = sqlLines.join(' ').trim();
+
+        if (sqlOnly.startsWith('SET FOREIGN_KEY_CHECKS')) {
+          console.log('  -> SET FOREIGN_KEY_CHECKS');
+          try {
+            await db.query(trimmed + ';');
+            console.log('  -> OK');
+          } catch (e) {
+            console.log('  -> SET ERROR: ' + e.message);
+            throw e;
+          }
+          continue;
+        }
+        if (sqlOnly.startsWith('SELECT')) {
+          console.log('  -> SELECT');
+          try {
+            const [rows] = await db.query(trimmed + ';');
+            results.push({ type: 'select', statement: trimmed.substring(0, 50), rows });
+            console.log('  -> OK: ' + rows.length + ' rows');
+          } catch (e) {
+            console.log('  -> SELECT ERROR: ' + e.message);
+            throw e;
+          }
+        } else if (sqlOnly.startsWith('DELETE')) {
+          console.log('  -> DELETE');
+          try {
+            const [result] = await db.query(trimmed + ';');
+            results.push({ type: 'modify', statement: trimmed.substring(0, 50), affectedRows: result.affectedRows });
+            console.log('  -> OK: ' + result.affectedRows + ' rows deleted');
+          } catch (e) {
+            console.log('  -> DELETE ERROR: ' + e.message);
+            throw e;
+          }
+        } else if (sqlOnly.startsWith('INSERT')) {
+          console.log('  -> INSERT');
+          try {
+            const [result] = await db.query(trimmed + ';');
+            results.push({ type: 'modify', statement: trimmed.substring(0, 50), affectedRows: result.affectedRows });
+            console.log('  -> OK: ' + result.affectedRows + ' rows inserted');
+          } catch (e) {
+            console.log('  -> INSERT ERROR: ' + e.message);
+            console.log('  -> Failing statement: ' + trimmed.substring(0, 120));
+            throw e;
+          }
+        } else {
+          console.log('  -> UNKNOWN: ' + sqlOnly.substring(0, 50));
         }
       }
 
+      console.log('=== executeSQL END ===');
+      console.log('All statements executed successfully');
       return { success: true, results };
     } catch (error) {
+      console.log('=== executeSQL ERROR ===');
+      console.log('Error: ' + error.message);
+      console.log('SQL that failed: ' + sql.substring(0, 200));
+
+      // Write error log to file
+      const logDir = path.join(process.cwd(), 'logs');
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+      const logFile = path.join(logDir, 'sql_error_' + new Date().toISOString().slice(0, 10) + '.log');
+      const logEntry = [
+        '=== ' + new Date().toISOString() + ' ===',
+        'ERROR: ' + error.message,
+        'SQL (first 500 chars): ' + sql.substring(0, 500),
+        '=== END ===',
+        ''
+      ].join('\n');
+      fs.appendFileSync(logFile, logEntry, 'utf8');
+      console.log('Error log written to: ' + logFile);
+
       return { success: false, error: error.message };
     }
   }
@@ -422,6 +573,12 @@ class CAPSParserService {
       ? parseInt(files[files.length - 1].split('_')[0]) || 0 
       : 0;
     return String(lastNum + 1).padStart(3, '0');
+  }
+
+  generateAssessmentName(type, term) {
+    if (!type) return 'Unnamed Assessment';
+    const cleanType = type.replace(/_/g, ' ').replace(/\w/g, l => l.toUpperCase());
+    return cleanType + ' (Term ' + (term || '1') + ')';
   }
 
   escapeSQL(str) {
