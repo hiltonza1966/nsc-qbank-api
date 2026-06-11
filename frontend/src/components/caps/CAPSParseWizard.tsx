@@ -34,8 +34,8 @@ const CAPSParseWizard: React.FC = () => {
   const [savedFile, setSavedFile] = useState('');
 
   React.useEffect(() => {
-    api.get('/api/caps/subjects').then((r: any) => setSubjects(r.data.subjects || []));
-    api.get('/api/caps/grades').then((r: any) => setGrades(r.data.grades || []));
+    api.get('/api/caps/subjects').then((r: any) => setSubjects(r.subjects || []));
+    api.get('/api/caps/grades').then((r: any) => setGrades(r.grades || []));
   }, []);
 
   const handleParse = useCallback(async () => {

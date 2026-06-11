@@ -3,8 +3,9 @@ import UploadWizard from './components/wizard/UploadWizard';
 import Dashboard from './components/Dashboard';
 import CAPSManualLinker from './components/curriculum/CAPSManualLinker';
 import CAPSParseWizard from './components/caps/CAPSParseWizard';
+import CapsReviewDashboard from './components/CapsReviewDashboard';
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'caps' | 'caps-wizard'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'caps' | 'caps-wizard' | 'caps-review'>('upload');
 
   return (
     <div className="app">
@@ -36,6 +37,12 @@ const App: React.FC = () => {
           >
             🧙 CAPS Wizard
           </button>
+          <button 
+            className={activeTab === 'caps-review' ? 'nav-btn active' : 'nav-btn'}
+            onClick={() => setActiveTab('caps-review')}
+          >
+            📋 CAPS Review
+          </button>
         </nav>
       </header>
       <main>
@@ -43,6 +50,7 @@ const App: React.FC = () => {
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'caps' && <CAPSManualLinker />}
         {activeTab === 'caps-wizard' && <CAPSParseWizard />}
+        {activeTab === 'caps-review' && <CapsReviewDashboard />}
       </main>
 
       <style>{`{

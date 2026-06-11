@@ -1,0 +1,501 @@
+﻿{
+    "parsed_data":  {
+                        "subject_name":  "LIFE SCIENCES",
+                        "subject_official_code":  null,
+                        "source_document":  "1b1642745d500c4188004b3dc489fbbb",
+                        "extracted_at":  "2026-06-11T09:54:36.380Z",
+                        "parser_version":  "1.7.0",
+                        "grades":  [
+                                       {
+                                           "grade_value":  10,
+                                           "sba_weighting":  25,
+                                           "exam_weighting":  75,
+                                           "external_weighting":  null,
+                                           "trial_weighting":  null,
+                                           "cognitive_level_distribution":  null,
+                                           "assessments":  [
+                                                               {
+                                                                   "assessment_type":  "practical_examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "midyear_examination",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "practical_task",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  100,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "exam",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  60,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "practical_examination",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  15,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "midyear_examination",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "project",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "3",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               }
+                                                           ],
+                                           "papers":  [
+
+                                                      ]
+                                       },
+                                       {
+                                           "grade_value":  11,
+                                           "sba_weighting":  25,
+                                           "exam_weighting":  75,
+                                           "external_weighting":  null,
+                                           "trial_weighting":  null,
+                                           "cognitive_level_distribution":  null,
+                                           "assessments":  [
+                                                               {
+                                                                   "assessment_type":  "practical_examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "midyear_examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "practical_task",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  100,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  60,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "practical_examination",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  15,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "midyear_examination",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "project",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "3",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "3",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               }
+                                                           ],
+                                           "papers":  [
+
+                                                      ]
+                                       },
+                                       {
+                                           "grade_value":  12,
+                                           "sba_weighting":  25,
+                                           "exam_weighting":  null,
+                                           "external_weighting":  50,
+                                           "trial_weighting":  25,
+                                           "cognitive_level_distribution":  null,
+                                           "assessments":  [
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "midyear_examination",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "practical_task",
+                                                                   "term":  "3",
+                                                                   "raw_marks":  100,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "practical_task",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "practical_task",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  true,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "midyear_examination",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "midyear_examination",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "end_of_year_examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  150,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  150,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  150,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  150,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  150,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "examination",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  0,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  true,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "1",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "2",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "3",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               },
+                                                               {
+                                                                   "assessment_type":  "test",
+                                                                   "term":  "4",
+                                                                   "raw_marks":  50,
+                                                                   "converted_weight":  null,
+                                                                   "is_examination":  false,
+                                                                   "is_formal":  true,
+                                                                   "is_practical":  false,
+                                                                   "is_compulsory":  true
+                                                               }
+                                                           ],
+                                           "papers":  [
+                                                          {
+                                                              "paper_number":  1,
+                                                              "duration_hours":  null,
+                                                              "total_marks":  null,
+                                                              "topics_covered":  [
+                                                                                     "Chemistry of Life",
+                                                                                     "Cells: Basic Units of Life",
+                                                                                     "Cell Division: Mitosis",
+                                                                                     "Plant and Animal Tissues",
+                                                                                     "Plant and Animal Tissues",
+                                                                                     "Plant Organs (Leaf)",
+                                                                                     "Support and Transport Systems: Plants",
+                                                                                     "Support Systems:"
+                                                                                 ],
+                                                              "is_end_of_year":  true
+                                                          },
+                                                          {
+                                                              "paper_number":  2,
+                                                              "duration_hours":  null,
+                                                              "total_marks":  null,
+                                                              "topics_covered":  [
+                                                                                     "Chemistry of Life",
+                                                                                     "Cells: Basic Units of Life",
+                                                                                     "Cell Division: Mitosis",
+                                                                                     "Plant and Animal Tissues",
+                                                                                     "Plant and Animal Tissues",
+                                                                                     "Plant Organs (Leaf)",
+                                                                                     "Support and Transport Systems: Plants",
+                                                                                     "Support Systems: Animals"
+                                                                                 ],
+                                                              "is_end_of_year":  true
+                                                          }
+                                                      ]
+                                       }
+                                   ]
+                    }
+}

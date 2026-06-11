@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
@@ -42,11 +42,14 @@ try {
 // Attach DB to all requests
 app.use((req, res, next) => {
   req.db = pool;
+  app.locals.db = pool;  // Make pool available to routes
   next();
 });
 
 // Routes - Phase 1 (existing)
 const stagingRoutes = require('./routes/staging');
+const capsPdfParser = require('./routes/capsPdfParser');
+app.use(capsPdfParser.router);
 app.use('/api/staging', stagingRoutes);
 
 app.use('/api/qbank/items', require('./routes/items'));
@@ -59,7 +62,6 @@ app.use('/api/attachments', require('./routes/attachments'));
 // Routes - Phase 1 (comparison engine)
 const compareQPRouter = require('./routes/compare-qp');
 app.use('/api/wizard', compareQPRouter);
-
 // Routes - Phase 2 (corporate schema)
 app.use('/api/items', require('./routes/versions'));      // Item versioning
 app.use('/api/items', require('./routes/reviews'));       // Review comments
@@ -100,5 +102,6 @@ app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`QBank API running on port ${PORT}`));
+
 
 
