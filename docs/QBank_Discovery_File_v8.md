@@ -1,31 +1,77 @@
 # QBank Discovery File v8.0 — Corporate Edition
-**Generated:** 9 June 2026 20:08 SAST
-**Updated By:** AI K2.6 Session
-**Status:** Phase 2 Complete → Natural Keys Implementation (Option 2) Next
+**Generated:** 12 June 2026 08:11 SAST
+**Updated By:** AI K2.6 Session — Document Synchronization
+**Status:** PARSER PAUSED at v2.7a — Comparison Engine Fix Applied but NOT Verified — Frontend White Screen Unresolved
 **Database:** nsc_qbank (MySQL 8.0.45)
 **Repo:** C:\dev\nsc-qbank
 **Branch:** main
-**Status:** Memo Compare Endpoint Fixed, Root Files Cleaned
+**Git HEAD:** 2a392c8 (as of 2026-06-09 15:59 session)
+**Node.js:** v24.14.0
+**MySQL:** 8.0.45
+**Backend Port:** 4000
+**Frontend Port:** 3000
+**Frontend URL:** http://localhost:3000/
+**Database Password:** Hilton@66
+**MySQL Path:** C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe
+**MySQL Dump Path:** C:\Program Files\MySQL\MySQL Workbench 8.0\mysqldump.exe
 
 ---
 
-## 1. ARCHITECTURE OVERVIEW
+## 1. ARCHITECTURE OVERVIEW (VERIFIED FACTS)
 
-- **Runtime:** Node.js 20, Express 4.19.2
-- **Database:** MySQL 8.0.45 (not PostgreSQL)
+- **Runtime:** Node.js v24.14.0, Express 4.19.2
+- **Database:** MySQL 8.0.45 (NOT PostgreSQL)
 - **Driver:** mysql2/promise 3.9.7
 - **Port:** 4000
 - **CORS:** Enabled for all origins
-- **Cross-database reference:** `subject_structure` table lives in `nsc_registration_v3` only
-- **Frontend:** React + Vite (port 3000)
-- **Image Storage:** Local filesystem (migrating to S3/MinIO in production)
-- **PDF Parser:** **SIMPLIFIED** — Extracts question_number, text, section, type ONLY. Marks come from database.
+- **Cross-database reference:** `nsc_registration_v3` contains `subject_structure` and `lookup_subjects`
+- **Frontend:** React + TypeScript + Vite (migrated from vanilla HTML)
+- **Frontend Dev Server:** Port 3000
+- **Frontend Build:** `npm run build` in `frontend/` directory
+- **Image Storage:** Local filesystem `C:\dev\nsc-qbank\uploads\`
+- **PDF Processing:** pdf.js for QP parser, pdf-parse for CAPS parser
+- **GitHub:** https://github.com/hiltonza1966/nsc-qbank-api.git
 
 ---
 
-## 2. PARSER DISCOVERY — CRITICAL FINDINGS (UPDATED 2026-06-08)
+## 2. PARSER DISCOVERY — CRITICAL FINDINGS (UPDATED 2026-06-12)
 
-### 2.1 Text Extraction Problem (RESOLVED by simplification)
+### 2.1 QP Parser (pdf_parser_structured.js) — WORKING
+**Status:** WORKING (verified 2026-06-09)
+- Extracts 29 items from Geography P1 Nov 2025 PDF
+- 2190 text items → 456 lines → 29 atomic items
+- Output: question_number, question_text, section, type, marks (from batch totals)
+- File: `routes/pdf_parser_structured.js`
+
+### 2.2 CAPS Parser (capsPdfParser.js) — BROKEN at v2.7a
+**Status:** DEPLOYED but BROKEN (empty grades)
+**File:** `routes/capsPdfParser.js` (v2.7a)
+**Key Discovery (2026-06-12):**
+```
+Section 3 (Teaching Plans) - WHERE ACTUAL DATA LIVES
+├── Annual Teaching Plan Grade 10
+│   ├── term 1: Formal assessment
+│   │   ├── Form of assessmentAssignmentTest
+│   │   └── Total marks50100
+│   ├── term 2: Formal assessment
+│   │   ├── Form of assessmentAssignmentTest
+│   │   └── Total marks50100
+│   └── ...
+├── Annual Teaching Plan Grade 11
+│   └── ...
+└── Annual Teaching Plan Grade 12
+    └── ...
+
+Section 4 (Summary Table) - NOT WHERE DATA LIVES
+├── the Programme of assessment in Grade 10
+│   ├── term 1term 2term 3term 4 (headers only)
+│   └── Assessment names (no per-term details)
+└── mark out of: (weighting summary)
+```
+**Root Cause:** Parser searches for `Annual Teaching Plan Grade X` but actual PDF text may have different headers. Need real PDF diagnostic to determine exact header patterns.
+**Fix Needed:** Adjust `_parseGradeFromTeachingPlans()` to match actual header patterns.
+
+### 2.3 Text Extraction Problem (RESOLVED by simplification for QP Parser)
 **Issue:** `pdf-parse` and `pdf2json` produce garbled concatenated text from DBE PDFs.
 **Example of extracted text:**
 ```
@@ -40,156 +86,21 @@ C adrenalin.
 D prolactin.
 (10 x 2)(20)
 ```
+**Solution:** QP parser uses pdf.js `getTextContent()` with position-based sorting. CAPS parser uses pdf-parse.
 
-### 2.2 Why Position-Based Parsing FAILED (CRITICAL DECISION)
-**Attempted:** pdf.js `getTextContent()` with position-based sorting
+### 2.4 Why Position-Based Parsing FAILED for Marks (CRITICAL DECISION)
+**Attempted:** pdf.js `getTextContent()` with position-based sorting for marks extraction
 **Result:** 187 marks extracted instead of 150 (37 marks variance)
 **Root cause:** Batch marks, sub-part marks, and question text merge incorrectly due to y-position grouping
 **Example error:** Question 1.2.4 got 10 marks instead of 1
-**Decision:** **ABANDON position-based marks extraction**
-
-### 2.3 NEW Corporate Standard Solution (ACTIVE)
-**Parser Simplification:**
-- Extracts ONLY: `question_number`, `question_text`, `section`, `type`
-- Does NOT extract marks
-- Validates item count (38 for LIFE P1) and sections (A, B, C)
-
-**Comparison Engine:**
-- Loads expected structure from `parse_expected_structure` table
-- Compares parser output against expected question numbers
-- Auto-corrects marks when parser variance is within tolerance (≤2× expected)
-- Flags RED for manual review when variance exceeds tolerance or parser fails
-
-**Manual Review UI:**
-- `ReviewPanel.tsx` shows RED highlighting for flagged items
-- Editable marks field for manual correction
-- Save corrections to `parse_results` with audit trail
+**Decision:** ABANDON position-based marks extraction in QP parser. Marks come from database `parse_expected_structure`.
 
 ---
 
-## 3. DATABASE SCHEMA (Current — Updated 2026-06-09)
+## 3. DATABASE SCHEMA (Current — Updated 2026-06-12)
 
-### 3.0 Migration 014 Status
-**Date:** 2026-06-09 18:00
-**Status:** ✅ COMPLETE
+### 3.0 Migration Status
 
-**Tables Created:** 34 new tables
-**Foreign Keys:** 66 constraints established
-**Seed Data:** 15 lookup tables populated
-**Subjects Synced:** 123 from nsc_registration_v3.lookup_subjects
-**Paper Structure:** 38 items for LIFE_SC_P1_NOV_2025
-**Backend:** Running on port 4000
-
-**Key Changes:**
-- Old tables dropped: qbank_items, qbank_papers, qbank_paper_items, etc.
-- Legacy tables preserved: accounting_questions, qbank_users_legacy
-- New tables active: item_master, parse_expected_structure, lookup_subjects, etc.
-- Stored procedure: sync_lookup_subjects() for manual sync by Superadmin
-
-**Next Phase:** Option 2 (Natural Keys) - Change from surrogate keys to natural keys
-
-### 3.1 Core Tables (Migration 014 — 34 Tables)
-
-#### 3.1.1 Lookup/Dimension Tables (6 tables)
-| Table | PK | Purpose | Rows |
-|-------|-----|---------|------|
-| `lookup_years` | year_id (INT) | Academic years | 5 |
-| `lookup_grades` | grade_id (INT) | Grade levels | 3 |
-| `lookup_subjects` | subject_id (INT) | Subjects (synced from nsc_registration_v3) | 123 |
-| `lookup_papers` | paper_id (INT) | Paper numbers | 2 |
-| `lookup_assessment_types` | assessment_type_id (INT) | Exam types (NSC, IEB, etc.) | 3 |
-| `lookup_assessment_bodies` | assessment_body_id (INT) | Assessment bodies (DBE, IEB, etc.) | 2 |
-
-#### 3.1.2 Item Management Tables (6 tables)
-| Table | PK | Purpose |
-|-------|-----|---------|
-| `item_master` | item_id (INT) | Approved question items |
-| `item_staging` | item_id (INT) | Draft/staging items |
-| `item_attachments` | attachment_id (INT) | Images, diagrams, files |
-| `item_tags` | tag_id (INT) | Curriculum tags |
-| `item_versions` | version_id (INT) | Item version history |
-| `item_reviews` | review_id (INT) | Review workflow tracking |
-
-#### 3.1.3 Memo Tables (2 tables)
-| Table | PK | Purpose |
-|-------|-----|---------|
-| `item_memos` | memo_id (INT) | Memo (answer key) master |
-| `item_memo_subparts` | subpart_id (INT) | Memo sub-part answers and marks |
-
-#### 3.1.4 Parser/Comparison Tables (3 tables)
-| Table | PK | Purpose | Rows |
-|-------|-----|---------|------|
-| `parse_expected_structure` | structure_id (INT) | Gold standard QP structure | 38 (LIFE P1) |
-| `parse_results` | result_id (INT) | Parser output + corrections | 0 |
-| `parse_sessions` | session_id (VARCHAR) | Audit trail for parse runs | 1+ |
-
-**parse_sessions columns:**
-```sql
-session_id VARCHAR(64) PK
-year_id INT NULL
-grade_id INT NULL
-subject_id INT NULL
-paper_id INT NULL
-assessment_type_id INT NULL
-assessment_body_id INT NULL
-file_name VARCHAR(255) NOT NULL
-file_hash VARCHAR(64) NOT NULL
-parser_version VARCHAR(20) DEFAULT '1.0'
-total_items_found INT NULL
-total_marks_parser INT NULL
-total_marks_expected INT NULL
-total_marks_corrected INT NULL
-auto_corrected_count INT DEFAULT 0
-manual_review_count INT DEFAULT 0
-missing_count INT DEFAULT 0
-status ENUM('parsing','comparing','auto_corrected','reviewing','completed','failed') DEFAULT 'parsing'
-error_message TEXT NULL
-completed_at TIMESTAMP NULL
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-paper_code VARCHAR(50) NOT NULL DEFAULT ''
-```
-
-#### 3.1.5 Paper Generation Tables (5 tables)
-| Table | PK | Purpose |
-|-------|-----|---------|
-| `paper_templates` | template_id (INT) | Paper template definitions |
-| `paper_template_sections` | section_id (INT) | Template section rules |
-| `generated_papers` | paper_id (INT) | Generated exam papers |
-| `generated_paper_items` | gp_item_id (INT) | Items in generated papers |
-| `paper_template_item_pools` | pool_id (INT) | Item pool assignments |
-
-#### 3.1.6 Review Workflow Tables (2 tables)
-| Table | PK | Purpose |
-|-------|-----|---------|
-| `review_workflow` | workflow_id (INT) | Review workflow instances |
-| `review_workflow_history` | history_id (INT) | Workflow state changes |
-
-#### 3.1.7 Audit/Logging Tables (3 tables)
-| Table | PK | Purpose |
-|-------|-----|---------|
-| `audit_logs` | log_id (INT) | General audit trail |
-| `user_sessions` | session_id (INT) | User session tracking |
-| `communication_logs` | log_id (INT) | Communication audit |
-
-#### 3.1.8 System Tables (7 tables)
-| Table | PK | Purpose |
-|-------|-----|---------|
-| `spd_users` | user_id (INT) | System users (SPD integration) |
-| `user_roles` | role_id (INT) | Role definitions |
-| `user_permissions` | permission_id (INT) | Permission definitions |
-| `user_role_assignments` | assignment_id (INT) | User-role links |
-| `notification_settings` | setting_id (INT) | User notification prefs |
-| `system_config` | config_id (INT) | System configuration |
-| `lookup_provinces` | province_id (INT) | Province codes |
-
-### 3.2 Legacy Tables (Preserved but not active)
-| Table | Rows | Status |
-|-------|------|--------|
-| `accounting_questions` | 10 | ⚠️ Legacy |
-| `qbank_users_legacy` | 0 | ⚠️ Legacy |
-| `questions` | 3 | ⚠️ Legacy |
-
-### 3.3 Migration Status
 | Migration | Status | Notes |
 |-----------|--------|-------|
 | 001_schema_fix.sql | ✅ Applied | |
@@ -197,57 +108,139 @@ paper_code VARCHAR(50) NOT NULL DEFAULT ''
 | 008_consolidate_qbank_tables.sql | ✅ Applied | |
 | 009_fix_specs.sql | ✅ Applied | |
 | 010_create_memo_table.sql | ✅ Applied | |
-| 011_corporate_schema.sql | ✅ Applied | |
-| 012_qp_structure_tables.sql | ✅ Applied | 38 items, 150 marks |
-| **014_complete_qbank_schema.sql** | **✅ Applied** | **34 tables, 66 FKs, 15 lookups** |
+| 011_corporate_schema.sql | ✅ Applied | Added attachments table, item_type column |
+| 012_qp_structure_tables.sql | ✅ Applied | 38 items, 150 marks for LIFE_SC_P1_NOV_2025 |
+| **014_complete_qbank_schema.sql** | **✅ Applied** | **34 tables created, 15 lookup tables seeded, 123 subjects synced** |
+| **015_fix_paper_code.sql** | **🔄 CREATED but NOT APPLIED** | **Adds paper_code to parse_expected_structure and parse_results** |
+
+### 3.1 Table Row Counts (as of 2026-06-09 — LAST KNOWN)
+
+| Table | Rows | Purpose | Status |
+|-------|------|---------|--------|
+| qbank_items_staging | 0 | Cleared for testing | ✅ Ready |
+| qbank_items | 6 | Live approved items | ✅ Active |
+| qbank_item_memos | 0 | Cleared for testing | ✅ Ready |
+| qbank_item_tags | 0 | Live item tags | ✅ Active |
+| qbank_item_curriculum | 0 | Live curriculum links | ✅ Active |
+| qbank_items_staging_tags | 0 | Draft tags | ✅ Ready |
+| qbank_items_staging_curriculum | 0 | Draft curriculum | ✅ Ready |
+| qbank_papers | 4 | Generated papers | ✅ Active |
+| qbank_paper_items | 3 | Paper-item associations | ✅ Active |
+| qbank_paper_specs | 4 | Paper specifications | ✅ Active |
+| qbank_users | 0 | System users | ✅ Ready |
+| **parse_expected_structure** | **38** | **Expected QP structure (gold standard)** | **✅ POPULATED** |
+| **parse_results** | **0** | **Parser output with auto-correction** | **❌ EMPTY (comparison engine broken)** |
+| **parse_sessions** | **2+** | **Audit trail for parse runs** | **✅ ACTIVE** |
+| question_reviews | 0 | Review workflow (legacy) | ⚠️ Legacy |
+| accounting_questions | 10 | Pre-QBank legacy | ⚠️ Legacy |
+| questions | 3 | Pre-QBank legacy | ⚠️ Legacy |
+| lookup_subjects | 123 | All NSC subjects | ✅ Synced from nsc_registration_v3 |
+| lookup_years | 11 | Academic years 2020-2030 | ✅ Pre-populated |
+| lookup_grades | 3 | Grade 10/11/12 | ✅ Pre-populated |
+| lookup_papers | 7 | Paper types | ✅ Pre-populated |
+| lookup_assessment_types | 7 | Assessment types | ✅ Pre-populated |
+| lookup_assessment_bodies | 4 | Assessment bodies | ✅ Pre-populated |
+| lookup_cognitive_levels | 6 | Bloom's Taxonomy | ✅ Pre-populated |
+| lookup_difficulty_levels | 3 | Easy/Medium/Hard | ✅ Pre-populated |
+| lookup_item_types | 8 | Item types | ✅ Pre-populated |
+| lookup_languages | 11 | SA official languages | ✅ Pre-populated |
+| lookup_exam_sessions | 5 | Exam sessions | ✅ Pre-populated |
+| lookup_marking_schemes | 5 | Marking schemes | ✅ Pre-populated |
+| lookup_caps_topics | 11 | Life Sciences G12 topics | 🔄 Partially populated |
+| lookup_caps_subtopics | 0 | CAPS subtopics | ❌ NOT populated |
+| lookup_tag_taxonomy | 15+ | Controlled vocabulary | ✅ Pre-populated |
+| item_master | 0 | Core item table | ✅ Empty (ready) |
+| item_mcq_options | 0 | MCQ options | ✅ Empty (ready) |
+| item_memos | 0 | Marking guidelines | ✅ Empty (ready) |
+| item_memo_subparts | 0 | Sub-part rubrics | ✅ Empty (ready) |
+| item_stimuli | 0 | Shared stimuli | ✅ Empty (ready) |
+| item_attachments | 0 | Images/diagrams | ✅ Empty (ready) |
+| item_tags | 0 | Item tagging | ✅ Empty (ready) |
+| item_versions | 0 | Audit trail | ✅ Empty (ready) |
+| item_reviews | 0 | Review comments | ✅ Empty (ready) |
+| review_workflow | 0 | State machine | ✅ Empty (ready) |
+| paper_templates | 0 | Paper blueprints | ✅ Empty (ready) |
+| paper_template_sections | 0 | Template sections | ✅ Empty (ready) |
+| generated_papers | 0 | Assembled papers | ✅ Empty (ready) |
+| generated_paper_items | 0 | Items in papers | ✅ Empty (ready) |
+| qbank_users | 0 | System users | ✅ Empty (ready) |
+| user_subject_assignments | 0 | Subject expert assignments | ✅ Empty (ready) |
+
+**Total: 34 tables**
+
+### 3.2 Legacy vs New Tables
+
+**Old tables DROPPED:** qbank_items (old), qbank_papers (old), qbank_paper_items (old), qbank_items_staging (old), etc. — Replaced by new 34-table schema.
+
+**Legacy tables PRESERVED:**
+- `accounting_questions` — 10 rows (pre-QBank legacy)
+- `questions` — 3 rows (pre-QBank legacy)
+- `qbank_users_legacy` — preserved
+
+### 3.3 Subject Sync
+**Source:** `nsc_registration_v3.lookup_subjects`
+**Method:** Stored procedure `sync_lookup_subjects()` created for manual sync by Superadmin
+**Count:** 123 subjects synced
+**Key columns:** `subject_id` (INT), `subject_official_code` (VARCHAR), `subject_name` (VARCHAR), `subject_alpha_code` (VARCHAR)
 
 ---
 
 ## 4. EXPECTED PARSER OUTPUT (LIFE P1 Nov 2025) — VERIFIED
 
 ### 4.1 Question Paper Structure (Gold Standard in DB)
-| Section | Question | Type | Marks | Notes |
+| Section | Question | Type | Marks | Count |
 |---------|----------|------|-------|-------|
-| A | 1.1.1-1.1.10 | MCQ | 2 each = 20 | 10 questions |
-| A | 1.2.1-1.2.8 | Short | 1 each = 8 | 8 questions |
-| A | 1.3.1-1.3.3 | Matching | 2 each = 6 | 3 questions |
-| A | 1.4.1-1.4.3 | Diagram | 8 total | With sub-parts (a)(b)(c) |
-| A | 1.5.1-1.5.4 | Diagram | 8 total | With sub-parts (a)(b)(c) |
-| B | 2.1 | Extended | 8 | Sub-parts: 2.1.1(3), 2.1.2(3), 2.1.3(2) |
-| B | 2.2 | Extended | 11 | Sub-parts: 2.2.1(2), 2.2.2(2), 2.2.3(5), 2.2.4(2) |
-| B | 2.3 | Extended | 14 | Sub-parts: 2.3.1(3), 2.3.2(2), 2.3.3(1), 2.3.4(6) |
-| B | 2.4 | Extended | 6 | Sub-parts: 2.4.1(1), 2.4.2(1), 2.4.3(4) |
-| B | 2.5 | Extended | 11 | Sub-parts: 2.5.1(1), 2.5.2(3), 2.5.3(2), 2.5.4(3), 2.5.5(2) |
-| C | 3.1 | Extended | 8 | Sub-parts: 3.1.1(1), 3.1.2(1), 3.1.3(1), 3.1.4(3) |
-| C | 3.2 | Extended | 13 | Sub-parts: 3.2.1(1), 3.2.2(6), 3.2.3(6) |
-| C | 3.3 | Extended | 5 | Single item |
-| C | 3.4 | Extended | 14 | Sub-parts: 3.4.1(2), 3.4.2(2), 3.4.3(5), 3.4.4(5) |
-| C | 3.5 | Extended | 10 | Sub-parts: 3.5.1(1), 3.5.2(1), 3.5.3(5), 3.5.4(2), 3.5.5(2) |
-| **Total** | **38 items** | | **150 marks** | **VERIFIED** |
+| A | 1.1.1-1.1.10 | MCQ | 2 each = 20 | 10 |
+| A | 1.2.1-1.2.8 | Short | 1 each = 8 | 8 |
+| A | 1.3.1-1.3.3 | Matching | 2 each = 6 | 3 |
+| A | 1.4.1-1.4.3 | Diagram | 8 total | 3 |
+| A | 1.5.1-1.5.4 | Diagram | 8 total | 4 |
+| B | 2.1 | Extended | 8 | 1 |
+| B | 2.2 | Extended | 11 | 1 |
+| B | 2.3 | Extended | 14 | 1 |
+| B | 2.4 | Extended | 6 | 1 |
+| B | 2.5 | Extended | 11 | 1 |
+| C | 3.1 | Extended | 8 | 1 |
+| C | 3.2 | Extended | 13 | 1 |
+| C | 3.3 | Extended | 5 | 1 |
+| C | 3.4 | Extended | 14 | 1 |
+| C | 3.5 | Extended | 10 | 1 |
+| **Total** | **38 items** | | **150 marks** | |
 
-### 4.2 Memo Structure (Same 38 items, with marking guidelines)
+### 4.2 Memo Structure
+- Same 38 items, with marking guidelines
 - Each item linked by question_number
 - Sub-parts have individual marks and answers
 - Parent totals match QP totals
-- **Parser extracts memo text, marks come from parse_expected_structure**
+- Parser extracts memo text, marks come from `parse_expected_structure`
 
 ---
 
-## 5. PARSER IMPLEMENTATION STATUS (UPDATED 2026-06-09)
+## 5. PARSER IMPLEMENTATION STATUS (UPDATED 2026-06-12)
 
-### 5.1 Current Implementation (Comparison Engine Active)
+### 5.1 QP Parser (pdf_parser_structured.js)
 | Component | Approach | Status |
 |-----------|----------|--------|
 | Text Extraction | pdf.js getTextContent() | ✅ Working (items only) |
 | Question Detection | Position + font analysis | ✅ Working |
-| **Marks Extraction** | **REMOVED from parser** | **❌ ABANDONED** |
+| Marks Extraction | REMOVED from parser | ❌ ABANDONED |
 | Section Detection | Font size changes | ✅ Working |
 | Parent-Child | Question number hierarchy | ✅ Working |
-| **Comparison Engine** | **Database-driven validation** | **✅ Auto-corrects + RED flags** |
-| **Manual Review UI** | **React + RED highlighting** | **✅ Editable marks + save** |
-| **Memo Compare** | **QP structure validation** | **✅ Fixed 2026-06-09** |
+| Comparison Engine | Database-driven validation | 🔄 Fix applied, NOT verified |
+| Manual Review UI | React + RED highlighting | 🔄 Fix applied, NOT verified |
 
-### 5.2 Parser Output (What it produces now)
+### 5.2 CAPS Parser (capsPdfParser.js v2.7a)
+| Component | Approach | Status |
+|-----------|----------|--------|
+| Text Extraction | pdf-parse | ✅ Working |
+| Document Type Detection | Header pattern matching | 🔄 Needs verification |
+| Subject Detection | Header text search | ✅ Working (BUSINESS STUDIES detected) |
+| Section 3 Parsing | Teaching Plans extraction | ❌ BROKEN (empty grades) |
+| Section 4 Parsing | Summary Table extraction | ✅ Working but NOT the right source |
+| Grade Block Detection | `Annual Teaching Plan Grade X` | ❌ BROKEN (headers may differ) |
+| Assessment Extraction | Per-term formal assessments | ❌ BROKEN (returns empty) |
+
+### 5.3 Parser Output (What QP parser produces)
 ```json
 {
   "question_number": "1.1.1",
@@ -258,7 +251,7 @@ paper_code VARCHAR(50) NOT NULL DEFAULT ''
 }
 ```
 
-### 5.3 Comparison Engine Logic
+### 5.4 Comparison Engine Logic (NOT VERIFIED AS WORKING)
 ```javascript
 // 1. Parser produces items (no marks)
 // 2. Load expected from parse_expected_structure where paper_code = ?
@@ -273,24 +266,25 @@ paper_code VARCHAR(50) NOT NULL DEFAULT ''
 
 ---
 
-## 6. FILE STRUCTURE (Updated 2026-06-09)
+## 6. FILE STRUCTURE (Updated 2026-06-12)
 
 ```
 C:\dev\nsc-qbank
-├── .env                          (98 bytes)
-├── .env.example                  (94 bytes)
-├── .gitignore                    (Updated: *.sql, *.zip excluded)
-├── COMMIT_LOG.md                 (1062 bytes)
-├── README.md                     (259 bytes)
-├── VERSION.txt                   (182 bytes)
-├── package.json                  (Updated)
-├── package-lock.json             (Updated)
-├── server.js                     (Canonical — imports all routes)
+├── .env                          (Database credentials)
+├── .env.example                  (Template)
+├── .gitignore                    (Git ignore rules)
+├── COMMIT_LOG.md                 (Commit history)
+├── README.md                     (Project readme)
+├── VERSION.txt                   (Version info)
+├── package.json                  (Node dependencies)
+├── package-lock.json             (Locked dependencies)
+├── server.js                     (Main Express server — port 4000)
+├── server.log                    (Server logs)
 │
-├── backend/                      (Legacy — DEPRECATED)
+├── backend/
 │   └── routes/
-│       ├── qbank.js              (Legacy)
-│       └── qbank_1.js            (Legacy)
+│       ├── qbank.js              (Legacy routes)
+│       └── qbank_1.js            (Legacy routes)
 │
 ├── database/
 │   └── migrations/
@@ -301,93 +295,123 @@ C:\dev\nsc-qbank
 │       ├── 010_create_memo_table.sql
 │       ├── 011_corporate_schema.sql
 │       ├── 012_qp_structure_tables.sql
-│       └── **014_complete_qbank_schema.sql**  (**Canonical: 34 tables, 66 FKs**)
+│       ├── 014_complete_qbank_schema.sql  (34 tables)
+│       └── 015_fix_paper_code.sql       (CREATED but NOT APPLIED)
 │
 ├── docs/
-│   ├── AI_Handover_Note_v10.md   (Updated)
-│   ├── QBank_Development_Plan_v7.md (Updated)
-│   ├── **QBank_Discovery_File_v8.md**  (**THIS FILE — Updated schema**)
+│   ├── AI_Handover_Note_v7.md
+│   ├── QBank_Development_Plan_v4.md
+│   ├── QBank_Discovery_File_v6.md
+│   ├── QBank_Handover_Note_v11.md
 │   └── ...
 │
-├── routes/                       (**CANONICAL location for all route files**)
+├── routes/
 │   ├── items.js                  (Item CRUD)
 │   ├── papers.js                 (Paper generation)
-│   ├── pdf_parser_structured.js  (Position-based parser — SIMPLIFIED, no marks)
-│   ├── **compare-qp.js**         (**Comparison engine, auto-correct + RED flags**)
-│   ├── **memo-compare.js**       (**Memo comparison vs QP structure**)
-│   ├── **memo-parser.js**        (**Memo text extraction stub**)
-│   ├── **reviews.js**            (**Review workflow**)
-│   ├── **templates.js**          (**Paper templates**)
+│   ├── pdf_parser_structured.js  (QP parser — WORKING)
+│   ├── compare-qp.js             (Comparison engine — FIX APPLIED, NOT VERIFIED)
+│   ├── capsPdfParser.js          (CAPS parser — v2.7a, BROKEN, empty grades)
 │   ├── qp-structure-extractor.js (Future paper extraction)
 │   ├── specs.js                  (Specs GET)
 │   ├── staging.js                (Staging + memo import)
 │   ├── attachments.js            (Image upload/download)
-│   ├── taxonomy.js               (Curriculum taxonomy)
-│   ├── usage.js                  (Item usage tracking)
-│   ├── versions.js               (Item versioning)
-│   └── workflow.js               (Workflow management)
+│   ├── lookup.js                 (NOT NEEDED — deleted, server.js has dynamic route)
+│   └── memo-compare.js           (Memo comparison — NOT TESTED)
 │
-├── frontend/                     (React + Vite)
-│   ├── src/components/wizard/
-│   │   ├── UploadWizard.tsx      (Test integration with comparison engine)
-│   │   └── **ReviewPanel.tsx**   (**RED error highlighting, editable marks**)
-│   └── src/services/api.ts       (API calls)
+├── frontend/                     (React + Vite + TypeScript)
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   ├── index.html
+│   ├── public/
+│   └── src/
+│       ├── App.tsx               (Main app component — WHITE SCREEN ISSUE)
+│       ├── main.tsx
+│       ├── index.css
+│       ├── components/
+│       │   └── wizard/
+│       │       ├── UploadWizard.tsx    (Subjects, emojis, force_overwrite — FIX APPLIED)
+│       │       └── ReviewPanel.tsx     (RED highlighting, editable marks — FIX APPLIED)
+│       └── services/
+│           └── api.ts            (API calls)
 │
 ├── wizard/                       (Legacy HTML — DEPRECATED)
-│   ├── index.html                (NEEDS REWRITE or removal)
+│   ├── index.html                (Old wizard, NOT used anymore)
 │   └── README.txt
 │
-└── uploads/                      (Image storage)
+├── uploads/                      (Image storage)
+│   └── items/
+│       └── {item_id}/
+│           └── {attachment_id}.png
+│
+├── temp/                         (Temporary files)
+│   └── debug-raw.txt             (CAPS parser diagnostic output)
+│
+├── debug-pdf.js                  (Diagnostic script for CAPS PDF)
+├── show-sections.js            (Section viewer for CAPS PDF)
+├── capsPdfParser_v2.7a_FIXED.js (Backup of v2.7a)
+├── capsPdfParser_v2.7_REAL.js    (Backup with Section 3 logic)
+└── backups/                      (Database backups)
+    └── nsc_qbank_backup_*.sql
 ```
 
-**NOTE:** Root-level `.js` files have been REMOVED. All route files are canonical in `routes/`.
+---
+
+## 7. API ENDPOINTS (Updated 2026-06-12)
+
+### 7.1 Comparison Engine Endpoints (NOT VERIFIED AS WORKING)
+| Method | Endpoint | Description | Status |
+|--------|----------|-------------|--------|
+| POST | `/api/wizard/compare-qp` | Compare parser output against expected structure | 🔄 Fix applied, NOT verified |
+| POST | `/api/wizard/save-corrections` | Save manual corrections from ReviewPanel | 🔄 NOT tested |
+| GET | `/api/wizard/comparison/:session_id` | Retrieve comparison results | 🔄 NOT tested |
+| GET | `/api/wizard/structure/:paper_code` | Get expected structure for paper | 🔄 NOT tested |
+
+### 7.2 Parser Endpoints
+| Method | Endpoint | Description | Status |
+|--------|----------|-------------|--------|
+| POST | `/api/wizard/extract-structure` | Extract items from QP (no marks) | 🔄 Needs paper_code column fix |
+| POST | `/api/wizard/extract-memo` | Extract items from Memo (no marks) | ⚠️ Needs testing |
+
+### 7.3 CAPS Parser Endpoints
+| Method | Endpoint | Description | Status |
+|--------|----------|-------------|--------|
+| POST | `/api/caps/parse` | Parse CAPS PDF and seed database | ❌ BROKEN (empty grades) |
+| GET | `/api/caps/status` | Check CAPS parser status | ⚠️ Unknown |
+
+### 7.4 Lookup Endpoints (VERIFIED WORKING)
+| Method | Endpoint | Description | Status |
+|--------|----------|-------------|--------|
+| GET | `/api/lookup/lookup_subjects` | Get all subjects | ✅ Working |
+| GET | `/api/lookup/:table` | Dynamic lookup route (server.js line 73) | ✅ Working |
+
+### 7.5 Other Endpoints
+| Method | Endpoint | Description | Status |
+|--------|----------|-------------|--------|
+| GET | `/api/items` | Item CRUD | ✅ Active |
+| GET | `/api/papers` | Paper generation | ✅ Active |
+| GET | `/api/specs` | Specifications | ✅ Active |
+| POST | `/api/staging` | Staging import | ✅ Active |
+| POST | `/api/attachments` | Image upload | ✅ Active |
 
 ---
 
-## 7. API ENDPOINTS (Updated 2026-06-09)
+## 8. NEXT STEPS (Priority Order — Updated 2026-06-12)
 
-### 7.1 Comparison Engine Endpoints
-| Method | Endpoint | Description | Status |
-|--------|----------|-------------|--------|
-| POST | `/api/wizard/compare-qp` | Compare parser output against expected structure | ✅ Active |
-| POST | `/api/wizard/save-corrections` | Save manual corrections from ReviewPanel | ✅ Active |
-| GET | `/api/wizard/comparison/:session_id` | Retrieve comparison results | ✅ Active |
-| GET | `/api/wizard/structure/:paper_code` | Get expected structure for paper | ✅ Active |
-
-### 7.2 Memo Comparison Endpoints
-| Method | Endpoint | Description | Status |
-|--------|----------|-------------|--------|
-| POST | `/api/wizard/compare-memo` | Compare memo against QP structure | ✅ Fixed 2026-06-09 |
-| POST | `/api/wizard/extract-memo` | Extract memo text (stub) | ⚠️ Stub |
-
-### 7.3 Parser Endpoints (Simplified)
-| Method | Endpoint | Description | Status |
-|--------|----------|-------------|--------|
-| POST | `/api/wizard/extract-structure` | Extract items from QP (no marks) | ⚠️ Needs testing |
-
----
-
-## 8. NEXT STEPS (Priority Order)
-
-### 8.1 Immediate (Next Session)
-1. **Test full 38-item memo payload** — Verify all aligned/missing/mismatch logic
-2. **Verify frontend wizard integration** — Ensure calls /api/wizard/compare-memo
-3. **Test end-to-end upload** — QP → Parser → Comparison → ReviewPanel → Save
-4. **Test with actual LIFE P1 PDF** — Verify 38 items extracted, 150 marks validated
+### 8.1 Immediate (Today 2026-06-12)
+1. **Fix CAPS parser** — Run diagnostic on real PDF, adjust header patterns
+2. **Fix frontend white screen** — Debug App.tsx, check React Router, verify component imports
+3. **Verify comparison engine fixes** — Run migration 015, copy fixed files, test upload flow
+4. **Test ReviewPanel** — Verify items display after comparison fix
 
 ### 8.2 Short Term (This Week)
-1. Implement memo parser extraction (replace stub)
-2. Add image extraction from PDF (pdf.js canvas API)
-3. Store image references: `[IMAGE: attachment_id]`
-4. Clean up legacy `wizard/index.html` (deprecated)
+1. Complete CAPS data seeding for all subjects (not just Life Sciences)
+2. Populate `lookup_caps_subtopics` table
+3. Test memo parser comparison
+4. Add image extraction from PDF (pdf.js canvas API)
+5. Store image references: `[IMAGE: attachment_id]`
 
-### 8.3 Natural Keys (Option 2)
-1. Change lookup_subjects PK to subject_official_code (VARCHAR)
-2. Change lookup_papers PK to paper_no (INT)
-3. Change lookup_assessment_bodies PK to assessment_origin (VARCHAR)
-4. Update ALL FK references across 34 tables
-
-### 8.4 Testing Criteria
+### 8.3 Testing Criteria (MUST PASS BEFORE CLAIMING SUCCESS)
 | Test | Expected | Pass Criteria |
 |------|----------|---------------|
 | QP Item Count | 38 | Exactly 38 items |
@@ -398,6 +422,8 @@ C:\dev\nsc-qbank
 | Comparison Engine | Auto-correct | ≤2× variance auto-corrected |
 | RED Flags | Manual review | >2× variance or missing items flagged |
 | Save Corrections | Audit trail | Corrected marks saved to parse_results |
+| CAPS Parser | Grades array | Returns non-empty grades with assessments |
+| Frontend | No white screen | All pages render correctly |
 
 ---
 
@@ -408,42 +434,14 @@ C:\dev\nsc-qbank
 - **Manual review is REQUIRED** — AI cannot reliably parse DBE PDF marks
 - **Same process for Memo** — Use QP structure as reference for memo validation
 - **Test with real papers** — Validate with actual DBE exam papers
-- **Canonical file location: routes/** — No root-level route files
-- **Database migration: 014_complete_qbank_schema.sql** — Single source of truth
-
----
-
-## 10. NATURAL KEYS IMPLEMENTATION (OPTION 2 - NEXT PHASE)
-
-### 10.1 Problem
-Current schema uses surrogate keys (INT auto-increment) that don't match the source system:
-- subject_id (INT) vs subject_official_code (VARCHAR) in nsc_registration_v3
-- paper_id (INT) vs paper_no (INT) in nsc_registration_v3
-- assessment_body_id (INT) vs assessment_origin (VARCHAR) in nsc_registration_v3
-
-### 10.2 Solution
-Change ALL dimension tables to use natural keys as primary keys:
-- lookup_subjects: subject_official_code (VARCHAR) as PK
-- lookup_papers: paper_no (INT) as PK
-- lookup_assessment_bodies: assessment_origin (VARCHAR) as PK
-
-### 10.3 Impact
-**Tables requiring FK updates:**
-- item_master, item_staging, item_attachments, item_tags, item_versions, item_reviews
-- parse_sessions, parse_expected_structure, parse_results
-- paper_templates, paper_template_sections, generated_papers, generated_paper_items
-- review_workflow, review_workflow_history
-- All other tables referencing the 6 core dimensions
-
-### 10.4 Benefits
-- Self-documenting codes throughout all tables
-- No mapping layer between QBank and registration system
-- Direct alignment with nsc_registration_v3.subject_structure
-- Simpler queries without joins for basic identification
+- **Routes may be broken** — Previous AI sessions may have broken routes, verify first
+- **Always backup before changes** — Use mysqldump before any SQL execution
+- **PowerShell rule:** Use Set-Content with array of single-quoted strings for TS files
+- **Database name is nsc_qbank** — NOT spd or spd_system
+- **Natural keys NOT yet implemented** — Still using surrogate keys (INT auto-increment)
 
 ---
 
 *End of Discovery File v8.0 — Corporate Edition*
-*Schema updated: 34 tables, 66 FKs, canonical file structure*
-*Memo compare fixed: paper_code column added, FK columns made nullable*
-*Root files cleaned: all routes canonical in routes/ directory*
+*Parser v2.7a deployed but broken, Comparison engine fix applied but not verified*
+*Date: 2026-06-12 08:11*
