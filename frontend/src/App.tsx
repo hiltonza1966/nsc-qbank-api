@@ -1,108 +1,41 @@
-import React, { useState } from 'react';
-import UploadWizard from './components/wizard/UploadWizard';
-import Dashboard from './components/Dashboard';
-import CAPSManualLinker from './components/curriculum/CAPSManualLinker';
-import CAPSParseWizard from './components/caps/CAPSParseWizard';
-import CapsReviewDashboard from './components/CapsReviewDashboard';
-const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'caps' | 'caps-wizard' | 'caps-review'>('upload');
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import Layout from './components/Layout';
+import ItemStudio from './pages/ItemStudio';
+import ItemReview from './pages/ItemReview';
+import PaperBuilder from './pages/PaperBuilder';
+import PaperModeration from './pages/PaperModeration';
+import Dashboard from './pages/Dashboard';
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      retry: 2
+    }
+  }
+});
+
+function App() {
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>QBank Corporate System</h1>
-        <p>Question Paper Validation & Comparison Engine</p>
-        <nav className="app-nav">
-          <button 
-            className={activeTab === 'upload' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setActiveTab('upload')}
-          >
-            📄 Upload & Validate
-          </button>
-          <button 
-            className={activeTab === 'dashboard' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            📊 Dashboard
-          </button>
-          <button 
-            className={activeTab === 'caps' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setActiveTab('caps')}
-          >
-            🔗 CAPS Linker
-          </button>
-          <button 
-            className={activeTab === 'caps-wizard' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setActiveTab('caps-wizard')}
-          >
-            🧙 CAPS Wizard
-          </button>
-          <button 
-            className={activeTab === 'caps-review' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setActiveTab('caps-review')}
-          >
-            📋 CAPS Review
-          </button>
-        </nav>
-      </header>
-      <main>
-        {activeTab === 'upload' && <UploadWizard />}
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'caps' && <CAPSManualLinker />}
-        {activeTab === 'caps-wizard' && <CAPSParseWizard />}
-        {activeTab === 'caps-review' && <CapsReviewDashboard />}
-      </main>
-
-      <style>{`{
-        .app {
-          min-height: 100vh;
-          background: #f5f5f5;
-        }
-        .app-header {
-          background: #1a1a2e;
-          color: white;
-          padding: 15px 20px;
-          text-align: center;
-        }
-        .app-header h1 {
-          margin: 0 0 5px 0;
-          font-size: 22px;
-        }
-        .app-header p {
-          margin: 0 0 15px 0;
-          opacity: 0.8;
-          font-size: 14px;
-        }
-        .app-nav {
-          display: flex;
-          justify-content: center;
-          gap: 10px;
-          margin-top: 10px;
-        }
-        .nav-btn {
-          background: transparent;
-          color: white;
-          border: 2px solid rgba(255,255,255,0.3);
-          padding: 8px 20px;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 14px;
-          transition: all 0.2s;
-        }
-        .nav-btn:hover {
-          background: rgba(255,255,255,0.1);
-          border-color: rgba(255,255,255,0.5);
-        }
-        .nav-btn.active {
-          background: #3498db;
-          border-color: #3498db;
-        }
-        main {
-          padding: 20px;
-        }
-      }`}</style>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="items" element={<ItemStudio />} />
+            <Route path="items/:itemId" element={<ItemStudio />} />
+            <Route path="reviews" element={<ItemReview />} />
+            <Route path="papers" element={<PaperBuilder />} />
+            <Route path="papers/:paperId" element={<PaperBuilder />} />
+            <Route path="moderation/:paperId" element={<PaperModeration />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
-};
+}
 
 export default App;

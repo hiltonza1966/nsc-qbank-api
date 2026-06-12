@@ -1,65 +1,83 @@
-﻿const API_BASE = "http://localhost:4000";
+const API_BASE = 'http://localhost:4000/api/qbank';
 
-export const api = {
-  get: async (url: string): Promise<any> => {
-    const token = localStorage.getItem("token");
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = "Bearer " + token;
-    const res = await fetch(API_BASE + url, { headers });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
-  },
-  post: async (url: string, body: any): Promise<any> => {
-    const token = localStorage.getItem("token");
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = "Bearer " + token;
-    const res = await fetch(API_BASE + url, { method: "POST", headers, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
-  },
-  put: async (url: string, body: any): Promise<any> => {
-    const token = localStorage.getItem("token");
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = "Bearer " + token;
-    const res = await fetch(API_BASE + url, { method: "PUT", headers, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
-  },
-  delete: async (url: string): Promise<any> => {
-    const token = localStorage.getItem("token");
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = "Bearer " + token;
-    const res = await fetch(API_BASE + url, { method: "DELETE", headers });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
-  }
+const defaultHeaders = {
+  'Content-Type': 'application/json',
+  'x-user-id': '1',
+  'x-user-role': 'admin'
 };
 
-export async function compareQP(payload: any): Promise<any> {
-  const res = await fetch(API_BASE + "/api/wizard/compare-qp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+async function apiFetch(url: string, options: RequestInit = {}) {
+  const response = await fetch(`${API_BASE}${url}`, {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers
+    }
   });
-  if (!res.ok) throw new Error("Comparison failed");
-  return res.json();
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
 }
 
-export async function getComparisonResults(sessionId: string): Promise<any> {
-  const res = await fetch(API_BASE + "/api/wizard/comparison/" + sessionId);
-  if (!res.ok) throw new Error("Failed to load results");
-  return res.json();
-}
+// Items API
+export const itemsApi = {
+  list: (params?: Record<string, string>) => {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return apiFetch(`/items${query}`);
+  },
+  get: (id: string) => apiFetch(`/items/${id}`),
+  create: (data: any) => apiFetch('/items', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => apiFetch(`/items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  submit: (id: string) => apiFetch(`/items/${id}/submit`, { method: 'POST' }),
+  approve: (id: string, data?: any) => apiFetch(`/items/${id}/approve`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  reject: (id: string, data?: any) => apiFetch(`/items/${id}/reject`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  transition: (id: string, toState: string, reason?: string) => 
+    apiFetch(`/items/${id}/transition`, { method: 'POST', body: JSON.stringify({ to_state: toState, reason }) }),
+  getWorkflow: (id: string) => apiFetch(`/items/${id}/workflow`),
+  getVersions: (id: string) => apiFetch(`/items/${id}/versions`),
+  snapshot: (id: string) => apiFetch(`/items/${id}/snapshot`, { method: 'POST' }),
+  rollback: (id: string, versionId: number) => apiFetch(`/items/${id}/rollback`, { method: 'POST', body: JSON.stringify({ version_id: versionId }) }),
+  getReviews: (id: string) => apiFetch(`/items/${id}/reviews`),
+  addReview: (id: string, data: any) => apiFetch(`/items/${id}/reviews`, { method: 'POST', body: JSON.stringify(data) }),
+  pending: () => apiFetch('/items/pending')
+};
 
-export async function saveCorrections(sessionId: string, corrections: any[]): Promise<any> {
-  const res = await fetch(API_BASE + "/api/wizard/save-corrections", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, corrections })
-  });
-  if (!res.ok) throw new Error("Failed to save corrections");
-  return res.json();
-}
+// Papers API
+export const papersApi = {
+  list: (params?: Record<string, string>) => {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return apiFetch(`/papers${query}`);
+  },
+  get: (id: string) => apiFetch(`/papers/${id}`),
+  generate: (data: any) => apiFetch('/papers/generate', { method: 'POST', body: JSON.stringify(data) }),
+  assemble: (data: any) => apiFetch('/papers/assemble', { method: 'POST', body: JSON.stringify(data) }),
+  submit: (id: string) => apiFetch(`/papers/${id}/submit`, { method: 'POST' }),
+  approve: (id: string, data?: any) => apiFetch(`/papers/${id}/approve`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  reject: (id: string, data?: any) => apiFetch(`/papers/${id}/reject`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  validate: (id: string) => apiFetch(`/papers/${id}/validate`, { method: 'POST' }),
+  export: (id: string, format: string) => apiFetch(`/papers/${id}/export`, { method: 'POST', body: JSON.stringify({ format }) }),
+  getWorkflow: (id: string) => apiFetch(`/papers/${id}/workflow`),
+  getApprovals: (id: string) => apiFetch(`/papers/${id}/approvals`)
+};
 
-export default api;
+// Templates API
+export const templatesApi = {
+  list: (params?: Record<string, string>) => {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return apiFetch(`/templates${query}`);
+  },
+  get: (id: string) => apiFetch(`/templates/${id}`),
+  create: (data: any) => apiFetch('/templates', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => apiFetch(`/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => apiFetch(`/templates/${id}`, { method: 'DELETE' }),
+  clone: (id: string) => apiFetch(`/templates/${id}/clone`, { method: 'POST' })
+};
 
+// Lookup API
+export const lookupApi = {
+  getTable: (table: string) => apiFetch(`/lookup/${table}`)
+};

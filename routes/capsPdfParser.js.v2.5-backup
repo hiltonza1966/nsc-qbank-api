@@ -1,9 +1,8 @@
 /**
- * Generic CAPS PDF Parser — routes/capsPdfParser.js (v2.7 REAL-PDF)
- * Fixed: Parses from Section 3 (Teaching Plans) where actual assessment data lives
- * Fixed: Handles "Form of assessmentAssignmentTest" concatenated format
- * Fixed: Extracts marks from "Total marks50100" concatenated format
- * Fixed: Calculates weightings using CAPS formulas
+ * Generic CAPS PDF Parser — routes/capsPdfParser.js (v2.5 HYBRID)
+ * Approach: LLM-style structure extraction + rule-based marks/weighting calculation
+ * Fixed: Handles concatenated text from pdf-parse, calculates marks from CAPS rules
+ * Fixed: Document type detection requires explicit "Annual Teaching Plan" header
  */
 
 const pdf = require('pdf-parse');
@@ -16,7 +15,26 @@ const CAPS_WEIGHTINGS = {
   12: { sba: 25, exam: null, external: 50, trial: 25 },
 };
 
-const VALID_CAPS_MARKS = new Set([50, 100, 150, 200]);
+const KNOWN_MARKS = {
+  'assignment': 50,
+  'test': 100,
+  'presentation': 50,
+  'project': 100,
+  'practical task': 50,
+  'practical examination': 50,
+  'control test': 50,
+  'data handling': 50,
+  'mapwork task': 50,
+  'research task': 100,
+  'written report': 50,
+  'case study': 50,
+  'fieldwork': 50,
+  'oral': 50,
+  'mid-year examination': 200,
+  'end-of-year examination': 200,
+  'trial examination': 200,
+  'examination': 150,
+};
 
 const ASSESSMENT_TYPES = [
   { type: 'trial_examination', regex: /trial\s+examination/i, is_exam: true, is_practical: false },
@@ -106,7 +124,7 @@ class CapsPdfParser {
       subject_official_code: this.subjectCode,
       source_document: path.basename(pdfPath),
       extracted_at: new Date().toISOString(),
-      parser_version: '2.7.0',
+      parser_version: '2.5.0',
       document_type: this.documentType
     };
   }
@@ -140,7 +158,18 @@ class CapsPdfParser {
       return;
     }
 
-    // Default: Assessment Programme
+    const section4Text = this._extractSection4();
+    if (section4Text) {
+      this.documentType = 'assessment_programme';
+      return;
+    }
+
+    if (/Grade\s*10.*Programme.*Term.*assessment/is.test(this.rawText) ||
+        /GRADE\s*10.*PROGRAMME.*Term.*assessment/is.test(this.rawText)) {
+      this.documentType = 'assessment_programme';
+      return;
+    }
+
     this.documentType = 'assessment_programme';
   }
 
@@ -149,6 +178,7 @@ class CapsPdfParser {
   // ============================================================================
 
   _detectSubject() {
+    // Check first 50 lines for subject name
     for (let i = 0; i < Math.min(50, this.lines.length); i++) {
       const line = this.lines[i];
 
@@ -160,7 +190,8 @@ class CapsPdfParser {
       }
 
       // Pattern 2: Subject on previous line, GRADES on current line
-      if (line === 'GRADES 10-12' && i > 0) {
+      const gradesMatch = line.match(/^GRADES\s+10[-–]12/i);
+      if (gradesMatch && i > 0) {
         const prevLine = this.lines[i - 1];
         if (prevLine.match(/^[A-Z][A-Z\s]+$/)) {
           this.subjectName = prevLine.trim().replace(/\s+/g, ' ');
@@ -170,13 +201,15 @@ class CapsPdfParser {
 
       // Pattern 3: Single-word subject followed by GRADES
       if (line.match(/^[A-Z]+$/) && i + 1 < this.lines.length) {
-        if (this.lines[i + 1].startsWith('GRADES')) {
+        const nextLine = this.lines[i + 1];
+        if (nextLine.match(/^GRADES\s+10[-–]12/i)) {
           this.subjectName = line.trim();
           break;
         }
       }
     }
 
+    // Fix corruption
     if (this.subjectName) {
       const upperName = this.subjectName.toUpperCase();
       for (const [corrupted, fixed] of Object.entries(SUBJECT_CORRUPTION_FIXES)) {
@@ -187,6 +220,7 @@ class CapsPdfParser {
       }
     }
 
+    // Fallback: search all subjects
     if (!this.subjectName) {
       const subjects = [
         'LIFE SCIENCES', 'ACCOUNTING', 'MATHEMATICS', 'PHYSICAL SCIENCES',
@@ -208,227 +242,13 @@ class CapsPdfParser {
   }
 
   // ============================================================================
-  // ASSESSMENT PROGRAMME PARSER (v2.7 - parses from Section 3 Teaching Plans)
-  // ============================================================================
-
-  _parseAssessmentProgramme() {
-    // Parse from Section 3 (Teaching Plans) where actual assessment data lives
-    let grades = this._parseFromTeachingPlans();
-
-    // Fallback: try Section 4 if teaching plans yield nothing
-    if (grades.length === 0) {
-      grades = this._parseFromSection4();
-    }
-
-    return { grades: grades };
-  }
-
-  _parseFromTeachingPlans() {
-    const grades = [];
-
-    for (const gradeNum of [10, 11, 12]) {
-      const gradeData = this._parseGradeFromTeachingPlans(gradeNum);
-      if (gradeData && gradeData.assessments.length > 0) {
-        grades.push(gradeData);
-      }
-    }
-
-    return grades;
-  }
-
-  _parseGradeFromTeachingPlans(gradeNum) {
-    // Find "Annual Teaching Plan Grade X" or "Summary of Annual Teaching Plan Grade X"
-    const headerPatterns = [
-      new RegExp(`Annual\s+Teaching\s+Plan\s+Grade\s+${gradeNum}`, 'i'),
-      new RegExp(`Summary\s+of\s+Annual\s+Teaching\s+Plan\s+Grade\s+${gradeNum}`, 'i'),
-    ];
-
-    let gradeStart = -1;
-    for (let i = 0; i < this.lines.length; i++) {
-      for (const pattern of headerPatterns) {
-        if (pattern.test(this.lines[i])) {
-          gradeStart = i;
-          break;
-        }
-      }
-      if (gradeStart !== -1) break;
-    }
-
-    if (gradeStart === -1) {
-      return null;
-    }
-
-    // Find end of this grade's teaching plan
-    const nextGradePatterns = [
-      new RegExp(`Annual\s+Teaching\s+Plan\s+Grade\s+${gradeNum + 1}`, 'i'),
-      new RegExp(`Summary\s+of\s+Annual\s+Teaching\s+Plan\s+Grade\s+${gradeNum + 1}`, 'i'),
-    ];
-    const section4Pattern = /seCtion\s+4/i;
-
-    let gradeEnd = this.lines.length;
-    for (let i = gradeStart + 1; i < this.lines.length; i++) {
-      for (const pattern of nextGradePatterns) {
-        if (pattern.test(this.lines[i])) {
-          gradeEnd = i;
-          break;
-        }
-      }
-      if (section4Pattern.test(this.lines[i])) {
-        gradeEnd = i;
-        break;
-      }
-      if (gradeEnd !== this.lines.length) break;
-    }
-
-    const gradeLines = this.lines.slice(gradeStart, gradeEnd);
-
-    // Extract term blocks from this grade's teaching plan
-    const assessments = [];
-
-    for (let i = 0; i < gradeLines.length; i++) {
-      const termMatch = gradeLines[i].match(/term\s*(\d)\s*:\s*Formal\s*assessment/i);
-      if (!termMatch) continue;
-
-      const termNum = termMatch[1];
-
-      // Find Form of assessment line (within next 5 lines)
-      let formIdx = -1;
-      for (let j = i; j < Math.min(i + 5, gradeLines.length); j++) {
-        if (/Form\s*of\s*assessment/i.test(gradeLines[j])) {
-          formIdx = j;
-          break;
-        }
-      }
-
-      if (formIdx === -1) continue;
-
-      // Find Total marks line (within next 5 lines after Form)
-      let marksIdx = -1;
-      for (let j = formIdx; j < Math.min(formIdx + 5, gradeLines.length); j++) {
-        if (/Total\s*marks/i.test(gradeLines[j])) {
-          marksIdx = j;
-          break;
-        }
-      }
-
-      if (marksIdx === -1) continue;
-
-      // Extract names from Form of assessment line
-      const formLine = gradeLines[formIdx];
-      const namesText = formLine.replace(/Form\s*of\s*assessment/i, '').trim();
-      const names = this._splitConcatenatedNames(namesText);
-
-      // Extract marks from Total marks line
-      const marksLine = gradeLines[marksIdx];
-      const marksText = marksLine.replace(/Total\s*marks/i, '').trim();
-      const marks = this._extractMarksFromString(marksText);
-
-      // Build assessments for this term
-      for (let idx = 0; idx < names.length; idx++) {
-        const name = names[idx];
-        const rawMark = marks[idx] || this._guessMark(name);
-        const weight = this._calculateWeighting(rawMark, gradeNum);
-
-        const typeInfo = this._determineAssessmentType(name);
-
-        assessments.push({
-          assessment_type: typeInfo.type,
-          assessment_name: name,
-          term: termNum,
-          raw_marks: rawMark,
-          weighting_percent: weight,
-          duration_hours: null,
-          is_examination: typeInfo.is_exam,
-          is_formal: true,
-          is_practical: typeInfo.is_practical,
-          is_compulsory: true
-        });
-      }
-    }
-
-    if (assessments.length === 0) {
-      return null;
-    }
-
-    const weightConfig = CAPS_WEIGHTINGS[gradeNum];
-
-    return {
-      grade_value: gradeNum,
-      sba_weighting: weightConfig.sba,
-      exam_weighting: weightConfig.exam,
-      external_weighting: weightConfig.external,
-      trial_weighting: weightConfig.trial,
-      assessments: assessments
-    };
-  }
-
-  _parseFromSection4() {
-    // Fallback: parse from Section 4 summary table
-    const section4Text = this._extractSection4();
-    if (!section4Text) return [];
-
-    const grades = [];
-    for (const gradeNum of [10, 11, 12]) {
-      const gradeData = this._parseGradeFromSection4(section4Text, gradeNum);
-      if (gradeData && gradeData.assessments.length > 0) {
-        grades.push(gradeData);
-      }
-    }
-    return grades;
-  }
-
-  _parseGradeFromSection4(section4Text, gradeNum) {
-    const block = this._extractGradeBlock(section4Text, gradeNum);
-    if (!block) return null;
-
-    const names = this._extractAssessmentNames(block);
-    const marks = this._extractMarksSmart(block, names.length);
-    const weightings = this._extractWeightings(block, names.length);
-
-    const assessments = [];
-    for (let i = 0; i < names.length; i++) {
-      const name = names[i];
-      const term = (i % 4) + 1;
-      const rawMark = marks[i] || this._guessMark(name);
-      const weight = weightings[i] || this._calculateWeighting(rawMark, gradeNum);
-
-      const typeInfo = this._determineAssessmentType(name);
-
-      assessments.push({
-        assessment_type: typeInfo.type,
-        assessment_name: name,
-        term: term.toString(),
-        raw_marks: rawMark,
-        weighting_percent: weight,
-        duration_hours: null,
-        is_examination: typeInfo.is_exam,
-        is_formal: true,
-        is_practical: typeInfo.is_practical,
-        is_compulsory: true
-      });
-    }
-
-    const weightConfig = CAPS_WEIGHTINGS[gradeNum];
-
-    return {
-      grade_value: gradeNum,
-      sba_weighting: weightConfig.sba,
-      exam_weighting: weightConfig.exam,
-      external_weighting: weightConfig.external,
-      trial_weighting: weightConfig.trial,
-      assessments: assessments
-    };
-  }
-
-  // ============================================================================
-  // SECTION 4 EXTRACTION (Fallback)
+  // SECTION 4 EXTRACTION
   // ============================================================================
 
   _extractSection4() {
     const fullText = this.rawText;
     const patterns = [
       /SECTION\s+4/i,
-      /seCtion\s+4/i,
       /4\.4\s+Programme\s+of\s+Assessment/i,
       /Assessment\s+in\s+/i,
       /PROGRAMME\s+OF\s+ASSESSMENT/i,
@@ -443,6 +263,21 @@ class CapsPdfParser {
       }
     }
 
+    if (startIdx === -1) {
+      const fallbackPatterns = [
+        /Programme\s+of\s+(?:Formal\s+)?Assessment/i,
+        /GRADE\s+10\s+PROGRAMME/i,
+        /Grade\s+10\s+Programme\s+of\s+Assessment/i,
+      ];
+      for (const pattern of fallbackPatterns) {
+        const match = fullText.search(pattern);
+        if (match !== -1) {
+          startIdx = match;
+          break;
+        }
+      }
+    }
+
     if (startIdx === -1) return null;
 
     const endPatterns = [
@@ -451,6 +286,7 @@ class CapsPdfParser {
       /4\.7\s+Moderation/i,
       /ANNEXURE/i,
       /GLOSSARY/i,
+      /SECTION\s+5/i,
     ];
 
     const lastGradeMatch = fullText.search(/GRADE\s+12\s+PROGRAMME/i);
@@ -474,6 +310,42 @@ class CapsPdfParser {
     return fullText.substring(startIdx, endIdx);
   }
 
+  // ============================================================================
+  // ASSESSMENT PROGRAMME PARSER (HYBRID)
+  // ============================================================================
+
+  _parseAssessmentProgramme() {
+    const section4Text = this._extractSection4();
+    let grades = [];
+
+    if (section4Text) {
+      grades = this._parseGradeBlocks(section4Text);
+    }
+
+    if (grades.length === 0) {
+      grades = this._parseGradeBlocksFromFullText();
+    }
+
+    return { grades: grades };
+  }
+
+  _parseGradeBlocks(sectionText) {
+    const grades = [];
+    const gradeNumbers = [10, 11, 12];
+
+    for (const gradeNum of gradeNumbers) {
+      const gradeBlock = this._extractGradeBlock(sectionText, gradeNum);
+      if (gradeBlock) {
+        const gradeData = this._parseSingleGrade(gradeBlock, gradeNum);
+        if (gradeData.assessments.length > 0) {
+          grades.push(gradeData);
+        }
+      }
+    }
+
+    return grades;
+  }
+
   _extractGradeBlock(text, gradeNum) {
     const allMatches = [];
 
@@ -489,6 +361,12 @@ class CapsPdfParser {
       allMatches.push(capsMatch.index);
     }
 
+    const titlePattern = new RegExp(`Grade\s+${gradeNum}\s*[:\.]?\s*Programme\s+of\s+(?:Formal\s+)?Assessment`, 'gi');
+    let titleMatch;
+    while ((titleMatch = titlePattern.exec(text)) !== null) {
+      allMatches.push(titleMatch.index);
+    }
+
     if (allMatches.length === 0) return null;
 
     allMatches.sort((a, b) => a - b);
@@ -498,7 +376,10 @@ class CapsPdfParser {
     const endPatterns = [
       new RegExp(`the\s+Programme\s+of\s+(?:Formal\s+)?Assessment\s+in\s+Grade\s+${nextGrade}`, 'i'),
       new RegExp(`GRADE\s+${nextGrade}\s+PROGRAMME`, 'i'),
+      new RegExp(`Grade\s+${nextGrade}\s*[:\.]?\s*Programme`, 'i'),
       /4\.5\s+End-of-year/i,
+      /4\.6\s+Recording/i,
+      /4\.7\s+Moderation/i,
     ];
 
     let endIdx = text.length;
@@ -510,16 +391,73 @@ class CapsPdfParser {
       }
     }
 
-    return text.substring(startIdx, endIdx);
+    const block = text.substring(startIdx, endIdx);
+
+    const hasTerm = /Term\s*\d/i.test(block);
+    const hasTest = /test\b/i.test(block);
+    const hasExam = /examination\b/i.test(block);
+    const hasAssessment = /assessment\b/i.test(block);
+    const hasMarks = /\d{2,3}/.test(block);
+
+    if (!hasTerm && !hasTest && !hasExam && !hasAssessment && !hasMarks) {
+      return null;
+    }
+
+    return block;
   }
 
-  // ============================================================================
-  // NAME EXTRACTION (Concatenated names like "AssignmentTest")
-  // ============================================================================
+  _parseSingleGrade(gradeBlock, gradeNum) {
+    const weightConfig = CAPS_WEIGHTINGS[gradeNum];
+
+    // Extract assessment names
+    const names = this._extractAssessmentNames(gradeBlock);
+    if (!names || names.length === 0) {
+      return { grade_value: gradeNum, assessments: [], ...weightConfig };
+    }
+
+    // Calculate marks using CAPS rules
+    const marks = names.map(name => this._guessMark(name));
+
+    // Calculate weightings using CAPS formulas
+    const weightings = marks.map(mark => this._calculateWeighting(mark, gradeNum));
+
+    // Build assessments
+    const assessments = [];
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      const term = (i % 4) + 1;
+      const rawMark = marks[i];
+      const weight = weightings[i];
+
+      const typeInfo = this._determineAssessmentType(name);
+
+      assessments.push({
+        assessment_type: typeInfo.type,
+        assessment_name: name,
+        term: term.toString(),
+        raw_marks: rawMark,
+        weighting_percent: weight,
+        duration_hours: null,
+        is_examination: typeInfo.is_exam,
+        is_formal: true,
+        is_practical: typeInfo.is_practical,
+        is_compulsory: true
+      });
+    }
+
+    return {
+      grade_value: gradeNum,
+      sba_weighting: weightConfig.sba,
+      exam_weighting: weightConfig.exam,
+      external_weighting: weightConfig.external,
+      trial_weighting: weightConfig.trial,
+      assessments: assessments
+    };
+  }
 
   _extractAssessmentNames(gradeBlock) {
     const lines = gradeBlock.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    const nameLines = [];
+    const names = [];
     let inNames = false;
 
     for (const line of lines) {
@@ -535,15 +473,16 @@ class CapsPdfParser {
         if (line.match(/^term\s*\d/i)) {
           continue;
         }
-        nameLines.push(line);
+
+        const lineNames = this._splitConcatenatedNames(line);
+        names.push(...lineNames);
       }
     }
 
-    const concatenated = nameLines.join(' ');
-    return this._splitConcatenatedNames(concatenated);
+    return names;
   }
 
-  _splitConcatenatedNames(text) {
+  _splitConcatenatedNames(line) {
     const knownTypes = [
       'mid-year examination', 'end-of-year examination', 'trial examination',
       'practical examination', 'practical task', 'control test',
@@ -553,7 +492,7 @@ class CapsPdfParser {
     ];
 
     const names = [];
-    let remaining = text.toLowerCase().trim();
+    let remaining = line.toLowerCase();
 
     while (remaining.length > 0) {
       let matched = false;
@@ -574,66 +513,17 @@ class CapsPdfParser {
       }
     }
 
-    return names.length > 0 ? names : [text.trim()];
-  }
-
-  // ============================================================================
-  // MARK EXTRACTION (Concatenated digits like "50100")
-  // ============================================================================
-
-  _extractMarksFromString(text) {
-    const marks = [];
-    let remaining = text.replace(/\s/g, '').replace(/\t/g, '');
-
-    while (remaining && marks.length < 10) {
-      let found = false;
-      for (const length of [3, 2]) {
-        if (remaining.length >= length) {
-          const num = parseInt(remaining.substring(0, length));
-          if (VALID_CAPS_MARKS.has(num)) {
-            marks.push(num);
-            remaining = remaining.substring(length);
-            found = true;
-            break;
-          }
-        }
-      }
-
-      if (!found) {
-        remaining = remaining.substring(1);
-      }
-    }
-
-    return marks;
-  }
-
-  _extractMarksSmart(gradeBlock, expectedCount) {
-    const lines = gradeBlock.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    let inMarks = false;
-    let digitString = '';
-
-    for (const line of lines) {
-      if (line.match(/^Total\s*marks/i)) {
-        inMarks = true;
-        const digits = line.replace(/[^0-9]/g, '');
-        digitString += digits;
-        continue;
-      }
-
-      if (inMarks) {
-        if (line.match(/^Convert\s*to/i) || line.match(/^mark\s*out\s*of/i)) {
-          break;
-        }
-        const digits = line.replace(/[^0-9]/g, '');
-        digitString += digits;
-      }
-    }
-
-    return this._extractMarksFromString(digitString);
+    return names.length > 0 ? names : [line.trim()];
   }
 
   _guessMark(name) {
     const lowerName = name.toLowerCase();
+
+    for (const [pattern, mark] of Object.entries(KNOWN_MARKS)) {
+      if (lowerName.includes(pattern)) {
+        return mark;
+      }
+    }
 
     if (lowerName.includes('examination') || lowerName.includes('exam')) {
       return 150;
@@ -647,14 +537,6 @@ class CapsPdfParser {
       return 100;
     } else if (lowerName.includes('presentation')) {
       return 50;
-    } else if (lowerName.includes('report')) {
-      return 50;
-    } else if (lowerName.includes('data handling')) {
-      return 50;
-    } else if (lowerName.includes('mapwork')) {
-      return 50;
-    } else if (lowerName.includes('research')) {
-      return 100;
     }
 
     return 50;
@@ -663,50 +545,18 @@ class CapsPdfParser {
   _calculateWeighting(mark, gradeNum) {
     if (!mark || mark <= 0) return 0;
 
+    // Standard CAPS conversions
     if (mark === 50) return 10;
     if (mark === 100) return 20;
     if (mark === 150) return 75;
     if (mark === 200) return 100;
 
+    // Fallback calculation
     if (mark >= 150) {
       return Math.round(mark / 2);
     } else {
       return Math.round(mark / 5);
     }
-  }
-
-  // ============================================================================
-  // WEIGHTING EXTRACTION
-  // ============================================================================
-
-  _extractWeightings(gradeBlock, expectedCount) {
-    const lines = gradeBlock.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    let inWeights = false;
-    const weightLines = [];
-
-    for (const line of lines) {
-      if (line.match(/^Convert\s*to/i) || line.match(/^mark\s*out\s*of/i)) {
-        inWeights = true;
-        weightLines.push(line);
-        continue;
-      }
-
-      if (inWeights) {
-        if (line.match(/^the\s+Programme/i) || line.match(/^4\./)) {
-          break;
-        }
-        weightLines.push(line);
-      }
-    }
-
-    const weightText = weightLines.join(' ');
-    const weightings = [];
-    const matches = [...weightText.matchAll(/(\d+)\s*\(/g)];
-    for (const match of matches) {
-      weightings.push(parseInt(match[1]));
-    }
-
-    return weightings;
   }
 
   _determineAssessmentType(name) {
@@ -724,6 +574,23 @@ class CapsPdfParser {
     }
 
     return { type: 'test', is_exam: false, is_practical: false };
+  }
+
+  _parseGradeBlocksFromFullText() {
+    const grades = [];
+    const gradeNumbers = [10, 11, 12];
+
+    for (const gradeNum of gradeNumbers) {
+      const gradeBlock = this._extractGradeBlock(this.rawText, gradeNum);
+      if (gradeBlock) {
+        const gradeData = this._parseSingleGrade(gradeBlock, gradeNum);
+        if (gradeData.assessments.length > 0) {
+          grades.push(gradeData);
+        }
+      }
+    }
+
+    return grades;
   }
 
   // ============================================================================
