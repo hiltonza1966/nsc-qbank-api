@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 // Wizard steps
@@ -19,6 +19,46 @@ const WizardPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Form fields for QP upload
+  const [subjectCode, setSubjectCode] = useState('');
+  const [paperNo, setPaperNo] = useState('1');
+  const [year, setYear] = useState('2025');
+  const [grade, setGrade] = useState('12');
+  const [assessmentType, setAssessmentType] = useState('EXAM');
+  const [assessmentBody, setAssessmentBody] = useState('DBE');
+
+  // Lookup data
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [papers, setPapers] = useState<any[]>([]);
+  const [years, setYears] = useState<any[]>([]);
+  const [grades, setGrades] = useState<any[]>([]);
+  const [assessmentTypes, setAssessmentTypes] = useState<any[]>([]);
+  const [assessmentBodies, setAssessmentBodies] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchLookups();
+  }, []);
+
+  async function fetchLookups() {
+    try {
+      const headers = { 'x-user-role': localStorage.getItem('qbank_role') || 'author' };
+      const [subjRes, paperRes, yearRes, gradeRes, typeRes, bodyRes] = await Promise.all([
+        fetch('/api/lookup/lookup_subjects', { headers }),
+        fetch('/api/lookup/lookup_papers', { headers }),
+        fetch('/api/lookup/lookup_years', { headers }),
+        fetch('/api/lookup/lookup_grades', { headers }),
+        fetch('/api/lookup/lookup_assessment_types', { headers }),
+        fetch('/api/lookup/lookup_assessment_bodies', { headers }),
+      ]);
+      if (subjRes.ok) { const d = await subjRes.json(); setSubjects(d.data || d.subjects || []); }
+      if (paperRes.ok) { const d = await paperRes.json(); setPapers(d.data || []); }
+      if (yearRes.ok) { const d = await yearRes.json(); setYears(d.data || []); }
+      if (gradeRes.ok) { const d = await gradeRes.json(); setGrades(d.data || []); }
+      if (typeRes.ok) { const d = await typeRes.json(); setAssessmentTypes(d.data || []); }
+      if (bodyRes.ok) { const d = await bodyRes.json(); setAssessmentBodies(d.data || []); }
+    } catch (e) { console.error('Lookup fetch error:', e); }
+  }
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'qp' | 'memo' | 'caps') => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -36,12 +76,12 @@ const WizardPage: React.FC = () => {
 
     const formData = new FormData();
     formData.append('file', qpFile);
-    formData.append('year', '2025');
-    formData.append('grade', '12');
-    formData.append('subject', 'LIFE_SC');
-    formData.append('paper', '1');
-    formData.append('assessment_type', 'EXAM');
-    formData.append('assessment_body', 'DBE');
+    formData.append('year', year);
+    formData.append('grade', grade);
+    formData.append('subject', subjectCode);
+    formData.append('paper', paperNo);
+    formData.append('assessment_type', assessmentType);
+    formData.append('assessment_body', assessmentBody);
 
     try {
       const response = await fetch('/api/wizard/extract-structure', {
@@ -140,7 +180,7 @@ const WizardPage: React.FC = () => {
                 id="qp-upload"
               />
               <label htmlFor="qp-upload" style={{ cursor: 'pointer' }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📄</div>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>≡ƒôä</div>
                 <p style={{ fontSize: '16px', color: '#374151', marginBottom: '8px' }}>
                   {qpFile ? qpFile.name : 'Click to select QP PDF'}
                 </p>
@@ -188,7 +228,7 @@ const WizardPage: React.FC = () => {
                 id="memo-upload"
               />
               <label htmlFor="memo-upload" style={{ cursor: 'pointer' }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>≡ƒô¥</div>
                 <p style={{ fontSize: '16px', color: '#374151', marginBottom: '8px' }}>
                   {memoFile ? memoFile.name : 'Click to select Memo PDF'}
                 </p>
@@ -209,7 +249,7 @@ const WizardPage: React.FC = () => {
                   flex: 1
                 }}
               >
-                ← Back
+                ΓåÉ Back
               </button>
               <button
                 onClick={parseMemo}
@@ -250,7 +290,7 @@ const WizardPage: React.FC = () => {
                 id="caps-upload"
               />
               <label htmlFor="caps-upload" style={{ cursor: 'pointer' }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>≡ƒôÜ</div>
                 <p style={{ fontSize: '16px', color: '#374151', marginBottom: '8px' }}>
                   {capsFile ? capsFile.name : 'Click to select CAPS PDF'}
                 </p>
@@ -271,7 +311,7 @@ const WizardPage: React.FC = () => {
                   flex: 1
                 }}
               >
-                ← Back
+                ΓåÉ Back
               </button>
               <button
                 onClick={parseCAPS}
@@ -300,23 +340,23 @@ const WizardPage: React.FC = () => {
             <div style={{ background: '#f9fafb', padding: '20px', borderRadius: '8px', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>QP Items</h3>
               {parseResults?.items ? (
-                <p style={{ color: '#10b981' }}>✓ {parseResults.items.length} items extracted</p>
+                <p style={{ color: '#10b981' }}>Γ£ô {parseResults.items.length} items extracted</p>
               ) : (
                 <p style={{ color: '#6b7280' }}>No QP data</p>
               )}
 
               <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', marginTop: '16px' }}>Memo Items</h3>
               {parseResults?.memo ? (
-                <p style={{ color: '#10b981' }}>✓ Memo parsed</p>
+                <p style={{ color: '#10b981' }}>Γ£ô Memo parsed</p>
               ) : (
                 <p style={{ color: '#6b7280' }}>No memo data</p>
               )}
 
               <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', marginTop: '16px' }}>CAPS Data</h3>
               {parseResults?.caps ? (
-                <p style={{ color: '#10b981' }}>✓ CAPS parsed</p>
+                <p style={{ color: '#10b981' }}>Γ£ô CAPS parsed</p>
               ) : (
-                <p style={{ color: '#f59e0b' }}>⚠ CAPS parser currently broken — use manual seeding</p>
+                <p style={{ color: '#f59e0b' }}>ΓÜá CAPS parser currently broken ΓÇö use manual seeding</p>
               )}
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
@@ -333,7 +373,7 @@ const WizardPage: React.FC = () => {
                   flex: 1
                 }}
               >
-                ← Back
+                ΓåÉ Back
               </button>
               <button
                 onClick={() => setCurrentStep(4)}
@@ -348,7 +388,7 @@ const WizardPage: React.FC = () => {
                   flex: 1
                 }}
               >
-                Continue →
+                Continue ΓåÆ
               </button>
             </div>
           </div>
@@ -367,7 +407,7 @@ const WizardPage: React.FC = () => {
                 Current status: <span style={{ color: '#f59e0b' }}>CAPS parser v2.7a is broken</span>
               </p>
               <p style={{ color: '#6b7280', marginTop: '8px' }}>
-                Workaround: Use Admin → CAPS Management to manually link items.
+                Workaround: Use Admin ΓåÆ CAPS Management to manually link items.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
@@ -384,7 +424,7 @@ const WizardPage: React.FC = () => {
                   flex: 1
                 }}
               >
-                ← Back
+                ΓåÉ Back
               </button>
               <Link
                 to="/items"
@@ -401,7 +441,7 @@ const WizardPage: React.FC = () => {
                   textDecoration: 'none'
                 }}
               >
-                Finish → Go to Items
+                Finish ΓåÆ Go to Items
               </Link>
             </div>
           </div>

@@ -10,6 +10,7 @@ import PaperDetail from './pages/PaperDetail';
 import Reviews from './pages/Reviews';
 import Templates from './pages/Templates';
 import WizardPage from './pages/WizardPage';
+import { CAPSManualLinker } from './components/curriculum/CAPSManualLinker';
 
 // ============================================
 // TYPES
@@ -175,6 +176,7 @@ const Navigation: React.FC = () => {
       <Link to="/reviews" style={linkStyle}>Reviews</Link>
       <Link to="/templates" style={linkStyle}>Templates</Link>
       <Link to="/wizard" style={linkStyle}>Wizard</Link>
+      <Link to="/caps-linker" style={linkStyle}>CAPS Linker</Link>
       {userRole === 'admin' && (
         <Link to="/admin" style={linkStyle}>Admin</Link>
       )}
@@ -251,6 +253,7 @@ const App: React.FC = () => {
                 <Route path="/papers/:id" element={<PaperDetail />} />
                 <Route path="/templates" element={<Templates />} />
                 <Route path="/wizard" element={<WizardPage />} />
+                <Route path="/caps-linker" element={<CAPSManualLinker />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
@@ -263,5 +266,9 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+
+
+
 
 
