@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 
 interface Item {
@@ -203,7 +203,7 @@ const ItemDetail: React.FC = () => {
     return (
       <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
         <div style={{ marginBottom: '24px' }}>
-          <Link to="/items" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '14px' }}>← Back to Items</Link>
+          <Link to="/items" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '14px' }}>â† Back to Items</Link>
         </div>
         <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '24px', color: '#1f2937' }}>Create New Item</h1>
 
@@ -238,7 +238,7 @@ const ItemDetail: React.FC = () => {
               <select name="item_type_id" value={formData.item_type_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select type...</option>
                 {itemTypes.map(t => (
-                  <option key={t.item_type_id || t.id} value={t.item_type_id || t.id}>{t.item_type_name || t.name}</option>
+                  <option key={t.item_type_id || t.id} value={t.item_type_id || t.id}>{t.type_name || t.item_type_name || t.name}</option>
                 ))}
               </select>
             </div>
@@ -251,7 +251,7 @@ const ItemDetail: React.FC = () => {
               <select name="cognitive_level_id" value={formData.cognitive_level_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select level...</option>
                 {cognitiveLevels.map(c => (
-                  <option key={c.cognitive_level_id || c.id} value={c.cognitive_level_id || c.id}>{c.cognitive_level_name || c.name}</option>
+                  <option key={c.cognitive_level_id || c.id} value={c.cognitive_level_id || c.id}>{c.level_name || c.cognitive_level_name || c.name}</option>
                 ))}
               </select>
             </div>
@@ -309,7 +309,7 @@ const ItemDetail: React.FC = () => {
   return (
     <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
       <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link to="/items" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '14px' }}>← Back to Items</Link>
+        <Link to="/items" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '14px' }}>â† Back to Items</Link>
         <span style={{ fontSize: '12px', color: '#6b7280', background: '#f3f4f6', padding: '4px 12px', borderRadius: '12px' }}>{item?.status || 'draft'}</span>
       </div>
 
@@ -346,18 +346,18 @@ const ItemDetail: React.FC = () => {
       {activeTab === 'metadata' && (
         <div style={{ background: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>ITEM CODE</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.item_code || '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>QUESTION NUMBER</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.question_number || '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>MARKS</label><p style={{ marginTop: '4px', color: '#1f2937', fontWeight: '600' }}>{item?.marks || '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>ITEM TYPE</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.item_type_name || '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>COGNITIVE LEVEL</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.cognitive_level_name || '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>DIFFICULTY</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.difficulty_name || '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CAPS TOPIC</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.caps_topic_name || '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CAPS SUBTOPIC</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.caps_subtopic_name || '—'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>ITEM CODE</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.item_code || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>QUESTION NUMBER</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.question_number || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>MARKS</label><p style={{ marginTop: '4px', color: '#1f2937', fontWeight: '600' }}>{item?.marks || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>ITEM TYPE</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.item_type_name || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>COGNITIVE LEVEL</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.cognitive_level_name || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>DIFFICULTY</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.difficulty_name || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CAPS TOPIC</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.caps_topic_name || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CAPS SUBTOPIC</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.caps_subtopic_name || 'â€”'}</p></div>
             <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>EXPOSURE COUNT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.exposure_count || 0}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CREATED BY</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.created_by_name || '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CREATED AT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.created_at ? new Date(item.created_at).toLocaleString() : '—'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>UPDATED AT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.updated_at ? new Date(item.updated_at).toLocaleString() : '—'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CREATED BY</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.created_by_name || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CREATED AT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.created_at ? new Date(item.created_at).toLocaleString() : 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>UPDATED AT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.updated_at ? new Date(item.updated_at).toLocaleString() : 'â€”'}</p></div>
           </div>
         </div>
       )}
@@ -380,3 +380,4 @@ const ItemDetail: React.FC = () => {
 };
 
 export default ItemDetail;
+

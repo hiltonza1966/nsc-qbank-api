@@ -86,7 +86,7 @@ const PaperDetail: React.FC = () => {
 
       if (subjRes.ok) { const d = await subjRes.json(); setSubjects(d.data || d.subjects || []); }
       if (paperRes.ok) { const d = await paperRes.json(); setPapers(d.data || []); }
-      if (tempRes.ok) { const d = await tempRes.json(); setTemplates(d.data || []); }
+      if (tempRes.ok) { const d = await tempRes.json(); setTemplates(d.templates || d.data || []); }
       if (yearRes.ok) { const d = await yearRes.json(); setYears(d.data || []); }
       if (gradeRes.ok) { const d = await gradeRes.json(); setGrades(d.data || []); }
       if (typeRes.ok) { const d = await typeRes.json(); setAssessmentTypes(d.data || []); }
@@ -225,7 +225,7 @@ const PaperDetail: React.FC = () => {
               <select name="template_id" value={formData.template_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select template...</option>
                 {templates.map(t => (
-                  <option key={t.template_id || t.id} value={t.template_id || t.id}>{t.template_name || t.name}</option>
+                  <option key={t.template_id || t.id} value={t.template_id || t.id}>{t.template_name || t.name || t.template_code}</option>
                 ))}
               </select>
             </div>
@@ -234,7 +234,7 @@ const PaperDetail: React.FC = () => {
               <select name="year_id" value={formData.year_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select year...</option>
                 {years.map(y => (
-                  <option key={y.year_id || y.id} value={y.year_id || y.id}>{y.year_name || y.name || y.year}</option>
+                  <option key={y.year_id || y.id} value={y.year_id || y.id}>{y.year_name || y.name || y.year || y.year_value}</option>
                 ))}
               </select>
             </div>
@@ -243,7 +243,7 @@ const PaperDetail: React.FC = () => {
               <select name="grade_id" value={formData.grade_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select grade...</option>
                 {grades.map(g => (
-                  <option key={g.grade_id || g.id} value={g.grade_id || g.id}>{g.grade_name || g.name || `Grade ${g.grade_number}`}</option>
+                  <option key={g.grade_id || g.id} value={g.grade_id || g.id}>{g.grade_name || g.name || g.grade_number || `Grade ${g.grade_number}`}</option>
                 ))}
               </select>
             </div>
@@ -252,7 +252,7 @@ const PaperDetail: React.FC = () => {
               <select name="assessment_type_id" value={formData.assessment_type_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select type...</option>
                 {assessmentTypes.map(t => (
-                  <option key={t.assessment_type_id || t.id} value={t.assessment_type_id || t.id}>{t.assessment_type_name || t.name}</option>
+                  <option key={t.assessment_type_id || t.id} value={t.assessment_type_id || t.id}>{t.type_name || t.assessment_type_name || t.name}</option>
                 ))}
               </select>
             </div>
@@ -261,7 +261,7 @@ const PaperDetail: React.FC = () => {
               <select name="assessment_body_id" value={formData.assessment_body_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select body...</option>
                 {assessmentBodies.map(b => (
-                  <option key={b.assessment_body_id || b.id} value={b.assessment_body_id || b.id}>{b.assessment_body_name || b.name}</option>
+                  <option key={b.assessment_body_id || b.id} value={b.assessment_body_id || b.id}>{b.body_name || b.assessment_body_name || b.name}</option>
                 ))}
               </select>
             </div>
@@ -353,4 +353,5 @@ const PaperDetail: React.FC = () => {
 };
 
 export default PaperDetail;
+
 
