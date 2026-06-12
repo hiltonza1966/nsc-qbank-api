@@ -20,6 +20,12 @@ interface UnlinkedItem {
   subtopic_id: number | null;
 }
 
+interface SubjectOption {
+  subject_official_code: string;
+  subject_alpha_code: string;
+  subject_name: string;
+}
+
 interface CAPSTopic {
   topic_id: number;
   topic_code: string;
@@ -41,12 +47,19 @@ interface LinkRecord {
 }
 
 const CAPSManualLinker: React.FC = () => {
+  const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [selectedPaper, setSelectedPaper] = useState<number | ''>('');
   const [selectedTopic, setSelectedTopic] = useState<number | ''>('');
   const [selectedSubtopic, setSelectedSubtopic] = useState<number | ''>('');
   const [globalTopic, setGlobalTopic] = useState<CAPSTopic | null>(null);
   const [links, setLinks] = useState<LinkRecord[]>([]);
   const queryClient = useQueryClient();
+
+  // Fetch subjects from caps_subjects_master
+  const { data: subjectsData } = useQuery({
+    queryKey: ['caps-subjects'],
+    queryFn: () => api.get('/api/caps/subjects').then((r: any) => r.data)
+  });
 
   // Fetch papers with unlinked items
   const { data: papersData } = useQuery({
@@ -61,17 +74,20 @@ const CAPSManualLinker: React.FC = () => {
     queryFn: () => api.get(`/curriculum/unlinked/${selectedPaper}`).then((r: any) => r.data)
   });
 
-  // Fetch CAPS topics for Life Sciences (default subject)
+  // Fetch CAPS topics for selected subject (dynamic instead of hardcoded LIFE_SC)
   const { data: topicsData } = useQuery({
-    queryKey: ['caps-topics', 'LIFE_SC'],
-    queryFn: () => api.get('/curriculum/subjects/LIFE_SC/topics').then((r: any) => r.data)
+    queryKey: ['caps-topics', selectedSubject],
+    enabled: !!selectedSubject,
+    queryFn: () => selectedSubject
+      ? api.get(`/curriculum/subjects/${selectedSubject}/topics`).then((r: any) => r.data)
+      : Promise.resolve({ topics: [] })
   });
 
   // Fetch subtopics for selected topic
   const { data: subtopicsData } = useQuery({
     queryKey: ['caps-subtopics', selectedTopic],
     enabled: !!selectedTopic,
-    queryFn: () => selectedTopic 
+    queryFn: () => selectedTopic
       ? api.get(`/curriculum/topics/${selectedTopic}/subtopics`).then((r: any) => r.data)
       : Promise.resolve({ subtopics: [] })
   });
@@ -94,6 +110,7 @@ const CAPSManualLinker: React.FC = () => {
     }
   });
 
+  const subjects: SubjectOption[] = subjectsData?.subjects || [];
   const papers: Paper[] = papersData?.papers || [];
   const unlinkedItems: UnlinkedItem[] = unlinkedItemsData?.items || [];
   const topics: CAPSTopic[] = topicsData?.topics || [];
@@ -140,9 +157,30 @@ const CAPSManualLinker: React.FC = () => {
 
       <div className="linker-controls">
         <div className="control-group">
+          <label>Subject:</label>
+          <select
+            value={selectedSubject}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedSubject(val);
+              setSelectedTopic('');
+              setSelectedSubtopic('');
+              setGlobalTopic(null);
+            }}
+          >
+            <option value="">Select Subject</option>
+            {subjects.map((subject: SubjectOption) => (
+              <option key={subject.subject_official_code} value={subject.subject_official_code}>
+                {subject.subject_name} ({subject.subject_official_code})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="control-group">
           <label>Paper:</label>
-          <select 
-            value={selectedPaper} 
+          <select
+            value={selectedPaper}
             onChange={(e) => setSelectedPaper(e.target.value ? Number(e.target.value) : '')}
           >
             <option value="">Select Paper</option>
@@ -156,8 +194,8 @@ const CAPSManualLinker: React.FC = () => {
 
         <div className="control-group">
           <label>Topic:</label>
-          <select 
-            value={selectedTopic} 
+          <select
+            value={selectedTopic}
             onChange={(e) => {
               const val = e.target.value ? Number(e.target.value) : '';
               setSelectedTopic(val);
@@ -176,8 +214,8 @@ const CAPSManualLinker: React.FC = () => {
 
         <div className="control-group">
           <label>Subtopic (optional):</label>
-          <select 
-            value={selectedSubtopic} 
+          <select
+            value={selectedSubtopic}
             onChange={(e) => setSelectedSubtopic(e.target.value ? Number(e.target.value) : '')}
           >
             <option value="">Select Subtopic</option>
@@ -209,7 +247,7 @@ const CAPSManualLinker: React.FC = () => {
                   <td>{item.question_text?.substring(0, 100)}...</td>
                   <td>{item.marks}</td>
                   <td>
-                    <button 
+                    <button
                       onClick={() => handleLink(item.item_id, item.question_number)}
                       className={links.find(l => l.item_id === item.item_id) ? 'linked' : ''}
                     >
@@ -231,7 +269,7 @@ const CAPSManualLinker: React.FC = () => {
       )}
 
       <div className="linker-actions">
-        <button 
+        <button
           onClick={handleSave}
           disabled={links.length === 0 || linkMutation.isPending}
           className="btn-primary"
