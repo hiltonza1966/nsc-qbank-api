@@ -1,107 +1,176 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
+const PORT = process.env.PORT || 4000;
+
+// Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Database pool
-let pool;
-try {
-  pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    charset: 'utf8mb4',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-  });
-  console.log('Database pool created successfully');
-} catch (e) {
-  console.error('Failed to create database pool:', e.message);
-  process.exit(1);
-}
+const dbPool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'Hilton@66',
+  database: process.env.DB_NAME || 'nsc_qbank',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
 
-// Test DB connection on startup
-(async () => {
-  try {
-    const conn = await pool.getConnection();
-    await conn.query('SELECT 1');
-    conn.release();
-    console.log('Database connection verified');
-  } catch (e) {
-    console.error('Database connection failed:', e.message);
-    process.exit(1);
-  }
-})();
-
-// Attach DB to all requests
+// Attach db to requests
 app.use((req, res, next) => {
-  req.db = pool;
-  app.locals.db = pool;  // Make pool available to routes
+  req.db = dbPool;
   next();
 });
 
-// Routes - Phase 1 (existing)
-const stagingRoutes = require('./routes/staging');
-const capsPdfParser = require('./routes/capsPdfParser');
-app.use(capsPdfParser.router);
-app.use('/api/staging', stagingRoutes);
+// ============================================
+// API ROUTES — FIXED PATHS FOR CONSISTENCY
+// ============================================
 
-app.use('/api/qbank/items', require('./routes/items'));
-app.use('/api/qbank/papers', require('./routes/papers'));
-app.use('/api/qbank/specs', require('./routes/specs'));
-app.use('/api/wizard', require('./routes/pdf_parser_structured'));  // Position-based parser
-app.use('/api/curriculum', require('./routes/curriculum'));
-app.use('/api/attachments', require('./routes/attachments'));
-
-// Routes - Phase 1 (comparison engine)
-const compareQPRouter = require('./routes/compare-qp');
-app.use('/api/wizard', compareQPRouter);
-// Routes - Phase 2 (corporate schema)
-app.use('/api/items', require('./routes/versions'));      // Item versioning
-app.use('/api/items', require('./routes/reviews'));       // Review comments
-app.use('/api/items', require('./routes/workflow'));      // Review workflow
-app.use('/api/templates', require('./routes/templates')); // Paper templates
-app.use('/api/taxonomy', require('./routes/taxonomy'));   // Tag taxonomy
-app.use('/api/usage', require('./routes/usage'));         // Exposure tracking
-app.use('/api/wizard', require('./routes/memo-parser')); // Memo parser and comparison
-app.use('/api/wizard', require('./routes/memo-compare'));  // Memo comparison engine
-
-app.use('/api/dashboard', require('./routes/dashboard'));  // Paper upload dashboard
-
-// CAPS Parse Wizard routes
-const capsParserRoutes = require('./routes/capsParser');
-app.use('/api/caps', capsParserRoutes);
-// Routes - Phase 2 (lookup tables)
-app.get('/api/lookup/:table', async (req, res) => {
-  const allowedTables = [
-    'lookup_years', 'lookup_grades', 'lookup_subjects', 'lookup_papers',
-    'lookup_assessment_types', 'lookup_assessment_bodies',
-    'lookup_cognitive_levels', 'lookup_difficulty_levels', 'lookup_item_types',
-    'lookup_languages', 'lookup_exam_sessions', 'lookup_marking_schemes',
-    'lookup_caps_topics', 'lookup_caps_subtopics', 'lookup_tag_taxonomy'
-  ];
-  const table = req.params.table;
-  if (!allowedTables.includes(table)) {
-    return res.status(400).json({ error: 'Invalid lookup table' });
-  }
+function safeRequire(routePath, mountPath) {
   try {
-    const [rows] = await req.db.execute(`SELECT * FROM ${table} WHERE is_active = 1`);
-    res.json({ success: true, count: rows.length, data: rows });
+    const fullPath = path.join(__dirname, routePath);
+    if (fs.existsSync(fullPath + '.js')) {
+      const route = require(routePath);
+      if (typeof route === 'function' || (route && route.use)) {
+        app.use(mountPath, route);
+        console.log(`Mounted: ${mountPath} -> ${routePath}`);
+      } else {
+        console.warn(`Skipping ${routePath} - does not export a valid router`);
+      }
+    } else {
+      console.warn(`Missing route file: ${routePath}`);
+    }
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(`Error mounting ${routePath}: ${e.message}`);
+  }
+}
+
+// Item Development Module
+safeRequire('./routes/items', '/api/qbank/items');
+safeRequire('./routes/versions', '/api/qbank/items');
+safeRequire('./routes/reviews', '/api/qbank/items');
+safeRequire('./routes/workflow', '/api/qbank/items');
+
+// Question Paper Development Module
+safeRequire('./routes/papers', '/api/qbank/papers');
+safeRequire('./routes/approvals', '/api/qbank/papers');
+safeRequire('./routes/compliance', '/api/qbank/papers');
+safeRequire('./routes/export', '/api/qbank/papers');
+
+// Templates & Specs
+safeRequire('./routes/templates', '/api/qbank/templates');
+safeRequire('./routes/specs', '/api/qbank/specs');
+
+// CAPS & Curriculum
+safeRequire('./routes/capsParser', '/api/caps');
+safeRequire('./routes/capsPdfParser', '/api/caps');
+safeRequire('./routes/curriculum', '/api/curriculum');
+
+// Wizard & Parser Tools
+safeRequire('./routes/pdf_parser_structured', '/api/wizard');
+safeRequire('./routes/compare-qp', '/api/wizard');
+safeRequire('./routes/memo-parser', '/api/wizard');
+safeRequire('./routes/memo-compare', '/api/wizard');
+
+// Supporting Modules
+safeRequire('./routes/attachments', '/api/attachments');
+safeRequire('./routes/taxonomy', '/api/taxonomy');
+safeRequire('./routes/usage', '/api/usage');
+safeRequire('./routes/dashboard', '/api/dashboard');
+safeRequire('./routes/staging', '/api/staging');
+
+// ============================================
+// SECURITY-ALIGNED ENDPOINTS
+// ============================================
+
+// GET /api/qbank/sandbox-config/:toolName — Get CSP policy for tool
+app.get('/api/qbank/sandbox-config/:toolName', async (req, res) => {
+  try {
+    const [configs] = await req.db.execute(
+      'SELECT * FROM sandbox_config WHERE tool_name = ? AND is_active = 1',
+      [req.params.toolName]
+    );
+    if (!configs.length) {
+      // Return default locked-down config
+      return res.json({
+        success: true,
+        config: {
+          tool_name: req.params.toolName,
+          csp_policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self';",
+          allow_network: 0,
+          allow_clipboard: 0,
+          allow_file_system: 0
+        }
+      });
+    }
+    res.json({ success: true, config: configs[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
+// GET /api/qbank/subject-tools/:subjectCode — Get tools for subject
+app.get('/api/qbank/subject-tools/:subjectCode', async (req, res) => {
+  try {
+    const [tools] = await req.db.execute(
+      'SELECT * FROM subject_tool_mapping WHERE subject_official_code = ? AND is_active = 1 ORDER BY is_primary DESC',
+      [req.params.subjectCode]
+    );
+    res.json({ success: true, count: tools.length, tools });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Lookup tables
+app.get('/api/lookup/:table', async (req, res) => {
+  const allowedTables = [
+    'lookup_subjects', 'lookup_papers', 'lookup_grades', 'lookup_years',
+    'lookup_assessment_types', 'lookup_assessment_bodies', 'lookup_languages',
+    'lookup_item_types', 'lookup_cognitive_levels', 'lookup_difficulty_levels',
+    'lookup_marking_schemes', 'lookup_tag_taxonomy', 'lookup_exam_sessions',
+    'subject_tool_mapping', 'sandbox_config'
+  ];
+  const table = req.params.table;
+  if (!allowedTables.includes(table)) {
+    return res.status(400).json({ success: false, error: 'Invalid table name' });
+  }
+  try {
+    const [rows] = await req.db.execute(`SELECT * FROM ${table} ORDER BY display_order, name`);
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`QBank API running on port ${PORT}`));
+// Serve frontend static files
+app.use(express.static(path.join(__dirname, 'frontend', 'dist')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
+});
 
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ success: false, error: err.message });
+});
 
+// Start server
+app.listen(PORT, () => {
+  console.log(`QBank API running on port ${PORT}`);
+  console.log(`Database: nsc_qbank`);
+  console.log(`API Base: http://localhost:${PORT}/api/qbank`);
+  console.log(`Security: All tools sandboxed, audit logging enabled`);
+});
 
+module.exports = app;

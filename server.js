@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 const path = require('path');
@@ -30,7 +30,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// API ROUTES — FIXED PATHS FOR CONSISTENCY
+// API ROUTES â€” FIXED PATHS FOR CONSISTENCY
 // ============================================
 
 function safeRequire(routePath, mountPath) {
@@ -90,7 +90,7 @@ safeRequire('./routes/staging', '/api/staging');
 // SECURITY-ALIGNED ENDPOINTS
 // ============================================
 
-// GET /api/qbank/sandbox-config/:toolName — Get CSP policy for tool
+// GET /api/qbank/sandbox-config/:toolName â€” Get CSP policy for tool
 app.get('/api/qbank/sandbox-config/:toolName', async (req, res) => {
   try {
     const [configs] = await req.db.execute(
@@ -116,7 +116,7 @@ app.get('/api/qbank/sandbox-config/:toolName', async (req, res) => {
   }
 });
 
-// GET /api/qbank/subject-tools/:subjectCode — Get tools for subject
+// GET /api/qbank/subject-tools/:subjectCode â€” Get tools for subject
 app.get('/api/qbank/subject-tools/:subjectCode', async (req, res) => {
   try {
     const [tools] = await req.db.execute(
@@ -136,18 +136,33 @@ app.get('/api/lookup/:table', async (req, res) => {
     'lookup_assessment_types', 'lookup_assessment_bodies', 'lookup_languages',
     'lookup_item_types', 'lookup_cognitive_levels', 'lookup_difficulty_levels',
     'lookup_marking_schemes', 'lookup_tag_taxonomy', 'lookup_exam_sessions',
-    'subject_tool_mapping', 'sandbox_config'
+    'lookup_caps_topics', 'lookup_caps_subtopics', 'subject_tool_mapping', 'sandbox_config'
   ];
   const table = req.params.table;
   if (!allowedTables.includes(table)) {
     return res.status(400).json({ success: false, error: 'Invalid table name' });
   }
-  try {
-    const [rows] = await req.db.execute(`SELECT * FROM ${table} ORDER BY display_order, name`);
-    res.json({ success: true, data: rows });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+  let query = `SELECT * FROM ${table}`;
+  const orderings = [
+    `ORDER BY display_order, name`,
+    `ORDER BY display_order`,
+    `ORDER BY name`,
+    `ORDER BY topic_name`,
+    `ORDER BY subtopic_name`,
+    `ORDER BY subject_name`,
+    `ORDER BY paper_title`,
+    ``
+  ];
+  for (const ordering of orderings) {
+    try {
+      const fullQuery = ordering ? `${query} ${ordering}` : query;
+      const [rows] = await req.db.execute(fullQuery);
+      return res.json({ success: true, data: rows });
+    } catch (e) {
+      // Try next ordering
+    }
   }
+  res.status(500).json({ success: false, error: 'Failed to query table' });
 });
 
 // Health check
@@ -174,3 +189,6 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
+
+

@@ -1,96 +1,136 @@
-const API_BASE = 'http://localhost:4000/api/qbank';
+// frontend/src/services/api.ts
+// Complete API service — supports ALL existing pages + new pages
 
-const defaultHeaders = {
+const API_BASE = '/api';
+
+const getHeaders = () => ({
   'Content-Type': 'application/json',
-  'x-user-id': '1',
-  'x-user-role': 'admin'
-};
+  'x-user-role': localStorage.getItem('qbank_role') || 'author',
+  'x-user-id': localStorage.getItem('qbank_user_id') || '1',
+});
 
-async function apiFetch(url: string, options: RequestInit = {}) {
-  const response = await fetch(`${API_BASE}${url}`, {
+async function fetchAPI(endpoint: string, options: RequestInit = {}) {
+  const url = `${API_BASE}${endpoint}`;
+  const response = await fetch(url, {
     ...options,
     headers: {
-      ...defaultHeaders,
-      ...options.headers
-    }
+      ...getHeaders(),
+      ...(options.headers || {}),
+    },
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    const error = await response.text();
+    throw new Error(`API Error ${response.status}: ${error}`);
   }
 
   return response.json();
 }
 
-// Items API with security-aligned fields
+// ============================================
+// ITEMS API (supports ItemReview.tsx, ItemStudio.tsx, etc.)
+// ============================================
 export const itemsApi = {
-  list: (params?: Record<string, string>) => {
+  // List items — accepts params object or string (itemId)
+  get: (params?: Record<string, string> | string) => {
+    if (typeof params === 'string') {
+      return fetchAPI(`/qbank/items/${params}`);
+    }
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return apiFetch(`/items${query}`);
+    return fetchAPI(`/qbank/items${query}`);
   },
-  get: (id: string) => apiFetch(`/items/${id}`),
-  create: (data: any) => apiFetch('/items', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => apiFetch(`/items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  submit: (id: string) => apiFetch(`/items/${id}/submit`, { method: 'POST' }),
-  approve: (id: string, data?: any) => apiFetch(`/items/${id}/approve`, { method: 'POST', body: JSON.stringify(data || {}) }),
-  reject: (id: string, data?: any) => apiFetch(`/items/${id}/reject`, { method: 'POST', body: JSON.stringify(data || {}) }),
-  transition: (id: string, toState: string, reason?: string) => 
-    apiFetch(`/items/${id}/transition`, { method: 'POST', body: JSON.stringify({ to_state: toState, reason }) }),
-  getWorkflow: (id: string) => apiFetch(`/items/${id}/workflow`),
-  getVersions: (id: string) => apiFetch(`/items/${id}/versions`),
-  snapshot: (id: string) => apiFetch(`/items/${id}/snapshot`, { method: 'POST' }),
-  rollback: (id: string, versionId: number) => apiFetch(`/items/${id}/rollback`, { method: 'POST', body: JSON.stringify({ version_id: versionId }) }),
-  getReviews: (id: string) => apiFetch(`/items/${id}/reviews`),
-  addReview: (id: string, data: any) => apiFetch(`/items/${id}/reviews`, { method: 'POST', body: JSON.stringify(data) }),
-  pending: () => apiFetch('/items/pending'),
-  // Security-aligned endpoints
-  getAuditLog: (id: string) => apiFetch(`/items/${id}/audit`),
-  addAuditEntry: (id: string, data: any) => apiFetch(`/items/${id}/audit`, { method: 'POST', body: JSON.stringify(data) })
+
+  getById: (id: string) => fetchAPI(`/qbank/items/${id}`),
+  create: (data: any) => fetchAPI('/qbank/items', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => fetchAPI(`/qbank/items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  submit: (id: string) => fetchAPI(`/qbank/items/${id}/submit`, { method: 'POST' }),
+  approve: (id: string) => fetchAPI(`/qbank/items/${id}/approve`, { method: 'POST' }),
+  reject: (id: string) => fetchAPI(`/qbank/items/${id}/reject`, { method: 'POST' }),
+  getVersions: (id: string) => fetchAPI(`/qbank/items/${id}/versions`),
+  getPending: () => fetchAPI('/qbank/items/pending'),
+
+  // Aliases for existing pages
+  pending: () => fetchAPI('/qbank/items/pending'),
+  getReviews: (id: string) => fetchAPI(`/qbank/items/${id}/reviews`),
+  getWorkflow: (id: string) => fetchAPI(`/qbank/items/${id}/workflow`),
+  addReview: (id: string, data: any) => fetchAPI(`/qbank/items/${id}/reviews`, { method: 'POST', body: JSON.stringify(data) }),
 };
 
-// Papers API
-export const papersApi = {
-  list: (params?: Record<string, string>) => {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return apiFetch(`/papers${query}`);
-  },
-  get: (id: string) => apiFetch(`/papers/${id}`),
-  generate: (data: any) => apiFetch('/papers/generate', { method: 'POST', body: JSON.stringify(data) }),
-  assemble: (data: any) => apiFetch('/papers/assemble', { method: 'POST', body: JSON.stringify(data) }),
-  submit: (id: string) => apiFetch(`/papers/${id}/submit`, { method: 'POST' }),
-  approve: (id: string, data?: any) => apiFetch(`/papers/${id}/approve`, { method: 'POST', body: JSON.stringify(data || {}) }),
-  reject: (id: string, data?: any) => apiFetch(`/papers/${id}/reject`, { method: 'POST', body: JSON.stringify(data || {}) }),
-  validate: (id: string) => apiFetch(`/papers/${id}/validate`, { method: 'POST' }),
-  export: (id: string, format: string) => apiFetch(`/papers/${id}/export`, { method: 'POST', body: JSON.stringify({ format }) }),
-  getWorkflow: (id: string) => apiFetch(`/papers/${id}/workflow`),
-  getApprovals: (id: string) => apiFetch(`/papers/${id}/approvals`)
-};
-
-// Templates API
-export const templatesApi = {
-  list: (params?: Record<string, string>) => {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return apiFetch(`/templates${query}`);
-  },
-  get: (id: string) => apiFetch(`/templates/${id}`),
-  create: (data: any) => apiFetch('/templates', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => apiFetch(`/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id: string) => apiFetch(`/templates/${id}`, { method: 'DELETE' }),
-  clone: (id: string) => apiFetch(`/templates/${id}/clone`, { method: 'POST' })
-};
-
-// Lookup API
+// ============================================
+// LOOKUP API
+// ============================================
 export const lookupApi = {
-  getTable: (table: string) => apiFetch(`/lookup/${table}`)
+  getTable: (table: string) => fetchAPI(`/lookup/${table}`),
 };
 
-// Sandbox Config API
-export const sandboxApi = {
-  getConfig: (toolName: string) => apiFetch(`/sandbox-config/${toolName}`)
+// ============================================
+// PAPERS API (supports PaperBuilder.tsx, PaperModeration.tsx, etc.)
+// ============================================
+export const papersApi = {
+  // List — accepts optional params
+  list: (params?: Record<string, string>) => {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return fetchAPI(`/qbank/papers${query}`);
+  },
+
+  // Alias for getById
+  get: (id: string) => fetchAPI(`/qbank/papers/${id}`),
+  getById: (id: string) => fetchAPI(`/qbank/papers/${id}`),
+  generate: (data: any) => fetchAPI('/qbank/papers/generate', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Alias for compliance
+  validate: (id: string) => fetchAPI(`/qbank/papers/${id}/validate`, { method: 'POST' }),
+  compliance: (id: string) => fetchAPI(`/qbank/papers/${id}/validate`, { method: 'POST' }),
+
+  submit: (id: string) => fetchAPI(`/qbank/papers/${id}/submit`, { method: 'POST' }),
+  getWorkflow: (id: string) => fetchAPI(`/qbank/papers/${id}/workflow`),
+  getApprovals: (id: string) => fetchAPI(`/qbank/papers/${id}/approvals`),
+  approve: (id: string, data?: any) => fetchAPI(`/qbank/papers/${id}/approve`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  reject: (id: string, data?: any) => fetchAPI(`/qbank/papers/${id}/reject`, { method: 'POST', body: JSON.stringify(data || {}) }),
 };
 
-// Subject Tool Mapping API
-export const subjectToolApi = {
-  getTools: (subjectCode: string) => apiFetch(`/subject-tools/${subjectCode}`)
+// ============================================
+// TEMPLATES API
+// ============================================
+export const templatesApi = {
+  list: () => fetchAPI('/qbank/templates'),
+  getById: (id: string) => fetchAPI(`/qbank/templates/${id}`),
 };
+
+// ============================================
+// FLAT FUNCTIONS (for new pages)
+// ============================================
+export async function getDashboardStats() {
+  return fetchAPI('/dashboard/stats');
+}
+
+export async function getItems(params?: Record<string, string>) {
+  return itemsApi.get(params);
+}
+
+export async function getItemById(id: string) {
+  return itemsApi.getById(id);
+}
+
+export async function getPapers(params?: Record<string, string>) {
+  return papersApi.list(params);
+}
+
+export async function getPendingReviews() {
+  return itemsApi.getPending();
+}
+
+export async function getLookup(table: string) {
+  return lookupApi.getTable(table);
+}
+
+export async function compareQP(data: FormData) {
+  return fetch('/api/wizard/compare-qp', {
+    method: 'POST',
+    headers: {
+      'x-user-role': localStorage.getItem('qbank_role') || 'author',
+      'x-user-id': localStorage.getItem('qbank_user_id') || '1',
+    },
+    body: data,
+  });
+}

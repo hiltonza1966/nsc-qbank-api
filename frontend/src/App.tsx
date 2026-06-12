@@ -1,5 +1,15 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+
+// Real pages
+import Dashboard from './pages/Dashboard';
+import Items from './pages/Items';
+import ItemDetail from './pages/ItemDetail';
+import Papers from './pages/Papers';
+import PaperDetail from './pages/PaperDetail';
+import Reviews from './pages/Reviews';
+import Templates from './pages/Templates';
+import WizardPage from './pages/WizardPage';
 
 // ============================================
 // TYPES
@@ -115,9 +125,6 @@ const LoadingFallback: React.FC = () => (
         }} />
       </div>
       <p>Loading QBank...</p>
-      <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
-        If this persists, check the browser console (F12) for errors.
-      </p>
     </div>
     <style>{`
       @keyframes spin {
@@ -179,50 +186,26 @@ const Navigation: React.FC = () => {
 };
 
 // ============================================
-// PLACEHOLDER PAGES (inline — no external files needed)
+// PLACEHOLDER PAGES (for routes not yet built)
 // ============================================
 const PlaceholderPage: React.FC<PlaceholderProps> = ({ title }) => (
-  <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif' }}>
-    <h1>{title}</h1>
-    <p>This page is under construction.</p>
-    <p style={{ color: '#6b7280', marginTop: '16px' }}>
-      If you see this page, the routing is working. The white screen issue is resolved.
-    </p>
+  <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif', maxWidth: '800px', margin: '0 auto' }}>
+    <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1f2937', marginBottom: '16px' }}>{title}</h1>
+    <p style={{ color: '#6b7280' }}>This page is under construction.</p>
+    <Link to="/" style={{
+      display: 'inline-block',
+      marginTop: '20px',
+      padding: '10px 20px',
+      background: '#3b82f6',
+      color: 'white',
+      textDecoration: 'none',
+      borderRadius: '6px',
+    }}>
+      Back to Dashboard
+    </Link>
   </div>
 );
 
-const DashboardPage: React.FC = () => (
-  <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif' }}>
-    <h1>Dashboard</h1>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginTop: '24px' }}>
-      <div style={{ background: '#f3f4f6', padding: '20px', borderRadius: '8px' }}>
-        <h3>My Items</h3>
-        <p>Draft: 0</p>
-        <p>Pending Review: 0</p>
-        <p>Approved: 0</p>
-      </div>
-      <div style={{ background: '#f3f4f6', padding: '20px', borderRadius: '8px' }}>
-        <h3>My Reviews</h3>
-        <p>Pending: 0</p>
-        <p>Overdue: 0</p>
-      </div>
-      <div style={{ background: '#f3f4f6', padding: '20px', borderRadius: '8px' }}>
-        <h3>Paper Status</h3>
-        <p>Draft: 0</p>
-        <p>Pending: 0</p>
-        <p>Approved: 0</p>
-      </div>
-    </div>
-  </div>
-);
-
-const ItemsPage: React.FC = () => <PlaceholderPage title="Items" />;
-const ItemDetailPage: React.FC = () => <PlaceholderPage title="Item Detail" />;
-const ReviewsPage: React.FC = () => <PlaceholderPage title="Reviews" />;
-const PapersPage: React.FC = () => <PlaceholderPage title="Papers" />;
-const PaperDetailPage: React.FC = () => <PlaceholderPage title="Paper Detail" />;
-const TemplatesPage: React.FC = () => <PlaceholderPage title="Templates" />;
-const WizardPage: React.FC = () => <PlaceholderPage title="Import Wizard" />;
 const AdminPage: React.FC = () => <PlaceholderPage title="Admin" />;
 
 // ============================================
@@ -257,17 +240,16 @@ const App: React.FC = () => {
             </div>
           )}
 
-          <main style={{ flex: 1, overflow: 'auto' }}>
+          <main style={{ flex: 1, overflow: 'auto', background: '#f9fafb' }}>
             <React.Suspense fallback={<LoadingFallback />}>
               <Routes>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/items" element={<ItemsPage />} />
-                <Route path="/items/:id" element={<ItemDetailPage />} />
-                <Route path="/items/new" element={<ItemDetailPage />} />
-                <Route path="/reviews" element={<ReviewsPage />} />
-                <Route path="/papers" element={<PapersPage />} />
-                <Route path="/papers/:id" element={<PaperDetailPage />} />
-                <Route path="/templates" element={<TemplatesPage />} />
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/items" element={<Items />} />
+                <Route path="/items/:id" element={<ItemDetail />} />
+               <Route path="/reviews" element={<Reviews />} />
+                <Route path="/papers" element={<Papers />} />
+                <Route path="/papers/:id" element={<PaperDetail />} />
+                <Route path="/templates" element={<Templates />} />
                 <Route path="/wizard" element={<WizardPage />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
@@ -281,3 +263,5 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+
