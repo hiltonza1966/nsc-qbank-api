@@ -23,7 +23,7 @@ async function apiFetch(url: string, options: RequestInit = {}) {
   return response.json();
 }
 
-// Items API
+// Items API with security-aligned fields
 export const itemsApi = {
   list: (params?: Record<string, string>) => {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -43,7 +43,10 @@ export const itemsApi = {
   rollback: (id: string, versionId: number) => apiFetch(`/items/${id}/rollback`, { method: 'POST', body: JSON.stringify({ version_id: versionId }) }),
   getReviews: (id: string) => apiFetch(`/items/${id}/reviews`),
   addReview: (id: string, data: any) => apiFetch(`/items/${id}/reviews`, { method: 'POST', body: JSON.stringify(data) }),
-  pending: () => apiFetch('/items/pending')
+  pending: () => apiFetch('/items/pending'),
+  // Security-aligned endpoints
+  getAuditLog: (id: string) => apiFetch(`/items/${id}/audit`),
+  addAuditEntry: (id: string, data: any) => apiFetch(`/items/${id}/audit`, { method: 'POST', body: JSON.stringify(data) })
 };
 
 // Papers API
@@ -80,4 +83,14 @@ export const templatesApi = {
 // Lookup API
 export const lookupApi = {
   getTable: (table: string) => apiFetch(`/lookup/${table}`)
+};
+
+// Sandbox Config API
+export const sandboxApi = {
+  getConfig: (toolName: string) => apiFetch(`/sandbox-config/${toolName}`)
+};
+
+// Subject Tool Mapping API
+export const subjectToolApi = {
+  getTools: (subjectCode: string) => apiFetch(`/subject-tools/${subjectCode}`)
 };

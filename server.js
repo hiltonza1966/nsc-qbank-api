@@ -86,13 +86,57 @@ safeRequire('./routes/usage', '/api/usage');
 safeRequire('./routes/dashboard', '/api/dashboard');
 safeRequire('./routes/staging', '/api/staging');
 
+// ============================================
+// SECURITY-ALIGNED ENDPOINTS
+// ============================================
+
+// GET /api/qbank/sandbox-config/:toolName — Get CSP policy for tool
+app.get('/api/qbank/sandbox-config/:toolName', async (req, res) => {
+  try {
+    const [configs] = await req.db.execute(
+      'SELECT * FROM sandbox_config WHERE tool_name = ? AND is_active = 1',
+      [req.params.toolName]
+    );
+    if (!configs.length) {
+      // Return default locked-down config
+      return res.json({
+        success: true,
+        config: {
+          tool_name: req.params.toolName,
+          csp_policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self';",
+          allow_network: 0,
+          allow_clipboard: 0,
+          allow_file_system: 0
+        }
+      });
+    }
+    res.json({ success: true, config: configs[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/qbank/subject-tools/:subjectCode — Get tools for subject
+app.get('/api/qbank/subject-tools/:subjectCode', async (req, res) => {
+  try {
+    const [tools] = await req.db.execute(
+      'SELECT * FROM subject_tool_mapping WHERE subject_official_code = ? AND is_active = 1 ORDER BY is_primary DESC',
+      [req.params.subjectCode]
+    );
+    res.json({ success: true, count: tools.length, tools });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Lookup tables
 app.get('/api/lookup/:table', async (req, res) => {
   const allowedTables = [
     'lookup_subjects', 'lookup_papers', 'lookup_grades', 'lookup_years',
     'lookup_assessment_types', 'lookup_assessment_bodies', 'lookup_languages',
     'lookup_item_types', 'lookup_cognitive_levels', 'lookup_difficulty_levels',
-    'lookup_marking_schemes', 'lookup_tag_taxonomy', 'lookup_exam_sessions'
+    'lookup_marking_schemes', 'lookup_tag_taxonomy', 'lookup_exam_sessions',
+    'subject_tool_mapping', 'sandbox_config'
   ];
   const table = req.params.table;
   if (!allowedTables.includes(table)) {
@@ -126,6 +170,7 @@ app.listen(PORT, () => {
   console.log(`QBank API running on port ${PORT}`);
   console.log(`Database: nsc_qbank`);
   console.log(`API Base: http://localhost:${PORT}/api/qbank`);
+  console.log(`Security: All tools sandboxed, audit logging enabled`);
 });
 
 module.exports = app;

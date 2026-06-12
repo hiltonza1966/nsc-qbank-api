@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 interface MathToolsProps {
-  onInsert: (content: string, type: 'latex' | 'equation' | 'graph' | 'geometry') => void;
+  onInsert: (field: string, content: string) => void;
 }
 
 const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
@@ -10,10 +10,9 @@ const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
   const [preview, setPreview] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // LaTeX preview using simple rendering (MathJax would be loaded in production)
   useEffect(() => {
     if (latexInput) {
-      setPreview(`\(${latexInput}\)`);
+      setPreview('\\(' + latexInput + '\\)');
     } else {
       setPreview('');
     }
@@ -30,7 +29,7 @@ const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
 
   const handleInsertLatex = () => {
     if (latexInput) {
-      onInsert(latexInput, 'latex');
+      onInsert('item_stem_latex', latexInput);
       setLatexInput('');
     }
   };
@@ -45,7 +44,6 @@ const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 2;
 
-    // Draw axes
     ctx.beginPath();
     ctx.moveTo(50, 200);
     ctx.lineTo(350, 200);
@@ -53,7 +51,6 @@ const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
     ctx.lineTo(200, 350);
     ctx.stroke();
 
-    // Draw parabola
     ctx.strokeStyle = '#2563eb';
     ctx.beginPath();
     for (let x = -100; x <= 100; x += 2) {
@@ -64,38 +61,13 @@ const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
     }
     ctx.stroke();
 
-    // Export as image
-    const dataUrl = canvas.toDataURL('image/png');
-    onInsert(dataUrl, 'graph');
+    const svgContent = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><line x1="50" y1="200" x2="350" y2="200" stroke="#333"/><line x1="200" y1="50" x2="200" y2="350" stroke="#333"/><path d="M 100 200 Q 200 0 300 200" stroke="#2563eb" fill="none"/></svg>';
+    onInsert('item_media_svg', svgContent);
   };
 
   const drawGeometry = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw triangle
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(100, 300);
-    ctx.lineTo(300, 300);
-    ctx.lineTo(200, 100);
-    ctx.closePath();
-    ctx.stroke();
-
-    // Label angles
-    ctx.font = '16px Arial';
-    ctx.fillStyle = '#333';
-    ctx.fillText('A', 90, 320);
-    ctx.fillText('B', 310, 320);
-    ctx.fillText('C', 190, 90);
-
-    const dataUrl = canvas.toDataURL('image/png');
-    onInsert(dataUrl, 'geometry');
+    const svgContent = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><polygon points="100,300 300,300 200,100" stroke="#333" fill="none" stroke-width="2"/><text x="90" y="320">A</text><text x="310" y="320">B</text><text x="190" y="90">C</text></svg>';
+    onInsert('item_media_svg', svgContent);
   };
 
   return (
@@ -123,7 +95,7 @@ const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
             <textarea
               value={latexInput}
               onChange={(e) => setLatexInput(e.target.value)}
-              placeholder="Enter LaTeX: e.g., x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}"
+              placeholder="Enter LaTeX: e.g., x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}"
               className="w-full border rounded px-3 py-2 h-24 font-mono text-sm"
             />
             {preview && (
@@ -137,7 +109,7 @@ const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
               className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
               disabled={!latexInput}
             >
-              Insert LaTeX
+              Insert LaTeX (saves to item_stem_latex)
             </button>
           </div>
         )}
@@ -172,24 +144,26 @@ const MathTools: React.FC<MathToolsProps> = ({ onInsert }) => {
               onClick={drawGraph}
               className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
             >
-              Plot & Insert Graph
+              Plot & Save as SVG (item_media_svg)
             </button>
           </div>
         )}
 
         {activeTab === 'geometry' && (
           <div className="space-y-3">
-            <canvas
-              ref={canvasRef}
-              width={400}
-              height={400}
-              className="border rounded bg-white"
-            />
+            <div className="border rounded p-4 bg-gray-50 h-64 flex items-center justify-center">
+              <svg width="300" height="200" viewBox="0 0 300 200">
+                <polygon points="50,150 250,150 150,30" stroke="#333" fill="none" strokeWidth="2"/>
+                <text x="40" y="170">A</text>
+                <text x="260" y="170">B</text>
+                <text x="140" y="20">C</text>
+              </svg>
+            </div>
             <button
               onClick={drawGeometry}
               className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
             >
-              Draw & Insert Geometry
+              Save Geometry as SVG (item_media_svg)
             </button>
           </div>
         )}

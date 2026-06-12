@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
+const { auditLog } = require('../middleware/audit');
 
 // Helper: lookup surrogate IDs from natural keys
 async function lookupIds(db, subject_official_code, paper_no) {
@@ -9,53 +10,16 @@ async function lookupIds(db, subject_official_code, paper_no) {
   return { subject_id: subj[0]?.subject_id || null, paper_id: pap[0]?.paper_id || null };
 }
 
-// POST /api/qbank/items — Create item with natural keys
-router.post('/', async (req, res) => {
-  const db = req.db;
-  const {
-    subject_official_code, subject_alpha_code, paper_no, question_text, marks,
-    cognitive_level, difficulty, created_by = 1,
-    source_year, source_paper_code, source_question_number,
-    year_id = 6, grade_id = 1, assessment_type_id = 1,
-    assessment_body_id = 1, language_id = 1, item_type_id = 1,
-    marking_scheme_id = null, cognitive_level_id = 1, difficulty_id = 1,
-    caps_subtopic_id = null, caps_reference = null
-  } = req.body;
+// Helper: detect required tool from subject
+async function getToolRequired(db, subject_official_code) {
+  const [mappings] = await db.execute(
+    'SELECT tool_required FROM subject_tool_mapping WHERE subject_official_code = ? AND is_primary = 1 AND is_active = 1 LIMIT 1',
+    [subject_official_code]
+  );
+  return mappings[0]?.tool_required || 'general';
+}
 
-  if (!subject_official_code || !paper_no || !question_text) {
-    return res.status(400).json({ success: false, error: 'Missing required fields: subject_official_code, paper_no, question_text' });
-  }
-
-  try {
-    const { subject_id, paper_id } = await lookupIds(db, subject_official_code, paper_no);
-    if (!subject_id) return res.status(400).json({ success: false, error: 'Invalid subject_official_code' });
-    if (!paper_id) return res.status(400).json({ success: false, error: 'Invalid paper_no' });
-
-    const item_code = `${subject_official_code}_${paper_no}_${uuidv4().slice(0, 8).toUpperCase()}`;
-    const item_id = uuidv4();
-
-    await db.execute(
-      `INSERT INTO item_master
-       (item_id, subject_official_code, subject_alpha_code, paper_no, subject_id, paper_id,
-        year_id, grade_id, assessment_type_id, assessment_body_id, item_code, question_number,
-        question_text, marks, marks_allocated, cognitive_level_id, cognitive_level, difficulty_id, difficulty,
-        language_id, item_type_id, marking_scheme_id, caps_subtopic_id, caps_reference,
-        status, created_by, source_year, source_paper_code, source_question_number)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`,
-      [item_id, subject_official_code, subject_alpha_code || subject_official_code, paper_no, subject_id, paper_id,
-       year_id, grade_id, assessment_type_id, assessment_body_id, item_code, '1.1',
-       question_text, marks || 1, marks || 1, cognitive_level_id, cognitive_level || null,
-       difficulty_id, difficulty || null, language_id, item_type_id, marking_scheme_id,
-       caps_subtopic_id, caps_reference, created_by,
-       source_year || null, source_paper_code || null, source_question_number || null]
-    );
-    res.json({ success: true, item_id });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// GET /api/qbank/items — List items by natural keys
+// GET /api/qbank/items — List items with security fields
 router.get('/', async (req, res) => {
   const db = req.db;
   const { subject_official_code, paper_no, status, grade_id } = req.query;
@@ -78,7 +42,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/qbank/items/:id — Get single item with details
+// GET /api/qbank/items/:id — Get single item with all security fields
 router.get('/:id', async (req, res) => {
   const db = req.db;
   try {
@@ -89,15 +53,86 @@ router.get('/:id', async (req, res) => {
     const [memos] = await db.execute('SELECT * FROM item_memos WHERE item_id = ? AND is_current = 1', [req.params.id]);
     const [attachments] = await db.execute('SELECT * FROM item_attachments WHERE item_id = ? ORDER BY display_order', [req.params.id]);
     const [tags] = await db.execute(`SELECT it.*, lt.tag_name, lt.tag_category FROM item_tags it JOIN lookup_tag_taxonomy lt ON it.tag_id = lt.tag_id WHERE it.item_id = ?`, [req.params.id]);
+    const [auditLogs] = await db.execute('SELECT * FROM tool_audit_log WHERE item_id = ? ORDER BY created_at DESC LIMIT 50', [req.params.id]);
+    const [secureMedia] = await db.execute('SELECT * FROM secure_media_storage WHERE item_id = ?', [req.params.id]);
 
-    res.json({ success: true, item: items[0], options, memos, attachments, tags });
+    res.json({
+      success: true,
+      item: items[0],
+      options,
+      memos,
+      attachments,
+      tags,
+      audit_logs: auditLogs,
+      secure_media: secureMedia
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// PUT /api/qbank/items/:id — Update item
-router.put('/:id', async (req, res) => {
+// POST /api/qbank/items — Create item with security-aligned fields (with audit)
+router.post('/', auditLog, async (req, res) => {
+  const db = req.db;
+  const {
+    subject_official_code, subject_alpha_code, paper_no, question_text, marks,
+    cognitive_level, difficulty, created_by = 1,
+    source_year, source_paper_code, source_question_number,
+    year_id = 6, grade_id = 1, assessment_type_id = 1,
+    assessment_body_id = 1, language_id = 1, item_type_id = 1,
+    marking_scheme_id = null, cognitive_level_id = 1, difficulty_id = 1,
+    caps_subtopic_id = null, caps_reference = null,
+    // Security-aligned fields
+    item_stem_latex, item_stem_html, item_stem_code,
+    item_media_svg, item_media_audio, item_media_file,
+    item_rubric_json, item_answer_json
+  } = req.body;
+
+  if (!subject_official_code || !paper_no || !question_text) {
+    return res.status(400).json({ success: false, error: 'Missing required fields: subject_official_code, paper_no, question_text' });
+  }
+
+  try {
+    const { subject_id, paper_id } = await lookupIds(db, subject_official_code, paper_no);
+    if (!subject_id) return res.status(400).json({ success: false, error: 'Invalid subject_official_code' });
+    if (!paper_id) return res.status(400).json({ success: false, error: 'Invalid paper_no' });
+
+    const tool_required = await getToolRequired(db, subject_official_code);
+    const item_code = `${subject_official_code}_${paper_no}_${uuidv4().slice(0, 8).toUpperCase()}`;
+    const item_id = uuidv4();
+
+    await db.execute(
+      `INSERT INTO item_master
+       (item_id, subject_official_code, subject_alpha_code, paper_no, subject_id, paper_id,
+        year_id, grade_id, assessment_type_id, assessment_body_id, item_code, question_number,
+        question_text, marks, marks_allocated, cognitive_level_id, cognitive_level, difficulty_id, difficulty,
+        language_id, item_type_id, marking_scheme_id, caps_subtopic_id, caps_reference,
+        status, created_by, source_year, source_paper_code, source_question_number,
+        item_stem_latex, item_stem_html, item_stem_code,
+        item_media_svg, item_media_audio, item_media_file,
+        item_rubric_json, item_answer_json, tool_required)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [item_id, subject_official_code, subject_alpha_code || subject_official_code, paper_no, subject_id, paper_id,
+       year_id, grade_id, assessment_type_id, assessment_body_id, item_code, '1.1',
+       question_text, marks || 1, marks || 1, cognitive_level_id, cognitive_level || null,
+       difficulty_id, difficulty || null, language_id, item_type_id, marking_scheme_id,
+       caps_subtopic_id, caps_reference, created_by,
+       source_year || null, source_paper_code || null, source_question_number || null,
+       item_stem_latex || null, item_stem_html || null, item_stem_code || null,
+       item_media_svg || null, item_media_audio || null, item_media_file || null,
+       item_rubric_json ? JSON.stringify(item_rubric_json) : null,
+       item_answer_json ? JSON.stringify(item_answer_json) : null,
+       tool_required]
+    );
+    res.json({ success: true, item_id });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// PUT /api/qbank/items/:id — Update item with security fields (with audit)
+router.put('/:id', auditLog, async (req, res) => {
   const db = req.db;
   const conn = await db.getConnection();
   try {
@@ -113,11 +148,14 @@ router.put('/:id', async (req, res) => {
       [req.params.id]
     );
 
-    // Update item
     const {
       question_text, question_text_afr, marks, cognitive_level, difficulty,
       cognitive_level_id, difficulty_id, caps_subtopic_id, caps_reference,
-      status, source_year, source_paper_code, source_question_number
+      status, source_year, source_paper_code, source_question_number,
+      // Security-aligned fields
+      item_stem_latex, item_stem_html, item_stem_code,
+      item_media_svg, item_media_audio, item_media_file,
+      item_rubric_json, item_answer_json
     } = req.body;
 
     await conn.execute(
@@ -136,12 +174,25 @@ router.put('/:id', async (req, res) => {
         source_year = COALESCE(?, source_year),
         source_paper_code = COALESCE(?, source_paper_code),
         source_question_number = COALESCE(?, source_question_number),
+        item_stem_latex = COALESCE(?, item_stem_latex),
+        item_stem_html = COALESCE(?, item_stem_html),
+        item_stem_code = COALESCE(?, item_stem_code),
+        item_media_svg = COALESCE(?, item_media_svg),
+        item_media_audio = COALESCE(?, item_media_audio),
+        item_media_file = COALESCE(?, item_media_file),
+        item_rubric_json = COALESCE(?, item_rubric_json),
+        item_answer_json = COALESCE(?, item_answer_json),
         current_version = current_version + 1,
         updated_at = NOW()
        WHERE item_id = ?`,
       [question_text, question_text_afr, marks, marks, cognitive_level, difficulty,
        cognitive_level_id, difficulty_id, caps_subtopic_id, caps_reference,
-       status, source_year, source_paper_code, source_question_number, req.params.id]
+       status, source_year, source_paper_code, source_question_number,
+       item_stem_latex, item_stem_html, item_stem_code,
+       item_media_svg, item_media_audio, item_media_file,
+       item_rubric_json ? JSON.stringify(item_rubric_json) : null,
+       item_answer_json ? JSON.stringify(item_answer_json) : null,
+       req.params.id]
     );
 
     await conn.commit();
@@ -154,96 +205,38 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// POST /api/qbank/items/:id/submit — Submit for review
-router.post('/:id/submit', async (req, res) => {
-  try {
-    const role = req.headers['x-user-role'] || 'author';
-    await req.db.execute(`UPDATE item_master SET status = 'pending_review' WHERE item_id = ? AND status = 'draft'`, [req.params.id]);
-    await req.db.execute(`INSERT INTO review_workflow (item_id, current_state, previous_state, changed_by, changed_by_role) VALUES (?, 'pending_review', 'draft', ?, ?)`, [req.params.id, req.body.user_id || 1, role]);
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// POST /api/qbank/items/:id/approve — Approve item
-router.post('/:id/approve', async (req, res) => {
-  const { newStatus = 'peer_approved', user_id = 1 } = req.body;
-  const role = req.headers['x-user-role'] || 'peer_reviewer';
-  try {
-    await req.db.execute('UPDATE item_master SET status = ? WHERE item_id = ?', [newStatus, req.params.id]);
-    await req.db.execute(`INSERT INTO review_workflow (item_id, current_state, previous_state, changed_by, changed_by_role) VALUES (?, ?, 'pending_review', ?, ?)`, [req.params.id, newStatus, user_id, role]);
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// POST /api/qbank/items/:id/reject — Reject item
-router.post('/:id/reject', async (req, res) => {
-  const role = req.headers['x-user-role'] || 'peer_reviewer';
-  try {
-    await req.db.execute(`UPDATE item_master SET status = 'revision_required' WHERE item_id = ?`, [req.params.id]);
-    await req.db.execute(`INSERT INTO review_workflow (item_id, current_state, previous_state, changed_by, changed_by_role) VALUES (?, 'revision_required', 'pending_review', ?, ?)`, [req.params.id, req.body.user_id || 1, role]);
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// POST /api/qbank/items/bulk — Bulk create items
-router.post('/bulk', async (req, res) => {
+// GET /api/qbank/items/:id/audit — Get audit log for item
+router.get('/:id/audit', async (req, res) => {
   const db = req.db;
-  const { items } = req.body;
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ success: false, error: 'Items array required' });
-  }
-
-  const conn = await db.getConnection();
   try {
-    await conn.beginTransaction();
-    const created = [];
-    for (const item of items) {
-      const {
-        subject_official_code, subject_alpha_code, paper_no, question_text, marks,
-        cognitive_level, difficulty, created_by = 1,
-        source_year, source_paper_code, source_question_number,
-        year_id = 6, grade_id = 1, assessment_type_id = 1,
-        assessment_body_id = 1, language_id = 1, item_type_id = 1,
-        marking_scheme_id = null, cognitive_level_id = 1, difficulty_id = 1,
-        caps_subtopic_id = null, caps_reference = null
-      } = item;
-
-      const { subject_id, paper_id } = await lookupIds(conn, subject_official_code, paper_no);
-      if (!subject_id || !paper_id) continue;
-
-      const item_code = `${subject_official_code}_${paper_no}_${uuidv4().slice(0, 8).toUpperCase()}`;
-      const item_id = uuidv4();
-
-      await conn.execute(
-        `INSERT INTO item_master
-         (item_id, subject_official_code, subject_alpha_code, paper_no, subject_id, paper_id,
-          year_id, grade_id, assessment_type_id, assessment_body_id, item_code, question_number,
-          question_text, marks, marks_allocated, cognitive_level_id, cognitive_level, difficulty_id, difficulty,
-          language_id, item_type_id, marking_scheme_id, caps_subtopic_id, caps_reference,
-          status, created_by, source_year, source_paper_code, source_question_number)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`,
-        [item_id, subject_official_code, subject_alpha_code || subject_official_code, paper_no, subject_id, paper_id,
-         year_id, grade_id, assessment_type_id, assessment_body_id, item_code, '1.1',
-         question_text, marks || 1, marks || 1, cognitive_level_id, cognitive_level || null,
-         difficulty_id, difficulty || null, language_id, item_type_id, marking_scheme_id,
-         caps_subtopic_id, caps_reference, created_by,
-         source_year || null, source_paper_code || null, source_question_number || null]
-      );
-      created.push(item_id);
-    }
-    await conn.commit();
-    res.json({ success: true, count: created.length, item_ids: created });
+    const [logs] = await db.execute(
+      `SELECT * FROM tool_audit_log WHERE item_id = ? ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json({ success: true, count: logs.length, audit_logs: logs });
   } catch (e) {
-    await conn.rollback();
     res.status(500).json({ success: false, error: e.message });
-  } finally {
-    conn.release();
+  }
+});
+
+// POST /api/qbank/items/:id/audit — Add manual audit entry
+router.post('/:id/audit', async (req, res) => {
+  const db = req.db;
+  const { tool_name, action, action_details } = req.body;
+  const userId = req.headers['x-user-id'] || 1;
+  const userRole = req.headers['x-user-role'] || 'author';
+
+  try {
+    await db.execute(
+      `INSERT INTO tool_audit_log (item_id, user_id, user_role, tool_name, action, action_details, ip_address, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.params.id, userId, userRole, tool_name, action,
+       action_details ? JSON.stringify(action_details) : null,
+       req.ip, req.headers['user-agent']]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
