@@ -19,34 +19,89 @@ async function getToolRequired(db, subject_official_code) {
   return mappings[0]?.tool_required || 'general';
 }
 
-// GET /api/qbank/items — List items with security fields
+// GET /api/qbank/items — List items with JOINs for display names + pagination + search
 router.get('/', async (req, res) => {
   const db = req.db;
-  const { subject_official_code, paper_no, status, grade_id } = req.query;
-  let sql = `SELECT im.*, ls.subject_name, lp.paper_code, lp.paper_name
-             FROM item_master im
-             LEFT JOIN lookup_subjects ls ON im.subject_official_code = ls.subject_official_code
-             LEFT JOIN lookup_papers lp ON im.paper_id = lp.paper_id
-             WHERE 1=1`;
-  const p = [];
-  if (subject_official_code) { sql += ` AND im.subject_official_code = ?`; p.push(subject_official_code); }
-  if (paper_no) { sql += ` AND im.paper_no = ?`; p.push(paper_no); }
-  if (status) { sql += ` AND im.status = ?`; p.push(status); }
-  if (grade_id) { sql += ` AND im.grade_id = ?`; p.push(grade_id); }
-  sql += ` ORDER BY im.created_at DESC`;
+  const { subject_official_code, paper_no, status, grade_id, limit, offset, search } = req.query;
+
+  // Build WHERE clause and params
+  let where = 'WHERE 1=1';
+  const params = [];
+  if (subject_official_code) { where += ' AND im.subject_official_code = ?'; params.push(subject_official_code); }
+  if (paper_no) { where += ' AND im.paper_no = ?'; params.push(parseInt(paper_no)); }
+  if (status) { where += ' AND im.status = ?'; params.push(status); }
+  if (grade_id) { where += ' AND im.grade_id = ?'; params.push(parseInt(grade_id)); }
+  if (search) { where += ' AND (im.question_text LIKE ? OR im.item_code LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+
+  const pageLimit = parseInt(limit) || 20;
+  const pageOffset = parseInt(offset) || 0;
+
   try {
-    const [items] = await db.execute(sql, p);
-    res.json({ success: true, count: items.length, items });
+    // Count total — use query() to avoid prepared statement issues
+    const countSql = `SELECT COUNT(*) as total FROM item_master im ${where}`;
+    const [countRows] = await db.query(countSql, params);
+    const total = countRows[0].total;
+
+    // Main query — use query() with LIMIT/OFFSET as literals (not prepared params)
+    const sql = `SELECT
+      im.item_id, im.item_code, im.question_number, im.question_text, im.marks, im.status,
+      im.subject_official_code, im.subject_alpha_code, im.paper_no,
+      im.year_id, im.grade_id, im.assessment_type_id, im.assessment_body_id,
+      im.item_type_id, im.cognitive_level_id, im.difficulty_id,
+      im.caps_subtopic_id, im.caps_reference, im.created_by, im.created_at, im.updated_at,
+      ls.subject_name,
+      lp.paper_name,
+      lg.grade_number,
+      lcl.level_name as cognitive_level_name,
+      ldl.difficulty_name,
+      lit.type_name as item_type_name
+    FROM item_master im
+    LEFT JOIN lookup_subjects ls ON im.subject_official_code = ls.subject_official_code
+    LEFT JOIN lookup_papers lp ON im.paper_id = lp.paper_id
+    LEFT JOIN lookup_grades lg ON im.grade_id = lg.grade_id
+    LEFT JOIN lookup_cognitive_levels lcl ON im.cognitive_level_id = lcl.cognitive_level_id
+    LEFT JOIN lookup_difficulty_levels ldl ON im.difficulty_id = ldl.difficulty_id
+    LEFT JOIN lookup_item_types lit ON im.item_type_id = lit.item_type_id
+    ${where}
+    ORDER BY im.created_at DESC
+    LIMIT ${pageLimit} OFFSET ${pageOffset}`;
+
+    const [items] = await db.query(sql, params);
+    res.json({ success: true, total, count: items.length, items });
   } catch (e) {
+    console.error('GET /api/qbank/items error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// GET /api/qbank/items/:id — Get single item with all security fields
+// GET /api/qbank/items/:id — Get single item with all JOINs for display names
 router.get('/:id', async (req, res) => {
   const db = req.db;
   try {
-    const [items] = await db.execute('SELECT * FROM item_master WHERE item_id = ?', [req.params.id]);
+    const [items] = await db.query(`
+      SELECT
+        im.*,
+        ls.subject_name,
+        ls.subject_alpha_code,
+        lp.paper_name,
+        lp.paper_code,
+        lg.grade_number,
+        lg.grade_label,
+        lcl.level_name as cognitive_level_name,
+        ldl.difficulty_name,
+        lit.type_name as item_type_name,
+        qu.full_name as created_by_name
+      FROM item_master im
+      LEFT JOIN lookup_subjects ls ON im.subject_official_code = ls.subject_official_code
+      LEFT JOIN lookup_papers lp ON im.paper_id = lp.paper_id
+      LEFT JOIN lookup_grades lg ON im.grade_id = lg.grade_id
+      LEFT JOIN lookup_cognitive_levels lcl ON im.cognitive_level_id = lcl.cognitive_level_id
+      LEFT JOIN lookup_difficulty_levels ldl ON im.difficulty_id = ldl.difficulty_id
+      LEFT JOIN lookup_item_types lit ON im.item_type_id = lit.item_type_id
+      LEFT JOIN qbank_users qu ON im.created_by = qu.user_id
+      WHERE im.item_id = ?
+    `, [req.params.id]);
+
     if (!items.length) return res.status(404).json({ success: false, error: 'Item not found' });
 
     const [options] = await db.execute('SELECT * FROM item_mcq_options WHERE item_id = ? ORDER BY display_order', [req.params.id]);
@@ -65,6 +120,7 @@ router.get('/:id', async (req, res) => {
       secure_media: []
     });
   } catch (e) {
+    console.error('GET /api/qbank/items/:id error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -80,7 +136,6 @@ router.post('/', auditLog, async (req, res) => {
     assessment_body_id = 1, language_id = 1, item_type_id = 1,
     marking_scheme_id = null, cognitive_level_id = 1, difficulty_id = 1,
     caps_subtopic_id = null, caps_reference = null,
-    // Security-aligned fields
     item_stem_latex, item_stem_html, item_stem_code,
     item_media_svg, item_media_audio, item_media_file,
     item_rubric_json, item_answer_json
@@ -125,6 +180,7 @@ router.post('/', auditLog, async (req, res) => {
     );
     res.json({ success: true, item_id });
   } catch (e) {
+    console.error('POST /api/qbank/items error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -138,7 +194,6 @@ router.put('/:id', auditLog, async (req, res) => {
     const [current] = await conn.execute('SELECT * FROM item_master WHERE item_id = ?', [req.params.id]);
     if (!current.length) return res.status(404).json({ success: false, error: 'Item not found' });
 
-    // Create version snapshot — columns must match item_versions schema exactly
     await conn.execute(
       `INSERT INTO item_versions (item_id, version_number, question_text, question_text_afr, marks, cognitive_level_id, difficulty_id, change_type, changed_by)
        SELECT item_id, current_version + 1, question_text, question_text_afr, marks, cognitive_level_id, difficulty_id, 'update', created_by
@@ -150,7 +205,6 @@ router.put('/:id', auditLog, async (req, res) => {
       question_text, question_text_afr, marks, cognitive_level, difficulty,
       cognitive_level_id, difficulty_id, caps_subtopic_id, caps_reference,
       status, source_year, source_paper_code, source_question_number,
-      // Security-aligned fields
       item_stem_latex, item_stem_html, item_stem_code,
       item_media_svg, item_media_audio, item_media_file,
       item_rubric_json, item_answer_json
@@ -197,6 +251,7 @@ router.put('/:id', auditLog, async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     await conn.rollback();
+    console.error('PUT /api/qbank/items/:id error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   } finally {
     conn.release();

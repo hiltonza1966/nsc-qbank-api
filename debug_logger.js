@@ -16,16 +16,10 @@ if (!fs.existsSync(LOG_FILE)) {
   fs.writeFileSync(LOG_FILE, '');
 }
 
-/**
- * Format timestamp
- */
 function ts() {
   return new Date().toISOString();
 }
 
-/**
- * Rotate log if too large
- */
 function rotateLog() {
   try {
     const stats = fs.statSync(LOG_FILE);
@@ -38,9 +32,6 @@ function rotateLog() {
   } catch (e) { /* ignore */ }
 }
 
-/**
- * Core write function
- */
 function writeLog(level, section, message, data = null) {
   rotateLog();
   const entry = {
@@ -56,14 +47,13 @@ function writeLog(level, section, message, data = null) {
   } catch (e) {
     console.error('Failed to write to debug.log:', e.message);
   }
-  // Also console output in development
   const consolePrefix = `[${level}] [${section}]`;
   if (level === 'ERROR') console.error(consolePrefix, message, data || '');
   else if (level === 'WARN') console.warn(consolePrefix, message);
   else console.log(consolePrefix, message);
 }
 
-// Exported logging functions
+// Exported logging functions — lowercase method names
 const debug = {
   info: (section, msg, data) => writeLog('INFO', section, msg, data),
   warn: (section, msg, data) => writeLog('WARN', section, msg, data),
@@ -73,15 +63,21 @@ const debug = {
   frontend: (section, msg, data) => writeLog('FRONTEND', section, msg, data),
 };
 
-/**
- * Express middleware: Log ALL requests and responses
- */
+// Map uppercase level string to lowercase debug method
+function logByLevel(level, section, message, data) {
+  const methodName = level.toLowerCase();
+  if (debug[methodName]) {
+    debug[methodName](section, message, data);
+  } else {
+    debug.info(section, message, data);
+  }
+}
+
 function requestLogger(req, res, next) {
   const start = Date.now();
   const reqId = Math.random().toString(36).substring(2, 10);
   req.debugId = reqId;
 
-  // Capture request body
   const reqBody = req.body ? JSON.stringify(req.body).substring(0, 2000) : null;
 
   debug.api('REQUEST', `${req.method} ${req.originalUrl}`, {
@@ -98,7 +94,6 @@ function requestLogger(req, res, next) {
     ip: req.ip || req.connection?.remoteAddress
   });
 
-  // Capture response
   const originalSend = res.send;
   const originalJson = res.json;
   const originalStatus = res.status;
@@ -115,7 +110,7 @@ function requestLogger(req, res, next) {
     const level = isError ? 'ERROR' : 'API';
     const responseData = typeof data === 'string' ? data.substring(0, 2000) : JSON.stringify(data).substring(0, 2000);
 
-    debug[level]('RESPONSE', `${req.method} ${req.originalUrl} -> ${statusCode} (${duration}ms)`, {
+    logByLevel(level, 'RESPONSE', `${req.method} ${req.originalUrl} -> ${statusCode} (${duration}ms)`, {
       reqId,
       statusCode,
       duration,
@@ -130,7 +125,7 @@ function requestLogger(req, res, next) {
     const isError = statusCode >= 400;
     const level = isError ? 'ERROR' : 'API';
 
-    debug[level]('RESPONSE', `${req.method} ${req.originalUrl} -> ${statusCode} (${duration}ms)`, {
+    logByLevel(level, 'RESPONSE', `${req.method} ${req.originalUrl} -> ${statusCode} (${duration}ms)`, {
       reqId,
       statusCode,
       duration,
@@ -143,9 +138,6 @@ function requestLogger(req, res, next) {
   next();
 }
 
-/**
- * Express error handler: Catch ALL route/middleware errors
- */
 function errorHandler(err, req, res, next) {
   const errorDetails = {
     reqId: req.debugId,
@@ -163,7 +155,6 @@ function errorHandler(err, req, res, next) {
 
   debug.error('EXPRESS_ERROR', `Unhandled error in ${req.method} ${req.originalUrl}`, errorDetails);
 
-  // Send generic error to client (don't leak stack in production)
   if (!res.headersSent) {
     res.status(err.status || 500).json({
       error: true,
@@ -174,9 +165,6 @@ function errorHandler(err, req, res, next) {
   }
 }
 
-/**
- * Catch ALL unhandled promise rejections
- */
 process.on('unhandledRejection', (reason, promise) => {
   debug.error('UNHANDLED_REJECTION', 'Unhandled Promise Rejection', {
     reason: reason?.message || String(reason),
@@ -185,22 +173,15 @@ process.on('unhandledRejection', (reason, promise) => {
   });
 });
 
-/**
- * Catch ALL uncaught exceptions
- */
 process.on('uncaughtException', (err) => {
   debug.error('UNCAUGHT_EXCEPTION', 'Uncaught Exception - Process will exit', {
     message: err.message,
     stack: err.stack,
     name: err.name
   });
-  // Give time to write log then exit
   setTimeout(() => process.exit(1), 1000);
 });
 
-/**
- * Database error wrapper - wrap any DB call to log errors
- */
 function wrapDbCall(dbFunction, section = 'DB') {
   return async function(...args) {
     try {
@@ -220,9 +201,6 @@ function wrapDbCall(dbFunction, section = 'DB') {
   };
 }
 
-/**
- * Route wrapper - wrap route handlers to catch async errors
- */
 function wrapRoute(handler) {
   return async function(req, res, next) {
     try {
@@ -233,9 +211,6 @@ function wrapRoute(handler) {
   };
 }
 
-/**
- * Read log file for debug panel
- */
 function readLogs(limit = 500, filter = null) {
   try {
     if (!fs.existsSync(LOG_FILE)) return [];
@@ -263,9 +238,6 @@ function readLogs(limit = 500, filter = null) {
   }
 }
 
-/**
- * Clear logs
- */
 function clearLogs() {
   try {
     fs.writeFileSync(LOG_FILE, `[${ts()}] LOGS CLEARED\n`);
