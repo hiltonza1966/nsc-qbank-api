@@ -88,8 +88,13 @@ const ItemDetail: React.FC = () => {
   // When subject changes, filter CAPS topics for that subject
   useEffect(() => {
     if (formData.subject_official_code && allCapsTopics.length > 0) {
+      const selectedSubject = subjects.find(s => s.subject_official_code === formData.subject_official_code);
+      const codesToMatch = [formData.subject_official_code];
+      if (selectedSubject?.subject_alpha_code) {
+        codesToMatch.push(selectedSubject.subject_alpha_code);
+      }
       const filtered = allCapsTopics.filter(
-        (t) => t.subject_official_code === formData.subject_official_code
+        (t) => codesToMatch.includes(t.subject_official_code)
       );
       setCapsTopics(filtered);
       // Reset topic and subtopic when subject changes
@@ -97,7 +102,7 @@ const ItemDetail: React.FC = () => {
     } else {
       setCapsTopics([]);
     }
-  }, [formData.subject_official_code, allCapsTopics]);
+  }, [formData.subject_official_code, allCapsTopics, subjects]);
 
   // When topic changes, filter subtopics for that topic
   useEffect(() => {
@@ -336,7 +341,7 @@ const ItemDetail: React.FC = () => {
               <select name="assessment_type_id" value={formData.assessment_type_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select type...</option>
                 {assessmentTypes.map(a => (
-                  <option key={a.assessment_type_id || a.id} value={a.assessment_type_id || a.id}>{a.assessment_type_name || a.name}</option>
+                  <option key={a.assessment_type_id || a.id} value={a.assessment_type_id || a.id}>{a.type_name || a.assessment_type_name || a.name}</option>
                 ))}
               </select>
             </div>
@@ -345,7 +350,7 @@ const ItemDetail: React.FC = () => {
               <select name="assessment_body_id" value={formData.assessment_body_id} onChange={handleChange} style={inputStyle}>
                 <option value="">Select body...</option>
                 {assessmentBodies.map(b => (
-                  <option key={b.assessment_body_id || b.id} value={b.assessment_body_id || b.id}>{b.assessment_body_name || b.name}</option>
+                  <option key={b.assessment_body_id || b.id} value={b.assessment_body_id || b.id}>{b.body_name || b.assessment_body_name || b.name}</option>
                 ))}
               </select>
             </div>

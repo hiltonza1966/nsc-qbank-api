@@ -1,10 +1,14 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { debugLogger } from './utils/debugLogger';
+import DebugPanel from './components/DebugPanel';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 
 // Real pages
 import Dashboard from './pages/Dashboard';
 import Items from './pages/Items';
 import ItemDetail from './pages/ItemDetail';
+import ItemStudio from './pages/ItemStudio';
 import Papers from './pages/Papers';
 import PaperDetail from './pages/PaperDetail';
 import Reviews from './pages/Reviews';
@@ -175,7 +179,8 @@ const Navigation: React.FC = () => {
       <Link to="/items" style={linkStyle}>Items</Link>
       <Link to="/papers" style={linkStyle}>Papers</Link>
       <Link to="/reviews" style={linkStyle}>Reviews</Link>
-      <Link to="/templates" style={linkStyle}>Templates</Link>`n      <Link to="/master-template" style={linkStyle}>Master Template</Link>
+      <Link to="/templates" style={linkStyle}>Templates</Link>
+      <Link to="/master-template" style={linkStyle}>Master Template</Link>
       <Link to="/wizard" style={linkStyle}>Wizard</Link>
       <Link to="/caps-linker" style={linkStyle}>CAPS Linker</Link>
       {userRole === 'admin' && (
@@ -225,7 +230,7 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      <QueryClientProvider client={new QueryClient()}><BrowserRouter>
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
           <Navigation />
 
@@ -248,11 +253,13 @@ const App: React.FC = () => {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/items" element={<Items />} />
+                <Route path="/items/:id/edit" element={<ItemStudio />} />
                 <Route path="/items/:id" element={<ItemDetail />} />
-               <Route path="/reviews" element={<Reviews />} />
+                <Route path="/reviews" element={<Reviews />} />
                 <Route path="/papers" element={<Papers />} />
                 <Route path="/papers/:id" element={<PaperDetail />} />
-                <Route path="/templates" element={<Templates />} />`n                <Route path="/master-template" element={<MasterTemplate />} />
+                <Route path="/templates" element={<Templates />} />
+                <Route path="/master-template" element={<MasterTemplate />} />
                 <Route path="/wizard" element={<WizardPage />} />
                 <Route path="/caps-linker" element={<CAPSManualLinker />} />
                 <Route path="/admin" element={<AdminPage />} />
@@ -260,13 +267,18 @@ const App: React.FC = () => {
               </Routes>
             </React.Suspense>
           </main>
+      <DebugPanel />
         </div>
-      </BrowserRouter>
+      </BrowserRouter></QueryClientProvider>
     </ErrorBoundary>
   );
 };
 
 export default App;
+
+
+
+
 
 
 
