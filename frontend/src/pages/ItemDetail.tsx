@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 
 interface Item {
@@ -41,22 +41,37 @@ const ItemDetail: React.FC = () => {
   // Lookup data for create form
   const [subjects, setSubjects] = useState<any[]>([]);
   const [papers, setPapers] = useState<any[]>([]);
+  const [years, setYears] = useState<any[]>([]);
+  const [grades, setGrades] = useState<any[]>([]);
+  const [assessmentTypes, setAssessmentTypes] = useState<any[]>([]);
+  const [assessmentBodies, setAssessmentBodies] = useState<any[]>([]);
   const [cognitiveLevels, setCognitiveLevels] = useState<any[]>([]);
   const [difficulties, setDifficulties] = useState<any[]>([]);
   const [itemTypes, setItemTypes] = useState<any[]>([]);
+  const [languages, setLanguages] = useState<any[]>([]);
+  const [markingSchemes, setMarkingSchemes] = useState<any[]>([]);
   const [capsTopics, setCapsTopics] = useState<any[]>([]);
   const [capsSubtopics, setCapsSubtopics] = useState<any[]>([]);
+  const [allCapsTopics, setAllCapsTopics] = useState<any[]>([]);
+  const [allCapsSubtopics, setAllCapsSubtopics] = useState<any[]>([]);
 
   // Create form state
   const [formData, setFormData] = useState({
     subject_official_code: '',
     paper_no: '',
-    question_text: '',
-    question_text_afr: '',
-    marks: '',
+    year_id: '',
+    grade_id: '',
+    assessment_type_id: '',
+    assessment_body_id: '',
+    language_id: '1',
+    marking_scheme_id: '',
+    item_type_id: '',
     cognitive_level_id: '',
     difficulty_id: '',
-    item_type_id: '',
+    question_number: '',
+    marks: '',
+    question_text: '',
+    question_text_afr: '',
     caps_topic_id: '',
     caps_subtopic_id: '',
   });
@@ -69,6 +84,32 @@ const ItemDetail: React.FC = () => {
       fetchLookups();
     }
   }, [id]);
+
+  // When subject changes, filter CAPS topics for that subject
+  useEffect(() => {
+    if (formData.subject_official_code && allCapsTopics.length > 0) {
+      const filtered = allCapsTopics.filter(
+        (t) => t.subject_official_code === formData.subject_official_code
+      );
+      setCapsTopics(filtered);
+      // Reset topic and subtopic when subject changes
+      setFormData(prev => ({ ...prev, caps_topic_id: '', caps_subtopic_id: '' }));
+    } else {
+      setCapsTopics([]);
+    }
+  }, [formData.subject_official_code, allCapsTopics]);
+
+  // When topic changes, filter subtopics for that topic
+  useEffect(() => {
+    if (formData.caps_topic_id && allCapsSubtopics.length > 0) {
+      const filtered = allCapsSubtopics.filter(
+        (s) => String(s.topic_id) === String(formData.caps_topic_id)
+      );
+      setCapsSubtopics(filtered);
+    } else {
+      setCapsSubtopics([]);
+    }
+  }, [formData.caps_topic_id, allCapsSubtopics]);
 
   async function fetchItem() {
     setLoading(true);
@@ -87,40 +128,70 @@ const ItemDetail: React.FC = () => {
   async function fetchLookups() {
     try {
       const headers = { 'x-user-role': localStorage.getItem('qbank_role') || 'author' };
-      const [subjRes, paperRes, cogRes, diffRes, typeRes, topicRes, subtopicRes] = await Promise.all([
-        fetch('/api/lookup/lookup_subjects', { headers }),
-        fetch('/api/lookup/lookup_papers', { headers }),
-        fetch('/api/lookup/lookup_cognitive_levels', { headers }),
-        fetch('/api/lookup/lookup_difficulty_levels', { headers }),
-        fetch('/api/lookup/lookup_item_types', { headers }),
-        fetch('/api/lookup/lookup_caps_topics', { headers }),
-        fetch('/api/lookup/lookup_caps_subtopics', { headers }),
-      ]);
+      const endpoints = [
+        { url: '/api/lookup/lookup_subjects', setter: setSubjects, field: 'data' },
+        { url: '/api/lookup/lookup_papers', setter: setPapers, field: 'data' },
+        { url: '/api/lookup/lookup_years', setter: setYears, field: 'data' },
+        { url: '/api/lookup/lookup_grades', setter: setGrades, field: 'data' },
+        { url: '/api/lookup/lookup_assessment_types', setter: setAssessmentTypes, field: 'data' },
+        { url: '/api/lookup/lookup_assessment_bodies', setter: setAssessmentBodies, field: 'data' },
+        { url: '/api/lookup/lookup_cognitive_levels', setter: setCognitiveLevels, field: 'data' },
+        { url: '/api/lookup/lookup_difficulty_levels', setter: setDifficulties, field: 'data' },
+        { url: '/api/lookup/lookup_item_types', setter: setItemTypes, field: 'data' },
+        { url: '/api/lookup/lookup_languages', setter: setLanguages, field: 'data' },
+        { url: '/api/lookup/lookup_marking_schemes', setter: setMarkingSchemes, field: 'data' },
+        { url: '/api/lookup/lookup_caps_topics', setter: setAllCapsTopics, field: 'data' },
+        { url: '/api/lookup/lookup_caps_subtopics', setter: setAllCapsSubtopics, field: 'data' },
+      ];
 
-      if (subjRes.ok) { const d = await subjRes.json(); setSubjects(d.data || d.subjects || []); }
-      if (paperRes.ok) { const d = await paperRes.json(); setPapers(d.data || []); }
-      if (cogRes.ok) { const d = await cogRes.json(); setCognitiveLevels(d.data || []); }
-      if (diffRes.ok) { const d = await diffRes.json(); setDifficulties(d.data || []); }
-      if (typeRes.ok) { const d = await typeRes.json(); setItemTypes(d.data || []); }
-      if (topicRes.ok) { const d = await topicRes.json(); setCapsTopics(d.data || []); }
-      if (subtopicRes.ok) { const d = await subtopicRes.json(); setCapsSubtopics(d.data || []); }
-    } catch (e) { console.error('Lookup fetch error:', e); }
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep.url, { headers });
+          if (res.ok) {
+            const d = await res.json();
+            const data = d[ep.field] || d.data || d.subjects || d || [];
+            ep.setter(data);
+          }
+        } catch (e) {
+          console.error(`Failed to fetch ${ep.url}:`, e);
+        }
+      }
+    } catch (e) {
+      console.error('Lookup fetch error:', e);
+    }
   }
 
   async function handleSave() {
     setSaving(true);
     setSaveError(null);
     try {
+      // Build payload - exclude caps_topic_id (not in schema), include all required fields
+      const payload: any = {
+        subject_official_code: formData.subject_official_code,
+        paper_no: parseInt(formData.paper_no) || 1,
+        year_id: parseInt(formData.year_id) || 6,
+        grade_id: parseInt(formData.grade_id) || 1,
+        assessment_type_id: parseInt(formData.assessment_type_id) || 1,
+        assessment_body_id: parseInt(formData.assessment_body_id) || 1,
+        language_id: parseInt(formData.language_id) || 1,
+        item_type_id: parseInt(formData.item_type_id) || 1,
+        cognitive_level_id: parseInt(formData.cognitive_level_id) || 1,
+        difficulty_id: parseInt(formData.difficulty_id) || 1,
+        marking_scheme_id: formData.marking_scheme_id ? parseInt(formData.marking_scheme_id) : null,
+        question_number: formData.question_number || '1.1',
+        marks: parseInt(formData.marks) || 1,
+        question_text: formData.question_text,
+        question_text_afr: formData.question_text_afr || null,
+        caps_subtopic_id: formData.caps_subtopic_id ? parseInt(formData.caps_subtopic_id) : null,
+      };
+
       const response = await fetch('/api/qbank/items/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-user-role': localStorage.getItem('qbank_role') || 'author',
         },
-        body: JSON.stringify({
-          ...formData,
-          marks: parseInt(formData.marks) || 0,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await response.json();
       if (data.success) {
@@ -203,7 +274,7 @@ const ItemDetail: React.FC = () => {
     return (
       <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
         <div style={{ marginBottom: '24px' }}>
-          <Link to="/items" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '14px' }}>â† Back to Items</Link>
+          <Link to="/items" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '14px' }}>&#8592; Back to Items</Link>
         </div>
         <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '24px', color: '#1f2937' }}>Create New Item</h1>
 
@@ -214,9 +285,10 @@ const ItemDetail: React.FC = () => {
         )}
 
         <div style={{ background: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          {/* Row 1: Subject (first) + Paper */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
             <div>
-              <label style={labelStyle}>Subject</label>
+              <label style={labelStyle}>Subject *</label>
               <select name="subject_official_code" value={formData.subject_official_code} onChange={handleChange} style={inputStyle}>
                 <option value="">Select subject...</option>
                 {subjects.map(s => (
@@ -225,14 +297,62 @@ const ItemDetail: React.FC = () => {
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Paper</label>
+              <label style={labelStyle}>Paper *</label>
               <select name="paper_no" value={formData.paper_no} onChange={handleChange} style={inputStyle}>
                 <option value="">Select paper...</option>
                 {papers.map(p => (
-                  <option key={p.paper_no || p.paper_id} value={p.paper_no}>{p.paper_title || `Paper ${p.paper_no}`}</option>
+                  <option key={p.paper_no || p.paper_id} value={p.paper_no}>{p.paper_name || `Paper ${p.paper_no}`}</option>
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Row 2: Year + Grade */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+            <div>
+              <label style={labelStyle}>Year</label>
+              <select name="year_id" value={formData.year_id} onChange={handleChange} style={inputStyle}>
+                <option value="">Select year...</option>
+                {years.map(y => (
+                  <option key={y.year_id || y.id} value={y.year_id || y.id}>{y.year_value || y.year_label || y.year}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Grade</label>
+              <select name="grade_id" value={formData.grade_id} onChange={handleChange} style={inputStyle}>
+                <option value="">Select grade...</option>
+                {grades.map(g => (
+                  <option key={g.grade_id || g.id} value={g.grade_id || g.id}>{g.grade_label || g.grade_name || `Grade ${g.grade_number}`}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 3: Assessment Type + Assessment Body */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+            <div>
+              <label style={labelStyle}>Assessment Type</label>
+              <select name="assessment_type_id" value={formData.assessment_type_id} onChange={handleChange} style={inputStyle}>
+                <option value="">Select type...</option>
+                {assessmentTypes.map(a => (
+                  <option key={a.assessment_type_id || a.id} value={a.assessment_type_id || a.id}>{a.assessment_type_name || a.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Assessment Body</label>
+              <select name="assessment_body_id" value={formData.assessment_body_id} onChange={handleChange} style={inputStyle}>
+                <option value="">Select body...</option>
+                {assessmentBodies.map(b => (
+                  <option key={b.assessment_body_id || b.id} value={b.assessment_body_id || b.id}>{b.assessment_body_name || b.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 4: Item Type + Question Number */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
             <div>
               <label style={labelStyle}>Item Type</label>
               <select name="item_type_id" value={formData.item_type_id} onChange={handleChange} style={inputStyle}>
@@ -243,9 +363,13 @@ const ItemDetail: React.FC = () => {
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Marks</label>
-              <input type="number" name="marks" value={formData.marks} onChange={handleChange} style={inputStyle} placeholder="e.g. 5" />
+              <label style={labelStyle}>Question Number</label>
+              <input type="text" name="question_number" value={formData.question_number} onChange={handleChange} style={inputStyle} placeholder="e.g. 1.1, 2.3" />
             </div>
+          </div>
+
+          {/* Row 5: Cognitive Level + Difficulty */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
             <div>
               <label style={labelStyle}>Cognitive Level</label>
               <select name="cognitive_level_id" value={formData.cognitive_level_id} onChange={handleChange} style={inputStyle}>
@@ -264,10 +388,42 @@ const ItemDetail: React.FC = () => {
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Row 6: Language + Marking Scheme */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+            <div>
+              <label style={labelStyle}>Language</label>
+              <select name="language_id" value={formData.language_id} onChange={handleChange} style={inputStyle}>
+                <option value="">Select language...</option>
+                {languages.map(l => (
+                  <option key={l.language_id || l.id} value={l.language_id || l.id}>{l.language_name || l.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Marking Scheme</label>
+              <select name="marking_scheme_id" value={formData.marking_scheme_id} onChange={handleChange} style={inputStyle}>
+                <option value="">Select scheme...</option>
+                {markingSchemes.map(m => (
+                  <option key={m.marking_scheme_id || m.id} value={m.marking_scheme_id || m.id}>{m.scheme_name || m.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 7: Marks */}
+          <div>
+            <label style={labelStyle}>Marks</label>
+            <input type="number" name="marks" value={formData.marks} onChange={handleChange} style={inputStyle} placeholder="e.g. 5" />
+          </div>
+
+          {/* Row 8: CAPS Topic (filtered by subject) + CAPS Subtopic (filtered by topic) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
             <div>
               <label style={labelStyle}>CAPS Topic</label>
               <select name="caps_topic_id" value={formData.caps_topic_id} onChange={handleChange} style={inputStyle}>
-                <option value="">Select topic...</option>
+                <option value="">{formData.subject_official_code ? 'Select topic...' : 'Select subject first'}</option>
                 {capsTopics.map(t => (
                   <option key={t.topic_id || t.caps_topic_id || t.id} value={t.topic_id || t.caps_topic_id || t.id}>{t.topic_name || t.caps_topic_name || t.name}</option>
                 ))}
@@ -276,7 +432,7 @@ const ItemDetail: React.FC = () => {
             <div>
               <label style={labelStyle}>CAPS Subtopic</label>
               <select name="caps_subtopic_id" value={formData.caps_subtopic_id} onChange={handleChange} style={inputStyle}>
-                <option value="">Select subtopic...</option>
+                <option value="">{formData.caps_topic_id ? 'Select subtopic...' : 'Select topic first'}</option>
                 {capsSubtopics.map(s => (
                   <option key={s.subtopic_id || s.caps_subtopic_id || s.id} value={s.subtopic_id || s.caps_subtopic_id || s.id}>{s.subtopic_name || s.caps_subtopic_name || s.name}</option>
                 ))}
@@ -285,7 +441,7 @@ const ItemDetail: React.FC = () => {
           </div>
 
           <div style={{ marginTop: '16px' }}>
-            <label style={labelStyle}>Question Text (English)</label>
+            <label style={labelStyle}>Question Text (English) *</label>
             <textarea name="question_text" value={formData.question_text} onChange={handleChange} style={{ ...inputStyle, minHeight: '120px', resize: 'vertical' }} placeholder="Enter the question text..." />
           </div>
 
@@ -305,11 +461,11 @@ const ItemDetail: React.FC = () => {
     );
   }
 
-  // VIEW MODE (existing item)
+  // VIEW MODE (existing item) - unchanged from original
   return (
     <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
       <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link to="/items" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '14px' }}>â† Back to Items</Link>
+        <Link to="/items" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '14px' }}>&#8592; Back to Items</Link>
         <span style={{ fontSize: '12px', color: '#6b7280', background: '#f3f4f6', padding: '4px 12px', borderRadius: '12px' }}>{item?.status || 'draft'}</span>
       </div>
 
@@ -346,18 +502,18 @@ const ItemDetail: React.FC = () => {
       {activeTab === 'metadata' && (
         <div style={{ background: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>ITEM CODE</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.item_code || 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>QUESTION NUMBER</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.question_number || 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>MARKS</label><p style={{ marginTop: '4px', color: '#1f2937', fontWeight: '600' }}>{item?.marks || 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>ITEM TYPE</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.item_type_name || 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>COGNITIVE LEVEL</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.cognitive_level_name || 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>DIFFICULTY</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.difficulty_name || 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CAPS TOPIC</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.caps_topic_name || 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CAPS SUBTOPIC</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.caps_subtopic_name || 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>ITEM CODE</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.item_code || '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>QUESTION NUMBER</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.question_number || '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>MARKS</label><p style={{ marginTop: '4px', color: '#1f2937', fontWeight: '600' }}>{item?.marks || '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>ITEM TYPE</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.item_type_name || '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>COGNITIVE LEVEL</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.cognitive_level_name || '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>DIFFICULTY</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.difficulty_name || '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CAPS TOPIC</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.caps_topic_name || '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CAPS SUBTOPIC</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.caps_subtopic_name || '&#8212;'}</p></div>
             <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>EXPOSURE COUNT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.exposure_count || 0}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CREATED BY</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.created_by_name || 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CREATED AT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.created_at ? new Date(item.created_at).toLocaleString() : 'â€”'}</p></div>
-            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>UPDATED AT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.updated_at ? new Date(item.updated_at).toLocaleString() : 'â€”'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CREATED BY</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.created_by_name || '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>CREATED AT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.created_at ? new Date(item.created_at).toLocaleString() : '&#8212;'}</p></div>
+            <div><label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>UPDATED AT</label><p style={{ marginTop: '4px', color: '#1f2937' }}>{item?.updated_at ? new Date(item.updated_at).toLocaleString() : '&#8212;'}</p></div>
           </div>
         </div>
       )}
@@ -380,4 +536,3 @@ const ItemDetail: React.FC = () => {
 };
 
 export default ItemDetail;
-
