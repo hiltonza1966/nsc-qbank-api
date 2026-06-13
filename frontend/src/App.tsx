@@ -9,6 +9,7 @@ import Papers from './pages/Papers';
 import PaperDetail from './pages/PaperDetail';
 import Reviews from './pages/Reviews';
 import Templates from './pages/Templates';
+import MasterTemplate from './pages/MasterTemplate';
 import WizardPage from './pages/WizardPage';
 import { CAPSManualLinker } from './components/curriculum/CAPSManualLinker';
 
@@ -174,7 +175,7 @@ const Navigation: React.FC = () => {
       <Link to="/items" style={linkStyle}>Items</Link>
       <Link to="/papers" style={linkStyle}>Papers</Link>
       <Link to="/reviews" style={linkStyle}>Reviews</Link>
-      <Link to="/templates" style={linkStyle}>Templates</Link>
+      <Link to="/templates" style={linkStyle}>Templates</Link>`n      <Link to="/master-template" style={linkStyle}>Master Template</Link>
       <Link to="/wizard" style={linkStyle}>Wizard</Link>
       <Link to="/caps-linker" style={linkStyle}>CAPS Linker</Link>
       {userRole === 'admin' && (
@@ -251,7 +252,7 @@ const App: React.FC = () => {
                <Route path="/reviews" element={<Reviews />} />
                 <Route path="/papers" element={<Papers />} />
                 <Route path="/papers/:id" element={<PaperDetail />} />
-                <Route path="/templates" element={<Templates />} />
+                <Route path="/templates" element={<Templates />} />`n                <Route path="/master-template" element={<MasterTemplate />} />
                 <Route path="/wizard" element={<WizardPage />} />
                 <Route path="/caps-linker" element={<CAPSManualLinker />} />
                 <Route path="/admin" element={<AdminPage />} />
@@ -266,6 +267,8 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+
 
 
 
