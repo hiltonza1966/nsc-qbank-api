@@ -53,8 +53,6 @@ router.get('/:id', async (req, res) => {
     const [memos] = await db.execute('SELECT * FROM item_memos WHERE item_id = ? AND is_current = 1', [req.params.id]);
     const [attachments] = await db.execute('SELECT * FROM item_attachments WHERE item_id = ? ORDER BY display_order', [req.params.id]);
     const [tags] = await db.execute(`SELECT it.*, lt.tag_name, lt.tag_category FROM item_tags it JOIN lookup_tag_taxonomy lt ON it.tag_id = lt.tag_id WHERE it.item_id = ?`, [req.params.id]);
-    const [auditLogs] = await db.execute('SELECT * FROM tool_audit_log WHERE item_id = ? ORDER BY created_at DESC LIMIT 50', [req.params.id]);
-    const [secureMedia] = await db.execute('SELECT * FROM secure_media_storage WHERE item_id = ?', [req.params.id]);
 
     res.json({
       success: true,
@@ -63,8 +61,8 @@ router.get('/:id', async (req, res) => {
       memos,
       attachments,
       tags,
-      audit_logs: auditLogs,
-      secure_media: secureMedia
+      audit_logs: [],
+      secure_media: []
     });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -140,10 +138,10 @@ router.put('/:id', auditLog, async (req, res) => {
     const [current] = await conn.execute('SELECT * FROM item_master WHERE item_id = ?', [req.params.id]);
     if (!current.length) return res.status(404).json({ success: false, error: 'Item not found' });
 
-    // Create version snapshot
+    // Create version snapshot — columns must match item_versions schema exactly
     await conn.execute(
-      `INSERT INTO item_versions (item_id, version_number, question_text, question_text_afr, marks, cognitive_level, difficulty, status, created_by)
-       SELECT item_id, current_version + 1, question_text, question_text_afr, marks, cognitive_level, difficulty, status, created_by
+      `INSERT INTO item_versions (item_id, version_number, question_text, question_text_afr, marks, cognitive_level_id, difficulty_id, change_type, changed_by)
+       SELECT item_id, current_version + 1, question_text, question_text_afr, marks, cognitive_level_id, difficulty_id, 'update', created_by
        FROM item_master WHERE item_id = ?`,
       [req.params.id]
     );
