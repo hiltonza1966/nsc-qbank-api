@@ -1,13 +1,5 @@
-﻿/**
+/**
  * QBank Review Panel - Comparison Results UI
- * 
- * Shows parser output vs expected structure with RED highlighting for errors
- * Auto-corrected marks shown in green, manual review items in red
- * Allows manual correction of flagged items
- * 
- * Props:
- *   sessionId: string - The parse session to review
- *   onComplete: () => void - Callback when review is saved
  */
 
 import React, { useState, useEffect } from 'react';
@@ -42,10 +34,23 @@ interface SessionSummary {
   all_correct: boolean;
 }
 
-// import { getComparisonResults, saveCorrections } from '../../services/api';
-const getComparisonResults = (sessionId: string) => Promise.resolve({ results: [] as any[], session: { id: sessionId, status: 'complete', totalItems: 0, matchedItems: 0, mismatchedItems: 0, missingInMemo: 0, missingInQP: 0 } as any });
-const saveCorrections = (sessionId: string, corrections: any) => Promise.resolve({ success: true, error: null });
+const API_BASE = '/api';
 
+async function getComparisonResults(sessionId: string) {
+  const res = await fetch(`${API_BASE}/wizard/comparison/${sessionId}`);
+  if (!res.ok) throw new Error('Failed to fetch comparison results');
+  return res.json();
+}
+
+async function saveCorrections(sessionId: string, corrections: any[]) {
+  const res = await fetch(`${API_BASE}/wizard/save-corrections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, corrections })
+  });
+  if (!res.ok) throw new Error('Failed to save corrections');
+  return res.json();
+}
 
 const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({ 
   sessionId, 
@@ -60,7 +65,6 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
   const [filter, setFilter] = useState<'all' | 'red_flags' | 'auto_corrected'>('all');
   const [saveMessage, setSaveMessage] = useState('');
 
-  // Fetch comparison results
   useEffect(() => {
     fetchComparisonResults();
   }, [sessionId]);
@@ -74,7 +78,6 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
         setResults(data.results);
         setSession(data.session);
 
-        // Initialize corrections with auto_corrected values
         const initialCorrections: Record<string, number> = {};
         data.results.forEach((r: ComparisonResult) => {
           initialCorrections[r.question_number] = r.user_corrected_marks || r.auto_corrected_marks || r.expected_marks;
@@ -88,18 +91,15 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
     }
   };
 
-  // Handle manual mark correction
   const handleMarkChange = (questionNumber: string, value: string) => {
     const numValue = parseInt(value) || 0;
     setCorrections(prev => ({ ...prev, [questionNumber]: numValue }));
   };
 
-  // Handle notes change
   const handleNotesChange = (questionNumber: string, value: string) => {
     setNotes(prev => ({ ...prev, [questionNumber]: value }));
   };
 
-  // Save all corrections
   const handleSave = async () => {
     setSaving(true);
     setSaveMessage('');
@@ -114,29 +114,27 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
       const data = await saveCorrections(sessionId, correctionsPayload);
 
       if (data.success) {
-        setSaveMessage('✅ All corrections saved successfully!');
+        setSaveMessage('All corrections saved successfully!');
         setTimeout(() => {
           onComplete?.();
         }, 1500);
       } else {
-        setSaveMessage('❌ Failed to save: ' + data.error);
+        setSaveMessage('Failed to save: ' + data.error);
       }
     } catch (error) {
-      setSaveMessage('❌ Error saving corrections');
+      setSaveMessage('Error saving corrections');
       console.error(error);
     } finally {
       setSaving(false);
     }
   };
 
-  // Filter results
   const filteredResults = results.filter(r => {
     if (filter === 'red_flags') return r.is_red_flag || r.correction_status === 'manual_review';
     if (filter === 'auto_corrected') return r.correction_status === 'auto_corrected' && !r.is_red_flag;
     return true;
   });
 
-  // Calculate totals
   const totalCorrected = filteredResults.reduce((sum, r) => {
     return sum + (corrections[r.question_number] || r.auto_corrected_marks || r.expected_marks);
   }, 0);
@@ -154,9 +152,8 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
 
   return (
     <div className="review-panel">
-      {/* Header / Summary */}
       <div className="review-header">
-        <h2>📋 Question Paper Validation Review</h2>
+        <h2>Question Paper Validation Review</h2>
         <div className="session-info">
           <span>Session: <code>{sessionId?.slice(0, 8)}...</code></span>
           <span>Paper: <strong>{session?.paper_code}</strong></span>
@@ -191,7 +188,6 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           </div>
         )}
 
-        {/* Filter tabs */}
         <div className="filter-tabs">
           <button 
             className={filter === 'all' ? 'active' : ''} 
@@ -203,18 +199,17 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
             className={filter === 'red_flags' ? 'active' : ''} 
             onClick={() => setFilter('red_flags')}
           >
-            🔴 Red Flags ({redFlagCount})
+            Red Flags ({redFlagCount})
           </button>
           <button 
             className={filter === 'auto_corrected' ? 'active' : ''} 
             onClick={() => setFilter('auto_corrected')}
           >
-            ✅ Auto-Corrected ({results.filter(r => r.correction_status === 'auto_corrected' && !r.is_red_flag).length})
+            Auto-Corrected ({results.filter(r => r.correction_status === 'auto_corrected' && !r.is_red_flag).length})
           </button>
         </div>
       </div>
 
-      {/* Results Table */}
       <div className="results-table-container">
         <table className="results-table">
           <thead>
@@ -245,7 +240,7 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
                   <td className="seq">{result.question_number}</td>
                   <td className="question-text">
                     {isMissing ? (
-                      <span className="missing-text">⚠️ NOT FOUND BY PARSER</span>
+                      <span className="missing-text">NOT FOUND BY PARSER</span>
                     ) : (
                       <span className="text-preview">
                         {result.question_text?.substring(0, 60) || 'No text'}...
@@ -277,16 +272,16 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
                   </td>
                   <td className="status">
                     {result.correction_status === 'auto_corrected' && !isRed && (
-                      <span className="badge green">✅ Auto</span>
+                      <span className="badge green">Auto</span>
                     )}
                     {result.correction_status === 'manual_review' && (
-                      <span className="badge red">🔴 Review</span>
+                      <span className="badge red">Review</span>
                     )}
                     {result.correction_status === 'parser_missing' && (
-                      <span className="badge orange">⚠️ Missing</span>
+                      <span className="badge orange">Missing</span>
                     )}
                     {result.correction_status === 'validated' && (
-                      <span className="badge blue">✓ Saved</span>
+                      <span className="badge blue">Saved</span>
                     )}
                   </td>
                   <td className="notes">
@@ -312,10 +307,10 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
               </td>
               <td colSpan={2}>
                 {totalCorrected === (session?.total_expected_marks || 0) ? (
-                  <span className="badge green">✅ MATCH</span>
+                  <span className="badge green">MATCH</span>
                 ) : (
                   <span className="badge red">
-                    Î” {totalCorrected - (session?.total_expected_marks || 0)}
+                    {totalCorrected - (session?.total_expected_marks || 0)}
                   </span>
                 )}
               </td>
@@ -324,7 +319,6 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
         </table>
       </div>
 
-      {/* Footer Actions */}
       <div className="review-footer">
         <div className="save-message">{saveMessage}</div>
         <div className="actions">
@@ -333,19 +327,18 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
             onClick={fetchComparisonResults}
             disabled={saving}
           >
-            🔄 Refresh
+            Refresh
           </button>
           <button 
             className="btn-primary" 
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || redFlagCount === 0}
           >
-            {saving ? '💾 Saving...' : `💾 Save Corrections (${redFlagCount} flagged)`}
+            {saving ? 'Saving...' : `Save Corrections (${redFlagCount} flagged)`}
           </button>
         </div>
       </div>
 
-      {/* Styles */}
       <style>{`
         .review-panel {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -355,7 +348,6 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           background: #f8f9fa;
           border-radius: 8px;
         }
-
         .review-header {
           background: white;
           padding: 20px;
@@ -363,12 +355,10 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           margin-bottom: 20px;
           box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-
         .review-header h2 {
           margin: 0 0 10px 0;
           color: #1a1a2e;
         }
-
         .session-info {
           display: flex;
           gap: 20px;
@@ -376,14 +366,12 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           color: #666;
           font-size: 14px;
         }
-
         .summary-cards {
           display: grid;
           grid-template-columns: repeat(6, 1fr);
           gap: 12px;
           margin-bottom: 15px;
         }
-
         .card {
           background: #f0f0f0;
           padding: 12px;
@@ -391,32 +379,27 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           text-align: center;
           border-left: 4px solid #ccc;
         }
-
         .card.total { border-left-color: #3498db; background: #ebf5fb; }
         .card.parser { border-left-color: #f39c12; background: #fef5e7; }
         .card.corrected { border-left-color: #27ae60; background: #eafaf1; }
         .card.green { border-left-color: #27ae60; background: #eafaf1; }
         .card.red { border-left-color: #e74c3c; background: #fdedec; }
-
         .card-value {
           font-size: 24px;
           font-weight: bold;
           color: #2c3e50;
         }
-
         .card-label {
           font-size: 11px;
           color: #666;
           text-transform: uppercase;
           margin-top: 4px;
         }
-
         .filter-tabs {
           display: flex;
           gap: 8px;
           margin-top: 15px;
         }
-
         .filter-tabs button {
           padding: 8px 16px;
           border: 1px solid #ddd;
@@ -426,30 +409,25 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           font-size: 13px;
           transition: all 0.2s;
         }
-
         .filter-tabs button.active {
           background: #1a1a2e;
           color: white;
           border-color: #1a1a2e;
         }
-
         .filter-tabs button:hover:not(.active) {
           background: #f0f0f0;
         }
-
         .results-table-container {
           background: white;
           border-radius: 8px;
           overflow: hidden;
           box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-
         .results-table {
           width: 100%;
           border-collapse: collapse;
           font-size: 13px;
         }
-
         .results-table th {
           background: #1a1a2e;
           color: white;
@@ -459,70 +437,56 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           position: sticky;
           top: 0;
         }
-
         .results-table td {
           padding: 10px 8px;
           border-bottom: 1px solid #eee;
         }
-
         .results-table tbody tr:hover {
           background: #f8f9fa;
         }
-
         .results-table tbody tr.red-flag {
           background: #fff5f5 !important;
           border-left: 3px solid #e74c3c;
         }
-
         .results-table tbody tr.red-flag:hover {
           background: #ffe0e0 !important;
         }
-
         .results-table tbody tr.missing {
           background: #fff8e1 !important;
         }
-
         .results-table tbody tr.modified {
           border-left: 3px solid #3498db;
         }
-
         .seq {
           font-weight: bold;
           color: #1a1a2e;
           white-space: nowrap;
         }
-
         .question-text {
           max-width: 300px;
         }
-
         .text-preview {
           color: #555;
           font-size: 12px;
         }
-
         .missing-text {
           color: #e74c3c;
           font-weight: bold;
           font-style: italic;
         }
-
         .parser-marks.mismatch {
           color: #e74c3c;
           font-weight: bold;
         }
-
         .variance {
           font-size: 11px;
           margin-left: 4px;
           opacity: 0.7;
         }
-
         .expected {
           font-weight: bold;
           color: #27ae60;
         }
-
         .mark-input {
           width: 60px;
           padding: 6px 8px;
@@ -533,22 +497,18 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           font-weight: bold;
           transition: border-color 0.2s;
         }
-
         .mark-input:focus {
           outline: none;
           border-color: #3498db;
         }
-
         .mark-input.red-input {
           border-color: #e74c3c;
           background: #fff5f5;
         }
-
         .mark-input.modified-input {
           border-color: #3498db;
           background: #ebf5fb;
         }
-
         .badge {
           display: inline-block;
           padding: 3px 8px;
@@ -556,12 +516,10 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           font-size: 11px;
           font-weight: 600;
         }
-
         .badge.green { background: #d4edda; color: #155724; }
         .badge.red { background: #f8d7da; color: #721c24; }
         .badge.orange { background: #fff3cd; color: #856404; }
         .badge.blue { background: #cce5ff; color: #004085; }
-
         .notes-input {
           width: 100%;
           padding: 4px 6px;
@@ -569,21 +527,17 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           border-radius: 4px;
           font-size: 12px;
         }
-
         .totals-row {
           background: #f8f9fa;
           font-size: 14px;
         }
-
         .totals-row td {
           padding: 12px 8px;
           border-top: 2px solid #1a1a2e;
         }
-
         .mismatch-total {
           color: #e74c3c;
         }
-
         .review-footer {
           margin-top: 20px;
           display: flex;
@@ -594,12 +548,10 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           border-radius: 8px;
           box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-
         .actions {
           display: flex;
           gap: 12px;
         }
-
         .btn-primary, .btn-secondary {
           padding: 10px 24px;
           border-radius: 6px;
@@ -609,41 +561,33 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           transition: all 0.2s;
           border: none;
         }
-
         .btn-primary {
           background: #27ae60;
           color: white;
         }
-
         .btn-primary:hover:not(:disabled) {
           background: #229954;
         }
-
         .btn-primary:disabled {
           background: #95a5a6;
           cursor: not-allowed;
         }
-
         .btn-secondary {
           background: #ecf0f1;
           color: #2c3e50;
           border: 1px solid #bdc3c7;
         }
-
         .btn-secondary:hover:not(:disabled) {
           background: #d5dbdb;
         }
-
         .save-message {
           font-weight: 600;
           font-size: 14px;
         }
-
         .loading {
           text-align: center;
           padding: 60px;
         }
-
         .spinner {
           width: 40px;
           height: 40px;
@@ -653,7 +597,6 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
           animation: spin 1s linear infinite;
           margin: 0 auto 20px;
         }
-
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
@@ -664,7 +607,3 @@ const ReviewPanel: React.FC<{ sessionId: string; onComplete?: () => void }> = ({
 };
 
 export default ReviewPanel;
-
-
-
-

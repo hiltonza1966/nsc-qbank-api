@@ -1,4 +1,5 @@
-﻿const express = require('express');
+const { requestLogger, errorHandler, wrapRoute, debug } = require('./debug_logger');
+const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 const path = require('path');
@@ -6,6 +7,11 @@ const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// ============================================
+// COMPREHENSIVE DEBUG SYSTEM — Log ALL requests
+// ============================================
+app.use(requestLogger);
 
 // Middleware
 app.use(cors());
@@ -30,7 +36,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// API ROUTES â€” FIXED PATHS FOR CONSISTENCY
+// API ROUTES — FIXED PATHS FOR CONSISTENCY
 // ============================================
 
 function safeRequire(routePath, mountPath) {
@@ -49,6 +55,7 @@ function safeRequire(routePath, mountPath) {
     }
   } catch (e) {
     console.error(`Error mounting ${routePath}: ${e.message}`);
+    debug.error('ROUTE_MOUNT', `Failed to mount ${routePath} at ${mountPath}`, { error: e.message, stack: e.stack });
   }
 }
 
@@ -85,13 +92,14 @@ safeRequire('./routes/attachments', '/api/attachments');
 safeRequire('./routes/taxonomy', '/api/taxonomy');
 safeRequire('./routes/usage', '/api/usage');
 safeRequire('./routes/dashboard', '/api/dashboard');
+safeRequire('./routes/debug', '/api/debug');
 safeRequire('./routes/staging', '/api/staging');
 
 // ============================================
 // SECURITY-ALIGNED ENDPOINTS
 // ============================================
 
-// GET /api/qbank/sandbox-config/:toolName â€” Get CSP policy for tool
+// GET /api/qbank/sandbox-config/:toolName — Get CSP policy for tool
 app.get('/api/qbank/sandbox-config/:toolName', async (req, res) => {
   try {
     const [configs] = await req.db.execute(
@@ -113,11 +121,12 @@ app.get('/api/qbank/sandbox-config/:toolName', async (req, res) => {
     }
     res.json({ success: true, config: configs[0] });
   } catch (e) {
+    debug.error('SANDBOX_CONFIG', `Error fetching sandbox config: ${e.message}`, { stack: e.stack });
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// GET /api/qbank/subject-tools/:subjectCode â€” Get tools for subject
+// GET /api/qbank/subject-tools/:subjectCode — Get tools for subject
 app.get('/api/qbank/subject-tools/:subjectCode', async (req, res) => {
   try {
     const [tools] = await req.db.execute(
@@ -126,6 +135,7 @@ app.get('/api/qbank/subject-tools/:subjectCode', async (req, res) => {
     );
     res.json({ success: true, count: tools.length, tools });
   } catch (e) {
+    debug.error('SUBJECT_TOOLS', `Error fetching subject tools: ${e.message}`, { stack: e.stack });
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -163,22 +173,22 @@ app.get('/api/lookup/:table', async (req, res) => {
       // Try next ordering
     }
   }
+  debug.error('LOOKUP', `Failed to query table ${table}`);
   res.status(500).json({ success: false, error: 'Failed to query table' });
 });
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// ============================================
+// COMPREHENSIVE ERROR HANDLER — Catch ALL errors
+// ============================================
+app.use(errorHandler);
+
 // Serve frontend static files
 app.use(express.static(path.join(__dirname, 'frontend', 'dist')));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ success: false, error: err.message });
 });
 
 // Start server
@@ -187,10 +197,7 @@ app.listen(PORT, () => {
   console.log(`Database: nsc_qbank`);
   console.log(`API Base: http://localhost:${PORT}/api/qbank`);
   console.log(`Security: All tools sandboxed, audit logging enabled`);
+  console.log(`Debug: Comprehensive logging active — check debug.log and /api/debug/logs`);
 });
 
 module.exports = app;
-
-
-
-
