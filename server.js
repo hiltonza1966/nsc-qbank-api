@@ -62,6 +62,7 @@ safeRequire('./routes/workflow', '/api/qbank/items');
 safeRequire('./routes/papers', '/api/qbank/papers');
 safeRequire('./routes/approvals', '/api/qbank/papers');
 safeRequire('./routes/compliance', '/api/qbank/papers');
+safeRequire('./routes/media', '/api/media');
 safeRequire('./routes/export', '/api/qbank/papers');
 
 // Templates & Specs
@@ -189,6 +190,7 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
 
 
 
