@@ -14,3 +14,7 @@ fix_*.py
 fix_*.ps1
 test_*.json
 *.bak
+uploads/
+temp_wizard/
+*.log.old
+debug.log.old
