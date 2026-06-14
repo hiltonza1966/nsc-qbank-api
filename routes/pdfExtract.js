@@ -2,7 +2,6 @@
 const router = express.Router();
 const multer = require('multer');
 const crypto = require('crypto');
-const { PythonShell } = require('python-shell');
 const fs = require('fs');
 
 const upload = multer({ dest: 'uploads/' });
@@ -45,21 +44,32 @@ router.post('/extract-qp', upload.single('pdf'), async (req, res) => {
       });
     }
 
-    // Run Python extraction script
-    const options = {
-      args: [pdfPath, 'qp', paper_code],
-      pythonPath: 'python3',
-      pythonOptions: ['-u']
-    };
+    // Run Python extraction script using child_process.spawn
+    const pythonPath = 'C:\\Python314\\python.exe';
+    const scriptPath = require('path').join(__dirname, '..', 'scripts', 'extract_dbe_paper.py');
+    const pyArgs = [
+      scriptPath,
+      'qp', pdfPath, paper_code,
+      paper_code.split('_')[0],  // subject_name (alpha code)
+      paper_code.split('_')[1].replace('P', ''),  // paper_no
+      paper_code.split('_')[3],  // exam_year
+      paper_code.split('_')[2]   // exam_session
+    ];
 
-    const results = await new Promise((resolve, reject) => {
-      PythonShell.run('scripts/extract_dbe_paper.py', options, (err, results) => {
-        if (err) reject(err);
-        else resolve(results);
+    const extracted = await new Promise((resolve, reject) => {
+      const py = require('child_process').spawn(pythonPath, pyArgs, { cwd: process.cwd(), maxBuffer: 1024 * 1024 * 10 });
+      let stdout = '';
+      let stderr = '';
+      py.stdout.on('data', (data) => { stdout += data.toString(); });
+      py.stderr.on('data', (data) => { stderr += data.toString(); });
+      py.on('close', (code) => {
+        if (code !== 0) reject(new Error(`Python exited ${code}: ${stderr}`));
+        else {
+          try { resolve(JSON.parse(stdout)); }
+          catch (e) { reject(new Error(`Invalid JSON: ${stdout}`)); }
+        }
       });
     });
-
-    const extracted = JSON.parse(results[0]);
 
     if (extracted.error) {
       throw new Error(extracted.error);
@@ -153,21 +163,32 @@ router.post('/extract-memo', upload.single('pdf'), async (req, res) => {
 
     const pdfPath = req.file.path;
 
-    // Run Python extraction script
-    const options = {
-      args: [pdfPath, 'memo', paper_code],
-      pythonPath: 'python3',
-      pythonOptions: ['-u']
-    };
+    // Run Python extraction script using child_process.spawn
+    const pythonPath = 'C:\\Python314\\python.exe';
+    const scriptPath = require('path').join(__dirname, '..', 'scripts', 'extract_dbe_paper.py');
+    const pyArgs = [
+      scriptPath,
+      'memo', pdfPath, paper_code,
+      paper_code.split('_')[0],  // subject_name (alpha code)
+      paper_code.split('_')[1].replace('P', ''),  // paper_no
+      paper_code.split('_')[3],  // exam_year
+      paper_code.split('_')[2]   // exam_session
+    ];
 
-    const results = await new Promise((resolve, reject) => {
-      PythonShell.run('scripts/extract_dbe_paper.py', options, (err, results) => {
-        if (err) reject(err);
-        else resolve(results);
+    const extracted = await new Promise((resolve, reject) => {
+      const py = require('child_process').spawn(pythonPath, pyArgs, { cwd: process.cwd(), maxBuffer: 1024 * 1024 * 10 });
+      let stdout = '';
+      let stderr = '';
+      py.stdout.on('data', (data) => { stdout += data.toString(); });
+      py.stderr.on('data', (data) => { stderr += data.toString(); });
+      py.on('close', (code) => {
+        if (code !== 0) reject(new Error(`Python exited ${code}: ${stderr}`));
+        else {
+          try { resolve(JSON.parse(stdout)); }
+          catch (e) { reject(new Error(`Invalid JSON: ${stdout}`)); }
+        }
       });
     });
-
-    const extracted = JSON.parse(results[0]);
 
     if (extracted.error) {
       throw new Error(extracted.error);
@@ -201,11 +222,11 @@ router.post('/extract-memo', upload.single('pdf'), async (req, res) => {
          (session_id, paper_code, question_number, question_text,
           parser_extracted_marks, expected_marks, auto_corrected_marks,
           correction_status, reviewer_notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           session_id, paper_code, item.number, item.text,
           item.marks, expectedMarks || 0, correctedMarks,
-          status, notes, 1
+          status, notes
         ]
       );
     }
@@ -293,6 +314,7 @@ router.get('/comparison/:session_id', async (req, res) => {
         AND r.paper_code = e.paper_code
       LEFT JOIN lookup_item_types lit
         ON r.parsed_type_id = lit.item_type_id
+      WHERE r.session_id = ?
       ORDER BY r.question_number`,
       [req.params.session_id]
     );
@@ -356,6 +378,8 @@ router.post('/save-corrections', async (req, res) => {
 });
 
 module.exports = router;
+
+
 
 
 
