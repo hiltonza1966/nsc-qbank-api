@@ -1,0 +1,206 @@
+# QBank Complete Schema & Seed Data Guide v3.0
+**Date:** 14 June 2026
+**Updated:** CORRECTED — All column names verified against actual database (not schema doc assumptions)
+**Database:** nsc_qbank (MySQL 8.0.45)
+**Total Tables:** 34
+**Character Set:** utf8mb4 COLLATE utf8mb4_unicode_ci
+**Engine:** InnoDB
+
+---
+
+## CRITICAL: ACTUAL vs DOCUMENTED COLUMN NAMES
+
+The following tables have column names that DIFFER from earlier schema documentation:
+
+| Table | Documented (Wrong) | Actual (Correct) | Used By |
+|-------|-------------------|------------------|---------|
+| lookup_assessment_types | assessment_type_code | type_code | Backend API, Frontend |
+| lookup_assessment_types | assessment_type_name | type_name | Backend API, Frontend |
+| lookup_assessment_bodies | assessment_origin | body_code | Backend API, Frontend |
+| lookup_assessment_bodies | assessment_body_name | body_name | Backend API, Frontend |
+| lookup_assessment_bodies | (missing) | body_full_name | Backend API |
+| lookup_exam_sessions | session_id | exam_session_id | Backend API, Frontend |
+| lookup_papers | (missing) | paper_code | Backend API |
+| lookup_papers | (missing) | paper_type | Backend API |
+| lookup_papers | (missing) | duration_minutes | Backend API |
+| lookup_papers | (missing) | display_order | Backend API |
+
+**Rule:** Always verify column names with `INFORMATION_SCHEMA.COLUMNS` before writing code.
+
+---
+
+## 1. CORE DIMENSION LOOKUP TABLES (6 tables) — VERIFIED
+
+### 1.1 lookup_years (Academic Years)
+
+```sql
+CREATE TABLE lookup_years (
+  year_id INT AUTO_INCREMENT PRIMARY KEY,
+  year_value INT NOT NULL,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_year_value (year_value)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Actual Columns:** `year_id`, `year_value`, `is_active`, `created_at`
+**Frontend maps:** `year_id → id`, `year_value → name`
+
+### 1.2 lookup_grades (Grade Levels)
+
+```sql
+CREATE TABLE lookup_grades (
+  grade_id INT AUTO_INCREMENT PRIMARY KEY,
+  grade_number INT NOT NULL,
+  grade_name VARCHAR(50) NOT NULL,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_grade_number (grade_number)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Actual Columns:** `grade_id`, `grade_number`, `grade_name`, `is_active`, `created_at`
+**Frontend maps:** `grade_id → id`, `grade_name/grade_number → name`
+
+### 1.3 lookup_subjects (NSC Subjects)
+
+```sql
+CREATE TABLE lookup_subjects (
+  subject_id INT AUTO_INCREMENT PRIMARY KEY,
+  subject_official_code VARCHAR(20) NOT NULL,
+  subject_alpha_code VARCHAR(20) NOT NULL,
+  subject_name VARCHAR(255) NOT NULL,
+  subject_name_afr VARCHAR(255) DEFAULT NULL,
+  description TEXT,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_subject_official_code (subject_official_code),
+  UNIQUE KEY uk_subject_alpha_code (subject_alpha_code),
+  KEY idx_subject_name (subject_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Actual Columns:** `subject_id`, `subject_official_code`, `subject_alpha_code`, `subject_name`, `subject_name_afr`, `description`, `is_active`, `created_at`, `updated_at`
+**Frontend maps:** `subject_id → id`, `subject_name → name`, `subject_alpha_code → code`
+
+### 1.4 lookup_papers (Paper Types) — CORRECTED
+
+```sql
+CREATE TABLE lookup_papers (
+  paper_id INT AUTO_INCREMENT PRIMARY KEY,
+  paper_no INT NOT NULL,
+  paper_code VARCHAR(10) NOT NULL,
+  paper_name VARCHAR(100) NOT NULL,
+  paper_name_afr VARCHAR(100) DEFAULT NULL,
+  paper_type VARCHAR(20) NOT NULL,
+  duration_minutes INT DEFAULT 180,
+  description TEXT,
+  is_active TINYINT(1) DEFAULT 1,
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_paper_no (paper_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Actual Columns:** `paper_id`, `paper_no`, `paper_code`, `paper_name`, `paper_type`, `duration_minutes`, `is_active`, `display_order`, `created_at`
+**Frontend maps:** `paper_id → id`, `paper_name → name`, `paper_no → code`
+
+### 1.5 lookup_assessment_types (Assessment Types) — CORRECTED
+
+```sql
+CREATE TABLE lookup_assessment_types (
+  assessment_type_id INT AUTO_INCREMENT PRIMARY KEY,
+  type_code VARCHAR(20) NOT NULL,
+  type_name VARCHAR(100) NOT NULL,
+  description TEXT,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_type_code (type_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Actual Columns:** `assessment_type_id`, `type_code`, `type_name`, `description`, `is_active`, `created_at`
+**Frontend maps:** `assessment_type_id → id`, `type_name → name`, `type_code → code`
+**⚠️ WAS:** `assessment_type_code`, `assessment_type_name` — **WRONG**
+
+### 1.6 lookup_assessment_bodies (Assessment Bodies) — CORRECTED
+
+```sql
+CREATE TABLE lookup_assessment_bodies (
+  assessment_body_id INT AUTO_INCREMENT PRIMARY KEY,
+  body_code VARCHAR(50) NOT NULL,
+  body_name VARCHAR(100) NOT NULL,
+  body_full_name VARCHAR(255) DEFAULT NULL,
+  description TEXT,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_body_code (body_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Actual Columns:** `assessment_body_id`, `body_code`, `body_name`, `body_full_name`, `is_active`, `created_at`
+**Frontend maps:** `assessment_body_id → id`, `body_name → name`, `body_code → code`
+**⚠️ WAS:** `assessment_origin`, `assessment_body_name` — **WRONG**
+
+---
+
+## 2. SECONDARY DIMENSION LOOKUP TABLES (6 tables) — VERIFIED
+
+### 2.5 lookup_exam_sessions (Examination Sessions) — CORRECTED
+
+```sql
+CREATE TABLE lookup_exam_sessions (
+  exam_session_id INT AUTO_INCREMENT PRIMARY KEY,
+  session_code VARCHAR(20) NOT NULL,
+  session_name VARCHAR(100) NOT NULL,
+  session_month INT DEFAULT NULL,
+  description TEXT,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_session_code (session_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Actual Columns:** `exam_session_id`, `session_code`, `session_name`, `session_month`, `description`, `is_active`, `created_at`
+**Frontend maps:** `exam_session_id → id`, `session_name → name`, `session_code → code`
+**⚠️ WAS:** `session_id` — **WRONG**
+
+---
+
+## 7. PARSER & COMPARISON TABLES (3 tables) — VERIFIED
+
+### 7.1 parse_sessions (Parser Audit Trail)
+
+**Actual Columns:** `session_id`, `year_id`, `grade_id`, `subject_id`, `paper_id`, `assessment_type_id`, `assessment_body_id`, `file_name`, `file_hash`, `parser_version`, `total_items_found`, `total_marks_parser`, `total_marks_expected`, `total_marks_corrected`, `auto_corrected_count`, `manual_review_count`, `missing_count`, `status`, `error_message`, `completed_at`, `created_at`
+
+### 7.2 parse_expected_structure (Gold Standard)
+
+**Actual Columns:** `structure_id`, `year_id`, `grade_id`, `subject_id`, `paper_id`, `assessment_type_id`, `assessment_body_id`, `question_number`, `question_type_id`, `section`, `expected_marks`, `sequence`, `parent_question`, `is_sub_part`, `cognitive_level_id`, `caps_subtopic_id`, `created_at`, `updated_at`
+**Migration 017 adds:** `paper_code VARCHAR(50)`
+
+### 7.3 parse_results (Parser Output) — CORRECTED
+
+**Actual Columns:** `result_id`, `session_id`, `question_number`, `question_text`, `parsed_type_id`, `parsed_section`, `parser_extracted_marks`, `expected_marks`, `auto_corrected_marks`, `correction_status`, `variance` (GENERATED), `is_red_flag` (GENERATED), `user_corrected_marks`, `reviewer_notes`, `created_at`, `updated_at`
+**Migration 017 adds:** `paper_code VARCHAR(50)`
+**⚠️ DOES NOT HAVE:** `is_memo`, `parsed_type` — these are WRONG in old code
+**✅ HAS:** `parsed_type_id` (INT FK to lookup_item_types)
+
+---
+
+## FRONTEND NORMALIZATION MAP (Verified 2026-06-14)
+
+```typescript
+const normalizeLookup = (item: any): LookupItem => {
+  const id = item.assessment_type_id ?? item.assessment_body_id ?? item.exam_session_id ?? item.subject_id ?? item.paper_id ?? item.year_id ?? item.grade_id ?? item.id ?? 0;
+  const name = item.type_name || item.body_name || item.session_name || item.subject_name || item.paper_name || item.year_value || item.grade_name || item.grade_number || item.name || '';
+  const code = item.type_code || item.body_code || item.session_code || item.subject_alpha_code || item.paper_no || item.code || '';
+  return { id, name: String(name), code: String(code), ... };
+};
+```
+
+---
+
+*End of Corrected Schema v3.0*
+*All column names verified against INFORMATION_SCHEMA and curl API responses*
+*Date: 2026-06-14*
