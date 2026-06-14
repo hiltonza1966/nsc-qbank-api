@@ -4,7 +4,8 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
-
+const pdfExtractRouter = require('./routes/pdfExtract');
+const wizardImportRouter = require('./routes/wizardImport');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -17,6 +18,8 @@ app.use(requestLogger);
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use('/api/wizard', pdfExtractRouter);
+app.use('/api/wizard', wizardImportRouter);
 
 // Database pool
 const dbPool = mysql.createPool({
@@ -86,6 +89,7 @@ safeRequire('./routes/pdf_parser_structured', '/api/wizard');
 safeRequire('./routes/compare-qp', '/api/wizard');
 safeRequire('./routes/memo-parser', '/api/wizard');
 safeRequire('./routes/memo-compare', '/api/wizard');
+	safeRequire('./routes/import', '/api/wizard');
 
 // Supporting Modules
 safeRequire('./routes/attachments', '/api/attachments');
