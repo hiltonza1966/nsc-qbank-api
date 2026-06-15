@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 
@@ -43,9 +43,9 @@ router.post('/import', async (req, res) => {
 
     // 2. Get memo items for linking
     const [memoItems] = await conn.execute(
-      `SELECT question_number, question_text, marks
+      `SELECT question_number, question_text, auto_corrected_marks
        FROM parse_results
-       WHERE session_id = ? AND paper_code = ? AND is_memo = 1`,
+       WHERE session_id = ? AND paper_code = ? `,
       [session_id, paper_code]
     );
     const memoMap = new Map();
@@ -75,13 +75,13 @@ router.post('/import', async (req, res) => {
       await conn.execute(
         `INSERT INTO item_master
          (item_code, year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id,
-          language_id, question_number, question_text, marks, item_type_id,
-          cognitive_level_id, difficulty_level_id, status,
+          language_id, question_number, question_text, marks, marks_allocated, item_type_id,
+          cognitive_level_id, difficulty_id, status,
           source_paper_code, source_question_number, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`,
         [
           itemCode, yearId, gradeId, subjectId, paperId, assessmentTypeId, assessmentBodyId,
-          1, item.question_number, item.question_text, finalMarks, typeId,
+          1, item.question_number, item.question_text, finalMarks, finalMarks, typeId,
           cognitiveLevelId, difficultyLevelId,
           paper_code, item.question_number, creator
         ]
@@ -100,7 +100,7 @@ router.post('/import', async (req, res) => {
         await conn.execute(
           `INSERT INTO item_memos (item_id, question_number, answer_text, marks)
            VALUES (?, ?, ?, ?)`,
-          [itemId, item.question_number, memo.question_text, memo.marks]
+          [itemId, item.question_number, memo.question_text, memo.auto_corrected_marks]
         );
       }
 
@@ -137,3 +137,4 @@ router.post('/import', async (req, res) => {
 });
 
 module.exports = router;
+

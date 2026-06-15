@@ -318,6 +318,7 @@ const WizardPage: React.FC = () => {
     formData.append('paper_id', dimensions.paper_id);
     formData.append('assessment_type_id', dimensions.assessment_type_id);
     formData.append('assessment_body_id', dimensions.assessment_body_id);
+    formData.append('force_overwrite', 'true');
 
     try {
       const response = await fetch(API_BASE + '/wizard/extract-qp', {
@@ -364,6 +365,7 @@ const WizardPage: React.FC = () => {
     formData.append('pdf', memoFile);
     formData.append('paper_code', paperCode);
     formData.append('session_id', sessionId);
+    formData.append('force_overwrite', 'true');
 
     try {
       const response = await fetch(API_BASE + '/wizard/extract-memo', {

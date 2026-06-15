@@ -35,7 +35,7 @@ router.post('/extract-qp', upload.single('pdf'), async (req, res) => {
       [paper_code]
     );
 
-    if (existing.length > 0 && existing[0].status !== 'failed') {
+    if (existing.length > 0 && existing[0].status !== 'failed' && req.body.force_overwrite !== 'true') {
       fs.unlinkSync(pdfPath);
       return res.status(409).json({
         error: 'Paper already parsed',
@@ -49,13 +49,14 @@ router.post('/extract-qp', upload.single('pdf'), async (req, res) => {
     const scriptPath = require('path').join(__dirname, '..', 'scripts', 'extract_dbe_paper.py');
     const pyArgs = [
       scriptPath,
-      'qp', pdfPath, paper_code,
-      paper_code.split('_')[0],  // subject_name (alpha code)
+      pdfPath,       // pdf path FIRST (matches Python sys.argv[1])
+      'qp',          // mode SECOND (matches Python sys.argv[2])
+      paper_code,
+      paper_code.split('_')[0],  // subject_name
       paper_code.split('_')[1].replace('P', ''),  // paper_no
       paper_code.split('_')[3],  // exam_year
       paper_code.split('_')[2]   // exam_session
     ];
-
     const extracted = await new Promise((resolve, reject) => {
       const py = require('child_process').spawn(pythonPath, pyArgs, { cwd: process.cwd(), maxBuffer: 1024 * 1024 * 10 });
       let stdout = '';
@@ -90,7 +91,7 @@ router.post('/extract-qp', upload.single('pdf'), async (req, res) => {
         year_id || null, grade_id || null, subject_id || null, paper_id || null,
         assessment_type_id || null, assessment_body_id || null,
         paper_code, req.file.originalname, fileHash, 'py-mupdf-1.0',
-        extracted.total_items, extracted.total_marks
+        extracted.total_items ?? 0, extracted.total_marks ?? 0
       ]
     );
 
@@ -168,7 +169,8 @@ router.post('/extract-memo', upload.single('pdf'), async (req, res) => {
     const scriptPath = require('path').join(__dirname, '..', 'scripts', 'extract_dbe_paper.py');
     const pyArgs = [
       scriptPath,
-      'memo', pdfPath, paper_code,
+      pdfPath,       // pdf path FIRST (matches Python sys.argv[1])
+      'memo',        // mode SECOND (matches Python sys.argv[2])
       paper_code.split('_')[0],  // subject_name (alpha code)
       paper_code.split('_')[1].replace('P', ''),  // paper_no
       paper_code.split('_')[3],  // exam_year
