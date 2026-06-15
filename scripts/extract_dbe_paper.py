@@ -108,56 +108,35 @@ def is_instruction(text):
 
 
 def extract_marks_qp(text):
-    """Extract marks for QP - returns the question's allocated marks."""
-    text = text.strip()
+    """Extract marks from FIRST LINE only - avoids section totals."""
+    lines = text.strip().split("\n")
+    first_line = lines[0] if lines else text
     marks = 0
 
     idx = 0
-    while idx < len(text):
-        open_idx = text.find('(', idx)
+    while idx < len(first_line):
+        open_idx = first_line.find("(", idx)
         if open_idx == -1:
             break
-        close_idx = text.find(')', open_idx)
+        close_idx = first_line.find(")", open_idx)
         if close_idx == -1:
             break
-
-        inner = text[open_idx + 1:close_idx].strip()
-
-        if 'x' in inner:
-            x_pos = inner.find('x')
+        inner = first_line[open_idx + 1:close_idx].strip()
+        if "x" in inner:
+            x_pos = inner.find("x")
             left = inner[:x_pos].strip()
             right = inner[x_pos + 1:].strip()
             if left.isdigit() and right.isdigit():
                 val = int(left) * int(right)
-                if val > marks:
+                if val <= 25 and val > marks:
                     marks = val
         elif inner.isdigit():
             val = int(inner)
             if val <= 25 and val > marks:
                 marks = val
-
-        idx = close_idx + 1
-
-    idx = 0
-    while idx < len(text):
-        open_idx = text.find('[', idx)
-        if open_idx == -1:
-            break
-        close_idx = text.find(']', open_idx)
-        if close_idx == -1:
-            break
-
-        inner = text[open_idx + 1:close_idx].strip()
-        if inner.isdigit():
-            val = int(inner)
-            if val <= 25 and val > marks:
-                marks = val
-
         idx = close_idx + 1
 
     return marks
-
-
 def extract_marks_memo(text):
     """Extract marks for Memo - sums all individual mark points."""
     total = 0
@@ -442,31 +421,43 @@ def extract_memo(pdf_path):
 
         qnum, rest = extract_question_number(text)
         if qnum:
-            if current_question:
-                block_text = ' '.join(current_lines)
-                marks = extract_marks_memo(block_text)
-                clean = clean_memo_text(block_text)
-                items.append({
-                    "number": current_question,
-                    "text": clean,
-                    "marks": marks
-                })
-
-            current_question = qnum
-            current_lines = [rest] if rest else []
+            if qnum == current_question:
+                # Same question number - append text to current item
+                if rest:
+                    current_lines.append(rest)
+            else:
+                # New question number - save previous, start new
+                if current_question:
+                    block_text = " ".join(current_lines)
+                    marks = extract_marks_memo(block_text)
+                    clean = clean_memo_text(block_text)
+                    # Skip items with only single letters (answer choices)
+                    if len(clean.strip()) > 3 or not clean.strip().isalpha():
+                        items.append({
+                            "number": current_question,
+                            "text": clean,
+                            "marks": marks
+                        })
+                current_question = qnum
+                current_lines = [rest] if rest else []
+            continue
         else:
+            # Not a question number line - add to current item
             if current_question:
                 current_lines.append(text)
 
+    # Save last question
     if current_question:
-        block_text = ' '.join(current_lines)
+        block_text = " ".join(current_lines)
         marks = extract_marks_memo(block_text)
         clean = clean_memo_text(block_text)
-        items.append({
-            "number": current_question,
-            "text": clean,
-            "marks": marks
-        })
+        # Skip items with only single letters (answer choices)
+        if len(clean.strip()) > 3 or not clean.strip().isalpha():
+            items.append({
+                "number": current_question,
+                "text": clean,
+                "marks": marks
+            })
 
     doc.close()
 
