@@ -1,4 +1,9 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
+"""
+Marks Diagnostic - Shows all marks found per question
+Usage: python diagnostic_marks.py <pdf_path>
+"""
+
 import sys
 import fitz
 import re
@@ -20,20 +25,21 @@ print("=" * 80)
 total_marks_found = 0
 for page in doc:
     lines = page.get_text("text").split('\n')
-    
+
     for i, line in enumerate(lines):
         m = QUESTION_RE.match(line)
         if not m:
             continue
-        
+
         qnum = m.group(1)
         parts = qnum.split('.')
-        
+
         if len(parts) == 2:
             continue
-        
+
+        # Find all marks in extended context
         context = ' '.join(lines[i:i+8])[:300]
-        
+
         all_marks = list(MARKS_RE.finditer(context))
         marks_list = []
         for mm in all_marks:
@@ -41,7 +47,7 @@ for page in doc:
                 val = int(mm.group(1))
                 if val <= 25:
                     marks_list.append(val)
-        
+
         mf = MARKS_FACTOR_RE.search(context)
         if mf and mf.start() < 200:
             factor = int(mf.group(1))
@@ -49,7 +55,7 @@ for page in doc:
             total = factor * unit
             if total <= 25:
                 marks_list.append(total)
-        
+
         if marks_list:
             best_mark = max(marks_list)
             total_marks_found += best_mark
