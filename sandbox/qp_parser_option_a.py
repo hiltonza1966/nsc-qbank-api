@@ -1,89 +1,59 @@
 #!/usr/bin/env python3
-"""Option A QP Parser - For Geography/History-style DBE papers
-Handles: X.Y.Z numbering, section mark allocations
-"""
+"""QP Parser Option A - Pure X.Y format (MCQ style, Geography-type papers).Placeholder - full implementation needed for Geography P2 etc."""
+
 import re
 from PyPDF2 import PdfReader
+from bilingual_cleaner import extract_english_from_bilingual
 
 def extract_qp_items_option_a(pdf_path):
     reader = PdfReader(pdf_path)
-
     page_texts = []
-    for i, page in enumerate(reader.pages):
+    for page in reader.pages:
         text = page.extract_text()
         if text:
             page_texts.append(text)
 
-    section_marks = {}
-    all_text = "\n".join(page_texts)
-
-    section_pattern = r'(\d+\.\d+)\s+.*?\s+\((\d+)\s*x\s*(\d+)\)'
-    for match in re.finditer(section_pattern, all_text):
-        section_num = match.group(1)
-        count = int(match.group(2))
-        marks_per = int(match.group(3))
-        section_marks[section_num] = {
-            'count': count,
-            'marks_per': marks_per,
-            'total': count * marks_per
-        }
-
-    individual_pattern = r'(\d+\.\d+\.\d+)\s+.*?\s+\((\d+)\s*x\s*(\d+)\)'
-    for match in re.finditer(individual_pattern, all_text):
-        q_num = match.group(1)
-        count = int(match.group(2))
-        marks_per = int(match.group(3))
-        section_marks[q_num] = {
-            'count': count,
-            'marks_per': marks_per,
-            'total': count * marks_per,
-            'is_individual': True
-        }
-
+    all_text = extract_english_from_bilingual('\n'.join(page_texts))
     items = []
-    q_pattern = r'(\d+\.\d+\.\d+)\s+(.*?)(?=\d+\.\d+\.\d+|\Z)'
 
-    for page_text in page_texts:
-        matches = list(re.finditer(q_pattern, page_text, re.DOTALL))
-        for match in matches:
-            q_num = match.group(1)
-            q_text = match.group(2).strip()
+    # Pure X.Y format: 1.1, 1.2, 1.3 etc. (no X.Y.Z children)
+    pattern = r'(\d+\.\d+)\s+(.*?)(?=\d+\.\d+|\Z)'
+    matches = list(re.finditer(pattern, all_text, re.DOTALL))
 
-            q_text = re.sub(r'\s+', ' ', q_text)
-            q_text = re.sub(r'\(\d+\s*x\s*\d+\).*', '', q_text)
-            q_text = re.sub(r'\(\d+\).*', '', q_text)
-            q_text = re.sub(r'Please turn over', '', q_text)
-            q_text = re.sub(r'Copyright reserved', '', q_text)
-            q_text = q_text.replace('Nov', '').replace('COLUMN A', '').replace('COLUMN B', '').strip()
+    for match in matches:
+        q_num = match.group(1)
+        content = match.group(2).strip()
+        content = re.sub(r'\s+', ' ', content)
 
-            if len(q_num.split('.')) != 3:
-                continue
+        marks = 0
+        mark_matches = re.findall(r'\((\d+)\)', content)
+        if mark_matches:
+            marks = int(mark_matches[-1])
 
-            marks = 0
-            parent = '.'.join(q_num.split('.')[:2])
+        text_clean = re.sub(r'\(\d+\)\s*$', '', content)
+        text_clean = re.sub(r'\[\d+\]', '', text_clean).strip()
 
-            if q_num in section_marks:
-                marks = section_marks[q_num]['marks_per']
-            elif parent in section_marks:
-                marks = section_marks[parent]['marks_per']
+        if len(text_clean) < 3 and marks == 0:
+            continue
 
-            is_paragraph = any(x in q_text.lower() for x in ['paragraph', 'essay', 'in a paragraph'])
-            if is_paragraph and marks == 0 and parent in section_marks:
-                marks = section_marks[parent]['total']
+        items.append({
+            'question_number': q_num,
+            'question_text': text_clean[:300],
+            'marks': marks,
+            'source': 'qp',
+            'format': 'X.Y'
+        })
 
-            if len(q_text) > 5:
-                items.append({
-                    'question_number': q_num,
-                    'question_text': q_text[:300],
-                    'marks': marks,
-                    'source': 'qp'
-                })
-
-    seen = set()
-    unique_items = []
+    # Deduplicate
+    best_items = {}
     for item in items:
-        if item['question_number'] not in seen:
-            seen.add(item['question_number'])
-            unique_items.append(item)
+        q_num = item['question_number']
+        if q_num not in best_items:
+            best_items[q_num] = item
+        else:
+            if item['marks'] > best_items[q_num]['marks']:
+                best_items[q_num] = item
+            elif item['marks'] == best_items[q_num]['marks'] and len(item['question_text']) > len(best_items[q_num]['question_text']):
+                best_items[q_num] = item
 
-    return unique_items
+    return list(best_items.values())
