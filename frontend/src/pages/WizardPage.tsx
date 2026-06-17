@@ -1,5 +1,6 @@
-﻿import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ParserReviewPanel } from '../components/ParserReviewPanel';
 
 // ============================================================
 // TYPES
@@ -47,19 +48,27 @@ interface ExtractionResult {
   items: ExtractedItem[];
   linked?: number;
   unlinked?: number;
+  images?: any[];
 }
 
-interface ReviewItem {
-  result_id: number;
-  question_number: string;
-  question_text: string;
-  parsed_section: string;
-  parser_extracted_marks: number;
-  expected_marks: number;
-  auto_corrected_marks: number;
-  correction_status: string;
-  user_corrected_marks: number | null;
-  reviewer_notes: string;
+interface ParserResult {
+  paper_code: string;
+  qp_items: number;
+  memo_items: number;
+  matched: number;
+  qp_only: number;
+  memo_only: number;
+  total_marks: number;
+  target_marks: number;
+  variance: number;
+  green_count: number;
+  yellow_count: number;
+  red_count: number;
+  red_items: Array<{q: string; issue: string}>;
+  yellow_items: Array<{q: string; issue: string}>;
+  green_items: Array<{q: string}>;
+  parser_version: string;
+  status: string;
 }
 
 // ============================================================
@@ -127,8 +136,11 @@ const WizardPage: React.FC = () => {
   const [memoResult, setMemoResult] = useState<ExtractionResult | null>(null);
   const [sessionId, setSessionId] = useState('');
 
-  // Review data
-  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
+  // Parser result (new API)
+  const [parserResult, setParserResult] = useState<ParserResult | null>(null);
+
+  // Review data (legacy - keep for compatibility)
+  const [reviewItems, setReviewItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -153,7 +165,7 @@ const WizardPage: React.FC = () => {
           )
         );
 
-        // Backend returns {success: true, data: [...]} â€” extract .data
+        // Backend returns {success: true, data: [...]} — extract .data
         const extractData = (res: any) => {
           if (res && Array.isArray(res.data)) return res.data;
           if (res && Array.isArray(res)) return res;
@@ -192,7 +204,6 @@ const WizardPage: React.FC = () => {
   // AUTO-POPULATE DERIVED VALUES WHEN DIMENSIONS CHANGE
   // ============================================================
   useEffect(() => {
-    // Auto-populate subject alpha code
     if (dimensions.subject_id) {
       const subj = subjects.find(s => String(s.id) === dimensions.subject_id);
       if (subj && subj.subject_alpha_code) {
@@ -202,7 +213,6 @@ const WizardPage: React.FC = () => {
   }, [dimensions.subject_id, subjects]);
 
   useEffect(() => {
-    // Auto-populate year value
     if (dimensions.year_id) {
       const yr = years.find(y => String(y.id) === dimensions.year_id);
       if (yr && yr.year_value) {
@@ -212,7 +222,6 @@ const WizardPage: React.FC = () => {
   }, [dimensions.year_id, years]);
 
   useEffect(() => {
-    // Auto-populate paper number
     if (dimensions.paper_id) {
       const p = papers.find(p => String(p.id) === dimensions.paper_id);
       if (p && p.paper_no) {
@@ -310,18 +319,16 @@ const WizardPage: React.FC = () => {
     const paperCode = buildPaperCode(subjectAlpha, paperNo, sessionName, yearValue);
 
     const formData = new FormData();
-    formData.append('pdf', qpFile);
+    formData.append('qp_file', qpFile);
     formData.append('paper_code', paperCode);
-    formData.append('year_id', dimensions.year_id);
-    formData.append('grade_id', dimensions.grade_id);
     formData.append('subject_id', dimensions.subject_id);
-    formData.append('paper_id', dimensions.paper_id);
-    formData.append('assessment_type_id', dimensions.assessment_type_id);
-    formData.append('assessment_body_id', dimensions.assessment_body_id);
-    formData.append('force_overwrite', 'true');
+    formData.append('grade_id', dimensions.grade_id);
+    formData.append('year', yearValue);
+    formData.append('paper_number', paperNo);
+    formData.append('language', 'English');
 
     try {
-      const response = await fetch(API_BASE + '/wizard/extract-qp', {
+      const response = await fetch('/api/parser/parse', {
         method: 'POST',
         body: formData
       });
@@ -332,9 +339,19 @@ const WizardPage: React.FC = () => {
         throw new Error(result.error || 'QP extraction failed');
       }
 
-      setQpResult(result);
-      setSessionId(result.session_id);
-      setSuccessMessage('Question Paper extracted: ' + result.total_items + ' items, ' + result.total_marks + ' marks');
+      setQpResult({
+        success: true,
+        session_id: result.paper_code || paperCode,
+        paper_code: result.paper_code || paperCode,
+        total_items: result.qp_items || 0,
+        total_marks: result.total_marks || 0,
+        items: [],
+        linked: result.matched || 0,
+        unlinked: (result.qp_only || 0) + (result.memo_only || 0)
+      });
+      setSessionId(result.paper_code || paperCode);
+      setParserResult(result);
+      setSuccessMessage('Question Paper extracted: ' + (result.qp_items || 0) + ' items, ' + (result.total_marks || 0) + ' marks');
       setCurrentStep(2);
     } catch (err: any) {
       setError(err.message || 'QP extraction failed');
@@ -351,7 +368,7 @@ const WizardPage: React.FC = () => {
       setError('Please select a Marking Guideline PDF');
       return;
     }
-    if (!sessionId) {
+    if (!qpFile) {
       setError('Please upload Question Paper first');
       return;
     }
@@ -362,13 +379,17 @@ const WizardPage: React.FC = () => {
     const paperCode = buildPaperCode(subjectAlpha, paperNo, sessionName, yearValue);
 
     const formData = new FormData();
-    formData.append('pdf', memoFile);
+    formData.append('qp_file', qpFile);
+    formData.append('memo_file', memoFile);
     formData.append('paper_code', paperCode);
-    formData.append('session_id', sessionId);
-    formData.append('force_overwrite', 'true');
+    formData.append('subject_id', dimensions.subject_id);
+    formData.append('grade_id', dimensions.grade_id);
+    formData.append('year', yearValue);
+    formData.append('paper_number', paperNo);
+    formData.append('language', 'English');
 
     try {
-      const response = await fetch(API_BASE + '/wizard/extract-memo', {
+      const response = await fetch('/api/parser/parse', {
         method: 'POST',
         body: formData
       });
@@ -379,10 +400,20 @@ const WizardPage: React.FC = () => {
         throw new Error(result.error || 'Memo extraction failed');
       }
 
-      setMemoResult(result);
-      setSuccessMessage('Memo extracted: ' + result.total_items + ' items, ' + result.total_marks + ' marks. Linked: ' + (result.linked || 0) + ', Unlinked: ' + (result.unlinked || 0));
+      setMemoResult({
+        success: true,
+        session_id: result.paper_code || paperCode,
+        paper_code: result.paper_code || paperCode,
+        total_items: result.memo_items || 0,
+        total_marks: result.total_marks || 0,
+        items: [],
+        linked: result.matched || 0,
+        unlinked: (result.qp_only || 0) + (result.memo_only || 0)
+      });
+      setParserResult(result);
+      setSessionId(result.paper_code || paperCode);
+      setSuccessMessage('Memo extracted: ' + (result.memo_items || 0) + ' items, ' + (result.total_marks || 0) + ' marks. Matched: ' + (result.matched || 0) + ', QP Only: ' + (result.qp_only || 0) + ', Memo Only: ' + (result.memo_only || 0));
       setCurrentStep(3);
-      await loadReviewData();
     } catch (err: any) {
       setError(err.message || 'Memo extraction failed');
     } finally {
@@ -393,73 +424,18 @@ const WizardPage: React.FC = () => {
   // ============================================================
   // STEP 3: Load review data
   // ============================================================
-  const loadReviewData = async () => {
-    if (!sessionId) return;
-
-    setIsLoading(true);
-    try {
-      const response = await fetch(API_BASE + '/wizard/comparison/' + sessionId);
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to load review data');
-      }
-
-      setReviewItems(result.results || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load review data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  
 
   // ============================================================
   // STEP 3: Save corrections
   // ============================================================
-  const handleSaveCorrections = async () => {
-    if (!sessionId) return;
-
-    const corrections = reviewItems
-      .filter(item => item.user_corrected_marks !== null)
-      .map(item => ({
-        question_number: item.question_number,
-        user_corrected_marks: item.user_corrected_marks,
-        notes: item.reviewer_notes || ''
-      }));
-
-    if (corrections.length === 0) {
-      setError('No corrections to save');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const response = await fetch(API_BASE + '/wizard/save-corrections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, corrections })
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to save corrections');
-      }
-
-      setSuccessMessage('Corrections saved successfully');
-      await loadReviewData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save corrections');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  
 
   // ============================================================
   // STEP 3: Import to production
   // ============================================================
   const handleImport = async () => {
-    if (!sessionId) return;
+    if (!sessionId || !parserResult) return;
 
     const paperCode = buildPaperCode(subjectAlpha, paperNo, sessionName, yearValue);
 
@@ -467,13 +443,19 @@ const WizardPage: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch(API_BASE + '/wizard/import', {
+      const response = await fetch('/api/parser/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: sessionId,
           paper_code: paperCode,
-          created_by: 1
+          approved_items: parserResult,
+          paper_metadata: {
+            subject_id: dimensions.subject_id,
+            grade_id: dimensions.grade_id,
+            year: yearValue,
+            language: 'English',
+            paper_number: paperNo
+          }
         })
       });
 
@@ -483,7 +465,7 @@ const WizardPage: React.FC = () => {
         throw new Error(result.error || 'Import failed');
       }
 
-      setSuccessMessage('Import complete: ' + result.imported_count + ' items imported to item_master');
+      setSuccessMessage('Import complete: ' + (result.items_imported || 0) + ' items imported to item_master');
     } catch (err: any) {
       setError(err.message || 'Import failed');
     } finally {
@@ -605,6 +587,9 @@ const WizardPage: React.FC = () => {
         <div style={{ background: '#eff6ff', borderLeft: '4px solid #3b82f6', padding: '16px 20px', borderRadius: '8px', margin: '16px 0', fontSize: '14px', color: '#1e40af' }}>
           <p style={{ margin: '4px 0' }}>Extracted: {qpResult.total_items} items, {qpResult.total_marks} marks</p>
           <p style={{ margin: '4px 0' }}>Session ID: {qpResult.session_id}</p>
+          {qpResult.images && qpResult.images.length > 0 && (
+            <p style={{ margin: '4px 0' }}>Images: {qpResult.images.length} extracted</p>
+          )}
         </div>
       )}
 
@@ -658,6 +643,9 @@ const WizardPage: React.FC = () => {
         <div style={{ background: '#f0fdf4', borderLeft: '4px solid #22c55e', padding: '16px 20px', borderRadius: '8px', margin: '16px 0', fontSize: '14px', color: '#166534' }}>
           <p style={{ margin: '4px 0' }}>Extracted: {memoResult.total_items} items, {memoResult.total_marks} marks</p>
           <p style={{ margin: '4px 0' }}>Linked: {memoResult.linked || 0}, Unlinked: {memoResult.unlinked || 0}</p>
+          {memoResult.images && memoResult.images.length > 0 && (
+            <p style={{ margin: '4px 0' }}>Images: {memoResult.images.length} extracted</p>
+          )}
         </div>
       )}
 
@@ -678,88 +666,26 @@ const WizardPage: React.FC = () => {
   );
 
   // ============================================================
-  // RENDER: Step 3 - Review & Import
+  // RENDER: Step 3 - Review & Import (NOW USES ReviewPanel)
   // ============================================================
   const renderStep3 = () => (
     <div style={{ background: 'white', padding: '32px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
       <h3 style={{ margin: '0 0 20px 0', color: '#334155', fontSize: '20px', fontWeight: 600 }}>Step 3: Review & Import</h3>
 
-      <div style={{ background: '#f8fafc', padding: '16px 20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
-        <p style={{ margin: '4px 0', fontSize: '14px', color: '#475569' }}>QP Items: {qpResult ? qpResult.total_items : 0} | Memo Items: {memoResult ? memoResult.total_items : 0}</p>
-        <p style={{ margin: '4px 0', fontSize: '14px', color: '#475569' }}>Review Items: {reviewItems.length}</p>
-      </div>
-
-      <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-          <thead>
-            <tr style={{ background: '#1e293b', color: 'white' }}>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>Q#</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>Section</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>Text</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>Parser Marks</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>Expected</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>Corrected</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>Status</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reviewItems.map((item) => (
-              <tr key={item.result_id} style={{
-                background: item.correction_status === 'manual_review' ? '#fef2f2' : item.correction_status === 'auto_corrected' ? '#f0fdf4' : 'white',
-                borderBottom: '1px solid #f1f5f9'
-              }}>
-                <td style={{ padding: '12px 16px', fontWeight: 'bold', color: '#1e293b' }}>{item.question_number}</td>
-                <td style={{ padding: '12px 16px', color: '#334155' }}>{item.parsed_section || '-'}</td>
-                <td style={{ padding: '12px 16px', color: '#334155', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.question_text ? item.question_text.substring(0, 80) : '-'}
-                </td>
-                <td style={{ padding: '12px 16px', color: '#334155' }}>{item.parser_extracted_marks}</td>
-                <td style={{ padding: '12px 16px', color: '#334155', fontWeight: 'bold' }}>{item.expected_marks}</td>
-                <td style={{ padding: '12px 16px' }}>
-                  <input type="number" value={item.user_corrected_marks !== null ? item.user_corrected_marks : ''}
-                    onChange={e => {
-                      const val = e.target.value === '' ? null : parseInt(e.target.value);
-                      setReviewItems(prev => prev.map(i => i.result_id === item.result_id ? { ...i, user_corrected_marks: val } : i));
-                    }}
-                    style={{ width: '70px', padding: '6px 10px', border: '2px solid #e2e8f0', borderRadius: '6px', textAlign: 'center', fontSize: '14px', fontWeight: 600 }} />
-                </td>
-                <td style={{ padding: '12px 16px' }}>
-                  <span style={{
-                    display: 'inline-block', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600,
-                    background: item.correction_status === 'auto_corrected' ? '#d4edda' : item.correction_status === 'manual_review' ? '#f8d7da' : '#fff3cd',
-                    color: item.correction_status === 'auto_corrected' ? '#155724' : item.correction_status === 'manual_review' ? '#721c24' : '#856404'
-                  }}>
-                    {item.correction_status}
-                  </span>
-                </td>
-                <td style={{ padding: '12px 16px' }}>
-                  <input type="text" placeholder="Notes..." value={item.reviewer_notes || ''}
-                    onChange={e => {
-                      setReviewItems(prev => prev.map(i => i.result_id === item.result_id ? { ...i, reviewer_notes: e.target.value } : i));
-                    }}
-                    style={{ width: '100%', padding: '4px 6px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '12px' }} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-        <button onClick={() => setCurrentStep(2)} disabled={isLoading}
-          style={{ padding: '12px 28px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', background: '#f1f5f9', color: '#475569', border: '2px solid #e2e8f0' }}>
-          Back
-        </button>
-        <button onClick={handleSaveCorrections} disabled={isLoading}
-          style={{ padding: '12px 28px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', background: '#3b82f6', color: 'white', border: 'none' }}>
-          Save Corrections
-        </button>
-        <button onClick={handleImport} disabled={isLoading}
-          style={{ padding: '12px 28px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', background: '#22c55e', color: 'white', border: 'none' }}>
-          {isLoading ? 'Importing...' : 'Import to Database'}
-        </button>
-      </div>
+      <ParserReviewPanel
+        paperCode={sessionId}
+        result={parserResult || undefined}
+        paperMetadata={{
+          subject_id: dimensions.subject_id,
+          grade_id: dimensions.grade_id,
+          year: yearValue,
+          language: 'English',
+          paper_number: paperNo
+        }}
+        onImportComplete={(paperId) => {
+          setSuccessMessage('Import complete: Paper ID ' + paperId);
+        }}
+      />
     </div>
   );
 
@@ -767,7 +693,7 @@ const WizardPage: React.FC = () => {
   // MAIN RENDER
   // ============================================================
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', background: '#f8fafc', minHeight: '100vh' }}>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', background: '#f8fafc', minHeight: '100vh' }}>
       <h2 style={{ margin: '0 0 24px 0', color: '#1e293b', fontSize: '28px', fontWeight: 700 }}>Question Paper & Marking Guideline Wizard</h2>
 
       {/* Step indicator */}
@@ -819,4 +745,3 @@ const WizardPage: React.FC = () => {
 };
 
 export default WizardPage;
-
