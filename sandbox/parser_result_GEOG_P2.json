@@ -1,0 +1,590 @@
+{
+  "paper_code": "GEOG_P2",
+  "parser_option": "A",
+  "qp_items": 76,
+  "memo_items": 76,
+  "matched": 76,
+  "qp_only": 0,
+  "memo_only": 0,
+  "total_marks": 149,
+  "target_marks": 150,
+  "variance": 1,
+  "green_count": 72,
+  "yellow_count": 4,
+  "red_count": 0,
+  "green_items": [
+    {
+      "q": "1.1.1",
+      "marks": 1
+    },
+    {
+      "q": "1.1.2",
+      "marks": 1
+    },
+    {
+      "q": "1.1.3",
+      "marks": 1
+    },
+    {
+      "q": "1.1.4",
+      "marks": 1
+    },
+    {
+      "q": "1.1.5",
+      "marks": 1
+    }
+  ],
+  "yellow_items": [
+    {
+      "q": "1.1.8",
+      "issue": "Mark mismatch: QP=1, Memo=8"
+    },
+    {
+      "q": "1.2.7",
+      "issue": "Short answer (4 chars) for 7 marks"
+    },
+    {
+      "q": "2.1.8",
+      "issue": "Short answer (4 chars) for 8 marks"
+    },
+    {
+      "q": "2.2.7",
+      "issue": "Short answer (4 chars) for 7 marks"
+    }
+  ],
+  "red_items": [],
+  "all_items": [
+    {
+      "question_number": "1.1.1",
+      "question_text": "Exact piece of land that a settlement is built on Y situation Z site",
+      "answer_text": "Z",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.1.2",
+      "question_text": "The situation of a commercial livestock farm is influenced by \u2026 Y topography Z markets",
+      "answer_text": "Z",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.1.3",
+      "question_text": "Settlements located close to a water source in arid areas Y wet-point Z dry-point",
+      "answer_text": "Y",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.1.4",
+      "question_text": "The shape of this settlement is influenced by a river Y circular Z linear",
+      "answer_text": "Z",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.1.5",
+      "question_text": "The largest rural settlement type Y village Z hamlet",
+      "answer_text": "Y",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.1.6",
+      "question_text": "Greater profits are associated with this settlement pattern Y dispersed Z nucleated",
+      "answer_text": "Y",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.1.7",
+      "question_text": "Land returned to the original owners Y land restitution Z land tenure",
+      "answer_text": "Y",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.1.8",
+      "question_text": ") in the ANSWER BOOK, e.g. 1.1 .9 Y.",
+      "answer_text": "Y/Z 1.",
+      "final_marks": 8,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.2.1",
+      "question_text": "to 1.2. 7) in the ANSWER BOOK , e.g.",
+      "answer_text": "C",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.2.2",
+      "question_text": "A \u2026 has the smallest number of settlements . A conurbation B city C town D megalopolis",
+      "answer_text": "D",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.2.3",
+      "question_text": "A \u2026 is the largest settlement type found in South Africa. A megalopolis B conurbation C metropolis D",
+      "answer_text": "B",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.2.4",
+      "question_text": "A \u2026 is an urban settlement type made up of a major city and towns. A metropolis B conurbation C city",
+      "answer_text": "A",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.2.5",
+      "question_text": "The \u2026 of a city covers a larger area than a town. A range B sphere of influence C threshold populati",
+      "answer_text": "B",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.2.6",
+      "question_text": "A university has a \u2026 range and a \u2026 sphere of influence than a school . A smaller; larger B small er;",
+      "answer_text": "C",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.2.7",
+      "question_text": "The range associated with the purchase of a motor vehicle is greater than the purchase of bread beca",
+      "answer_text": "A 1.",
+      "final_marks": 7,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.3.1",
+      "question_text": "Define the term rural-urban migration . (1 x 2 )",
+      "answer_text": "Define rural-urban migration Movement of people from rural areas to urban areas [CONCEPT] INSTRUCTIO",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.3.2",
+      "question_text": "According to the graph, the percentage level of poverty decreased by a smaller amount in (rural/ urb",
+      "answer_text": "rural",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.3.3",
+      "question_text": "How has unemployment contributed to this trend in poverty levels (answer to QUESTION",
+      "answer_text": "How has unemploy - ment contribute d to the trend in poverty levels? People earn no /low salaries Th",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.3.4",
+      "question_text": "How does the movement of young adults to urban areas have a negative social impact on the rural comm",
+      "answer_text": "How does the movement of young adults to urban areas have a negative social impact on the rural comm",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.3.5",
+      "question_text": "Suggest strategies that can be introduced in rural areas to reduce the movement of young adults to u",
+      "answer_text": "Suggest strategies in rural areas to reduce the movement of young adults to urban areas Create oppor",
+      "final_marks": 6,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.4.1",
+      "question_text": "Define the concept urban profile . (1 x 2 )",
+      "answer_text": "Define urban profile Side view of an urban area [CONCEPT] INSTRUCTIONS FOR PART MARKING Side view",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.4.2",
+      "question_text": "Comment on the height of buildings in the CBD in comparison to those in the rural -urban fringe.",
+      "answer_text": "Comment on height of buildings in CBD in comparison to rural - urban fringe Height of buildings decr",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.4.3",
+      "question_text": "How has the demand for land influence d the density of buildings in the CBD?",
+      "answer_text": "How has demand for land has influenced building density Resulted in a high building density",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.4.4",
+      "question_text": "Why are both the transition zone and rural -urban fringe referred to as zones of change?",
+      "answer_text": "Why are both the transition zone and rural-urban fringe zones of change? Characterised by mixed land",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.4.5",
+      "question_text": "Suggest economic reasons why the rural -urban fringe would be an attractive location for commercial ",
+      "answer_text": "Suggest economic reasons why the rural - urban fringe would be attractive location for commercial ac",
+      "final_marks": 6,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.5.1",
+      "question_text": "Define the term informal settlement. (1 x 2 )",
+      "answer_text": "Define Informal settlement Building of structures on land that people occupy with no legal claim (Ac",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.5.2",
+      "question_text": "State ONE factor in the extract that has a negative impact on the health of residents in informal se",
+      "answer_text": "State ONE factor from extract that has negative impact on health Lack of basic services Pollution Ov",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.5.3",
+      "question_text": "Explain TWO economic reasons for the increase in informal settlements .",
+      "answer_text": "Explain TWO economic reasons for the increase in informal settlements Municipal budgets cannot keep ",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "1.5.4",
+      "question_text": "In a paragraph of approximately EIGHT lines, explain how the upgrading ( improvement ) of informal s",
+      "answer_text": "PARAGRAPH Explain how the upgrading of informal settlements would have a positive social impact for ",
+      "final_marks": 8,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.1.1",
+      "question_text": "The main difference between small -scale and large -scale farming is the \u2026 A size of farm holdings. ",
+      "answer_text": "A",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.1.2",
+      "question_text": "Photograph \u2026 below illustrates small -scale farming. [Source: https://www.google.com/url?sa=i&url=ht",
+      "answer_text": "D",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.1.3",
+      "question_text": "A characteristic of small -scale farming evident in the photograph is \u2026 A the use of hybrid seeds . ",
+      "answer_text": "D",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.1.4",
+      "question_text": "\u2026 is an economic advantage for a farmer practising large -scale farming. A The u se of machinery B L",
+      "answer_text": "B",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.1.5",
+      "question_text": "Cattle farming is an activity in the \u2026 economic sector. A primary B secondary C tertiary D quaternar",
+      "answer_text": "A",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.1.6",
+      "question_text": "Distribution of dairy products is a n activity in the \u2026 economic sector. A primary B secondary C ter",
+      "answer_text": "C",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.1.7",
+      "question_text": "A factor favouring cattle farming in South Africa is \u2026 A heavy rainfall. B high temperatures. C avai",
+      "answer_text": "C",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.1.8",
+      "question_text": "Challenges faced by small -scale cattle farmers in South Africa are : (i) High rate of unemployment ",
+      "answer_text": "B 2.",
+      "final_marks": 8,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.2.1",
+      "question_text": "The main purpose of an industrial development zone (IDZ) is to promote \u2026 Y exports Z imports",
+      "answer_text": "Y",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.2.2",
+      "question_text": "SDIs are generally located in \u2026 areas. Y underdeveloped Z developed",
+      "answer_text": "Y",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.2.3",
+      "question_text": "A positive economic impact of spatial development initiatives (SDIs) is \u2026 Y improved quality of life",
+      "answer_text": "Z",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.2.4",
+      "question_text": "A social challenge experienced in the Saldanha Bay IDZ is \u2026 Y unskilled workforce Z poor harbour fac",
+      "answer_text": "Y",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.2.5",
+      "question_text": "The main industry associated with the West Coast SDI is a/an \u2026 Y automotive plant Z steel plant",
+      "answer_text": "Z",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.2.6",
+      "question_text": "The South-western Cape core industrial region is restricted by \u2026 Y few mineral resources Z small loc",
+      "answer_text": "Y",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.2.7",
+      "question_text": "A physical factor that promotes industries in the South-western Cape core industrial region is \u2026 Y o",
+      "answer_text": "Z 2.",
+      "final_marks": 7,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.3.1",
+      "question_text": "Accordi ng to the graph, what amount of coal, in billions , was exported in 2023?",
+      "answer_text": "(R)250 (billion)",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.3.2",
+      "question_text": "What has been the general trend in profits from the export of coal in recent years?",
+      "answer_text": "Trend There is an upward/increasing/positive trend (Accept figures that indicate an increase in expo",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.3.3",
+      "question_text": "According to the graph, between which years was the smallest number of employees recorded in the coa",
+      "answer_text": "Between 2021 and",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.3.4",
+      "question_text": "Give ONE possible r eason for the small number of employees (answer to QUESTION 2.3. 3).",
+      "answer_text": "Give ONE reason for the small number of employees Depletion of coal Economic recession (accept examp",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.3.5",
+      "question_text": "According to the extract, the high -quality coal reserves in South Africa have been decreasing over ",
+      "answer_text": "Explain the negative impact of decreasing high-quality coal reserves for the future supply of energy",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.3.6",
+      "question_text": "Explain why the coal mining industry is important to the economy of South Africa .",
+      "answer_text": "Explain why The coal mining industry is important to the economy F+Q It creates employment opportuni",
+      "final_marks": 6,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.4.1",
+      "question_text": "Refer to the statistics and state the percentage that the Gauteng (PWV) core industrial region contr",
+      "answer_text": "38 (%)",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.4.2",
+      "question_text": "Quote evidence from the extract that shows why 31% of South Africa 's labour force is found in the G",
+      "answer_text": "Quote : from extract: why 31% of SA labour is found in Gauteng PWV 'sector employing over half a mil",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.4.3",
+      "question_text": "Refer to the sketch and ex plain the role of the major roads in supporting industrial development in",
+      "answer_text": "Explain the role of major roads in supporting industrial dev in Gauteng PWV Allow s for effective tr",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.4.4",
+      "question_text": "Explain TWO challenges faced by the Gauteng (PWV) core industrial region .",
+      "answer_text": "Explain TWO challenges faced by Gauteng PWV Load -shedding/ load reduction reduces production Traffi",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.4.5",
+      "question_text": "Suggest ONE advantage and ONE disadvantage of industries moving towards high value -added production",
+      "answer_text": "Suggest ONE advantage and ONE disadvan - tage of industries moving towards high-value added producti",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.5.1",
+      "question_text": "According to the extract, what is the percentage of informal trading that takes place in Johannesbur",
+      "answer_text": "30 (%)",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.5.2",
+      "question_text": "Quote evidence from the extract why trading has been restricted in Johannesburg at night .",
+      "answer_text": "Quote 'exposes them to criminal activity '",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.5.3",
+      "question_text": "According to the graph, which is the busiest time period for trading in the informal sector ?",
+      "answer_text": "Busiest time 16:00 to 18:",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.5.4",
+      "question_text": "Suggest TWO reason s for the rapid growth of the informal sector in the city of Johannesburg.",
+      "answer_text": "Suggest TWO reasons for the rapid growth of the informal sector in Jhb High unemployment rate /retre",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "2.5.5",
+      "question_text": "In a paragraph of approximately EIGHT lines , explain measures that the municipality can put in plac",
+      "answer_text": "PARAGRAPH Explain measures that the municipality can put in place to assist traders to operate under",
+      "final_marks": 8,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.1.1",
+      "question_text": "The (topographical map/orthophoto map) has a smaller scale.",
+      "answer_text": "topographical map",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.1.2",
+      "question_text": "A small -scale map shows : (i) A small area (ii) Greater detail (iii) A large area (iv) Less detail ",
+      "answer_text": "D",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.1.3",
+      "question_text": "The grid reference of the reservoir at F in block B1 on the topographical map is \u2026 A 26\u00b010'12''S; 29",
+      "answer_text": "B",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.1.4",
+      "question_text": "Determine the true bearing of spot height 1431 at 6 in block A3 from spot height 1427 at 7 in block ",
+      "answer_text": "316\u00b0 [range 315\u00b0 - 317\u00b0]",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.1.5",
+      "question_text": "Calculate the average gradient from spot height 1358 at G in block A3 to trigonometrical station 96 ",
+      "answer_text": "Average gradient VI= 1455,6 m \u2013 1358 m = 97,6 m HE = 7,8 cm x 500 = 3 900 m = 97,6 (1 mark for subst",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.1.6",
+      "question_text": "Is the gradient (answer to QUESTION",
+      "answer_text": "Gentle",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.1.7",
+      "question_text": "Why would this gradient (answer to QUESTION 3.1. 6) be an advantage for road construction?",
+      "answer_text": "Why would gradient an advantage for road construction ? Cheaper to build (accept examples) Easier to",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.2.1",
+      "question_text": "The main settlement pattern at area 8 in block s D1 and E1 on the orthophoto map is \u2026 A dispersed. B",
+      "answer_text": "B",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.2.2",
+      "question_text": "(a) What evidence suggests th at this suburb is still undergoing development ?",
+      "answer_text": "Evidence suggests suburb undergoing development (a) Roads under construction / incomplete roads Vaca",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.2.3",
+      "question_text": "(a) How did topography influence the development of the gridiron street pattern evident in this resi",
+      "answer_text": "(a) Easier to layout Land is flat/gently sloping [ANY ONE] Explain ONE economic advantage that resid",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.2.4",
+      "question_text": "(a) Identify the primary activity practised in block s A1/A2 and B1/B2 .",
+      "answer_text": "Primary (a) Agriculture (accept farming /cultivation) Why is primary activity practised on a large s",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.3.1",
+      "question_text": "The process of converting data from raster to vector format is called data \u2026 A analysis. B integrati",
+      "answer_text": "D",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.3.2",
+      "question_text": "Explain how the data was converted from the vertical aerial photograph (used to make the orthophoto ",
+      "answer_text": "Explain how data converted from vert photo to topo map Data was converted from images /raster data t",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.3.3",
+      "question_text": "Redraw block A3 and insert only the following feature s: (a) A human -made line feature",
+      "answer_text": "(1 ( '' '' '' ''",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.3.4",
+      "question_text": "Define the concept data integration .",
+      "answer_text": "Define data integration Combining of sources of information/data layers",
+      "final_marks": 2,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.3.5",
+      "question_text": "Name the method of data integration used on the topographical map.",
+      "answer_text": "Name the data integration method Data layering [30] TOTAL:",
+      "final_marks": 1,
+      "confidence": "unknown"
+    }
+  ]
+}

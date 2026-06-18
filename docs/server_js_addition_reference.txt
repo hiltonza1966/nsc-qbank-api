@@ -1,0 +1,24 @@
+// ============================================================
+// ADD TO backend/server.js (surgical addition — do NOT replace entire file)
+// ============================================================
+// Find the line where capsPdfParser is imported/used, and add capsTopicParser nearby:
+
+// EXISTING (should already be in server.js):
+// const capsPdfParser = require('./routes/capsPdfParser');
+// app.use(capsPdfParser.router);
+
+// ADD THIS LINE (after the existing capsPdfParser lines):
+const { router: capsTopicRouter } = require('./routes/capsTopicParser');
+app.use(capsTopicRouter);
+
+// ============================================================
+// ALSO VERIFY these existing routes are still present:
+// ============================================================
+// const capsLinker = require('./routes/capsLinker');
+// app.use('/api/caps', capsLinker);
+// 
+// const curriculumRoutes = require('./routes/curriculum');
+// app.use('/api/curriculum', curriculumRoutes);
+// 
+// const capsParser = require('./routes/capsParser');
+// app.use('/api/caps', capsParser);

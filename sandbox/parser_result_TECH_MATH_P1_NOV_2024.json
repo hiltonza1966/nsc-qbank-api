@@ -1,0 +1,46 @@
+{
+  "paper_code": "TECH_MATH_P1_NOV_2024",
+  "qp_items": 47,
+  "memo_items": 57,
+  "matched": 47,
+  "qp_only": 0,
+  "memo_only": 6,
+  "total_marks": 149,
+  "target_marks": 150,
+  "variance": 1,
+  "green_count": 50,
+  "yellow_count": 3,
+  "red_count": 0,
+  "red_items": [],
+  "yellow_items": [
+    {
+      "q": "1.2",
+      "issue": "High marks (6) - verify not section total"
+    },
+    {
+      "q": "3.1",
+      "issue": "High marks (9) - verify not section total"
+    },
+    {
+      "q": "9.2.2",
+      "issue": "High marks (6) - verify not section total"
+    }
+  ],
+  "green_items": [
+    {
+      "q": "1.1.2"
+    },
+    {
+      "q": "1.3.1"
+    },
+    {
+      "q": "1.3.2"
+    },
+    {
+      "q": "1.5"
+    },
+    {
+      "q": "2.1.1"
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "paper_code": "ACCOUNT_P1_NOV_2025",
+  "qp_items": 6,
+  "memo_items": 8,
+  "matched": 6,
+  "qp_only": 0,
+  "memo_only": 2,
+  "total_marks": 15,
+  "target_marks": 150,
+  "variance": 135,
+  "green_count": 6,
+  "yellow_count": 0,
+  "red_count": 2,
+  "green_items": [
+    {
+      "q": "3.1.3",
+      "marks": 1
+    },
+    {
+      "q": "3.2.1",
+      "marks": 4
+    },
+    {
+      "q": "3.2.2",
+      "marks": 4
+    },
+    {
+      "q": "3.3.2",
+      "marks": 4
+    },
+    {
+      "q": "3.1.1",
+      "marks": 1
+    }
+  ],
+  "yellow_items": [],
+  "red_items": [
+    {
+      "q": "3.2.3",
+      "issue": "No marks found in QP or Memo"
+    },
+    {
+      "q": "3.3.1",
+      "issue": "No marks found in QP or Memo"
+    }
+  ],
+  "all_items": [
+    {
+      "question_number": "3.1.3",
+      "question_text": "Guidelines for the preparation of financial statements to ensure consistency An elected board member",
+      "answer_text": "Companies and Intellectual Properties Commission (CIPC) 3.2 Shorts Ltd",
+      "final_marks": 1,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.2.1",
+      "question_text": "Operating efficiency: The CEO believes that the company's pricing policy, when compared to its compe",
+      "answer_text": "Operating efficiency: The CEO believes that the company's pricing policy, when compared to its compe",
+      "final_marks": 4,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.2.2",
+      "question_text": "Liquidity: Explain how the credit policy has improved the liquidity of the company. Quote TWO financ",
+      "answer_text": "Liquidity: Explain how the credit policy has improved the liquidity of the company. Quote TWO financ",
+      "final_marks": 4,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.2.3",
+      "question_text": "Shareholding of Lewis Clark in Shorts Ltd Refer to Information A, B and C . \u2022 Provide a calculation ",
+      "answer_text": "Shareholding of Lewis Clark in Shorts Ltd: Provide a calculation to show the effect which the repurc",
+      "final_marks": 0,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.3.1",
+      "question_text": "Returns and dividends pay -out policy : \u2022 The CEOs of both companies will discuss their companies' p",
+      "answer_text": "Returns and dividends pay -out policy : The CEOs of both companies will discuss their companies' per",
+      "final_marks": 0,
+      "confidence": "unknown"
+    },
+    {
+      "question_number": "3.3.2",
+      "question_text": "Share price : Comment on the shareholders' satisfaction with the performance of their share price. Q",
+      "answer_text": "Share price : Comment on the shareholders' satisfaction with the performance of their share price. Q",
+      "final_marks": 4,
+      "confidence": "unknown"
+    }
+  ]
+}

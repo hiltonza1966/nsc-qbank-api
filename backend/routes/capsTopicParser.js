@@ -1,8 +1,8 @@
-﻿/**
- * CAPS Topic/Subtopic Parser â€” routes/capsTopicParser.js (v1.0 FOCUSED)
+/**
+ * CAPS Topic/Subtopic Parser — routes/capsTopicParser.js (v1.0 FOCUSED)
  * Purpose: Extract ONLY topics and subtopics from CAPS PDFs
  * Target Tables: lookup_caps_topics, lookup_caps_subtopics
- * NO ATP/POA/SUBJECT_MASTER seeding â€” those are already populated
+ * NO ATP/POA/SUBJECT_MASTER seeding — those are already populated
  */
 
 const pdf = require('pdf-parse');
@@ -149,7 +149,7 @@ class CapsTopicParser {
   _detectSubject() {
     const headerLines = this.lines.slice(0, 50).join(' ');
 
-    const subjectMatch = headerLines.match(/([A-Z][A-Z\s]+?)\s+GRADES\s+10[-â€“]12/i);
+    const subjectMatch = headerLines.match(/([A-Z][A-Z\s]+?)\s+GRADES\s+10[-–]12/i);
     if (subjectMatch) {
       this.subjectName = subjectMatch[1].trim().replace(/\s+/g, ' ');
     }
@@ -158,7 +158,7 @@ class CapsTopicParser {
     if (!this.subjectName) {
       for (let i = 0; i < Math.min(100, this.lines.length); i++) {
         const line = this.lines[i];
-        const headerMatch = line.match(/^([A-Z][A-Z\s]+)\s+GRADES\s+10[-â€“]12/i);
+        const headerMatch = line.match(/^([A-Z][A-Z\s]+)\s+GRADES\s+10[-–]12/i);
         if (headerMatch && headerMatch[1].length > 3) {
           this.subjectName = headerMatch[1].trim().replace(/\s+/g, ' ');
           break;
@@ -262,7 +262,7 @@ class CapsTopicParser {
       }
 
       // Detect topic lines (typically start with bullet, number, or are capitalized phrases)
-      const topicMatch = line.match(/^[â€¢\-\*\d\.]+\s*(.+)/) ||
+      const topicMatch = line.match(/^[•\-\*\d\.]+\s*(.+)/) ||
                         line.match(/^([A-Z][A-Za-z\s&\/]+(?:of|in|and|the)[A-Za-z\s&\/]+)/);
 
       if (topicMatch && currentGrade && currentStrand) {
@@ -354,7 +354,7 @@ class CapsTopicParser {
       const timeWeeks = timeMatch ? parseInt(timeMatch[1]) : null;
 
       // Detect topic lines (after "TIME TOPIC CONTENT" headers)
-      const topicMatch = line.match(/^[â€¢\-\*\d\.]+\s*(.+)/) ||
+      const topicMatch = line.match(/^[•\-\*\d\.]+\s*(.+)/) ||
                         (line.match(/^[A-Z][A-Za-z\s&\/]+/) && line.length > 5 && line.length < 80);
 
       if (topicMatch && currentGrade && currentTerm) {
@@ -463,7 +463,7 @@ class CapsTopicParser {
         const context = fullText.substring(contextStart, contextEnd);
 
         // Look for bullet points or numbered items that could be subtopics
-        const subtopicMatches = context.matchAll(/[â€¢\-\*]\s*([A-Z][A-Za-z\s&\/]+)/g);
+        const subtopicMatches = context.matchAll(/[•\-\*]\s*([A-Z][A-Za-z\s&\/]+)/g);
         let subtopicNum = 1;
 
         for (const subMatch of subtopicMatches) {
@@ -509,7 +509,7 @@ const multer = require('multer');
 const upload = multer({ dest: 'uploads/' });
 
 // Parse CAPS PDF and extract topics/subtopics
-router.post('/parse-topics', upload.single('pdf'), async (req, res) => {
+router.post('/api/caps/parse-topics', upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No PDF file uploaded' });
@@ -544,7 +544,7 @@ router.post('/parse-topics', upload.single('pdf'), async (req, res) => {
 });
 
 // Seed extracted topics/subtopics into database
-router.post('/seed-topics', async (req, res) => {
+router.post('/api/caps/seed-topics', async (req, res) => {
   const { parsed_data } = req.body;
   const db = req.app.locals.db;
 
@@ -634,7 +634,7 @@ router.post('/seed-topics', async (req, res) => {
 });
 
 // Get topics for a subject
-router.get('/topics/:subject_code', async (req, res) => {
+router.get('/api/caps/topics/:subject_code', async (req, res) => {
   const db = req.app.locals.db;
   const { subject_code } = req.params;
 
@@ -661,7 +661,7 @@ router.get('/topics/:subject_code', async (req, res) => {
 });
 
 // Get subtopics for a topic
-router.get('/subtopics/:topic_id', async (req, res) => {
+router.get('/api/caps/subtopics/:topic_id', async (req, res) => {
   const db = req.app.locals.db;
   const { topic_id } = req.params;
 
@@ -684,4 +684,4 @@ router.get('/subtopics/:topic_id', async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = { router, CapsTopicParser };

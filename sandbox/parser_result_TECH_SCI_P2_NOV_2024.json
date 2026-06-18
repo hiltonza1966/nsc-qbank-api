@@ -1,0 +1,50 @@
+{
+  "paper_code": "TECH_SCI_P2_NOV_2024",
+  "qp_items": 48,
+  "memo_items": 47,
+  "matched": 46,
+  "qp_only": 2,
+  "memo_only": 1,
+  "total_marks": 75,
+  "target_marks": 75,
+  "variance": 0,
+  "green_count": 45,
+  "yellow_count": 0,
+  "red_count": 4,
+  "red_items": [
+    {
+      "q": "3.6.2",
+      "issue": "No marks found in QP or memo"
+    },
+    {
+      "q": "5.4",
+      "issue": "No marks found in QP or memo"
+    },
+    {
+      "q": "1.6",
+      "issue": "No marks found in QP or memo"
+    },
+    {
+      "q": "6.2",
+      "issue": "No marks found in QP or memo"
+    }
+  ],
+  "yellow_items": [],
+  "green_items": [
+    {
+      "q": "1.1"
+    },
+    {
+      "q": "1.2"
+    },
+    {
+      "q": "1.3"
+    },
+    {
+      "q": "1.4"
+    },
+    {
+      "q": "1.5"
+    }
+  ]
+}

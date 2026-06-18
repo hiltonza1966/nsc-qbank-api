@@ -1,0 +1,17 @@
+{
+  "total_subjects": 10,
+  "total_topics": 95,
+  "total_subtopics": 118,
+  "subjects": {
+    "Mathematics": 15,
+    "Mathematical Literacy": 8,
+    "Technical Mathematics": 19,
+    "Technical Sciences": 8,
+    "Accounting": 13,
+    "Business Studies": 11,
+    "Economics": 7,
+    "Geography": 9,
+    "History": 2,
+    "Tourism": 3
+  }
+}

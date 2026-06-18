@@ -1,0 +1,39 @@
+// ============================================
+// PARSER API INTEGRATION - Add to server.js
+// ============================================
+
+// 1. Add require at top of server.js with other routes:
+// const parserRouter = require('./routes/parser');
+
+// 2. Add route registration after other routes:
+// app.use('/api/parser', parserRouter);
+
+// 3. Add to package.json dependencies:
+// "multer": "^1.4.5-lts.1"
+
+// 4. Ensure Python dependencies are installed:
+// pip install PyPDF2 python-docx
+
+// 5. Create required directories:
+// - backend/parsers/ (for parser_api.py)
+// - uploads/temp/ (for multer temp files)
+// - uploads/parser_results/ (for parser output)
+
+// 6. Database table parser_results must exist:
+/*
+CREATE TABLE IF NOT EXISTS parser_results (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  paper_code VARCHAR(50) NOT NULL,
+  subject_id INT,
+  grade_id INT,
+  year INT,
+  result_json LONGTEXT,
+  status ENUM('pending_review', 'imported', 'rejected') DEFAULT 'pending_review',
+  total_marks INT,
+  target_marks INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_paper_code (paper_code),
+  INDEX idx_status (status)
+);
+*/
