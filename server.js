@@ -18,6 +18,16 @@ app.use(requestLogger);
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ============================================
+// STATIC FILE SERVING â€” Uploads folder for images
+// ============================================
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
+
 // Database pool
 const dbPool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
@@ -83,9 +93,16 @@ safeRequire('./routes/specs', '/api/qbank/specs');
 // CAPS & Curriculum
 safeRequire('./routes/capsParser', '/api/caps');
 safeRequire('./routes/capsPdfParser', '/api/caps');
+safeRequire('./routes/capsTopicParser', '/api/caps');
 safeRequire('./routes/curriculum', '/api/curriculum');
 
 // Wizard & Parser Tools
+
+// Loaded Dashboard
+safeRequire('./routes/loadedDashboard', '/api/dashboard');
+
+// Parser API for QBank wizard (v20)
+safeRequire('./routes/parser', '/api/parser');
 
 // Supporting Modules
 safeRequire('./routes/attachments', '/api/attachments');
@@ -196,6 +213,7 @@ app.listen(PORT, () => {
   console.log(`QBank API running on port ${PORT}`);
   console.log(`Database: nsc_qbank`);
   console.log(`API Base: http://localhost:${PORT}/api/qbank`);
+  console.log(`Uploads: http://localhost:${PORT}/uploads`);
   console.log(`Security: All tools sandboxed, audit logging enabled`);
   console.log(`Debug: Comprehensive logging active â€” check debug.log and /api/debug/logs`);
 });
