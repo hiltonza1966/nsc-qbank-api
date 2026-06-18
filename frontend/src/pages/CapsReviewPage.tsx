@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 
 const API_BASE = 'http://localhost:4000/api';
 
@@ -35,6 +35,10 @@ interface Subtopic {
   display_order: number | null;
 }
 
+const STRANDS = ['Economic & Management Sciences', 'Human & Social Sciences', 'Mathematics', 'Natural Sciences', 'Services'];
+const TERMS = ['1', '2', '3', '4'];
+const GRADES = [10, 11, 12];
+
 const CapsReviewPage: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<string>('');
@@ -43,6 +47,13 @@ const CapsReviewPage: React.FC = () => {
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Filter states
+  const [filterGrade, setFilterGrade] = useState<string>('');
+  const [filterTerm, setFilterTerm] = useState<string>('');
+  const [filterStrand, setFilterStrand] = useState<string>('');
+  const [filterTopic, setFilterTopic] = useState<string>('');
+  const [filterSubtopic, setFilterSubtopic] = useState<string>('');
 
   // Modal states
   const [showTopicModal, setShowTopicModal] = useState(false);
@@ -109,6 +120,21 @@ const CapsReviewPage: React.FC = () => {
       setSubtopics([]);
     }
   }
+
+  // Filtered topics
+  const filteredTopics = topics.filter(t => {
+    if (filterGrade && t.grade_number?.toString() !== filterGrade) return false;
+    if (filterTerm && t.term !== filterTerm) return false;
+    if (filterStrand && t.strand !== filterStrand) return false;
+    if (filterTopic && !t.topic_name?.toLowerCase().includes(filterTopic.toLowerCase())) return false;
+    return true;
+  });
+
+  // Filtered subtopics
+  const filteredSubtopics = subtopics.filter(s => {
+    if (filterSubtopic && !s.subtopic_name?.toLowerCase().includes(filterSubtopic.toLowerCase())) return false;
+    return true;
+  });
 
   // Topic CRUD
   async function saveTopic() {
@@ -233,7 +259,7 @@ const CapsReviewPage: React.FC = () => {
     borderRadius: '6px',
     border: '1px solid #d1d5db',
     marginBottom: '16px',
-    minWidth: '300px'
+    minWidth: '200px'
   };
 
   const btnPrimary: React.CSSProperties = {
@@ -327,6 +353,17 @@ const CapsReviewPage: React.FC = () => {
     boxSizing: 'border-box'
   };
 
+  const filterRowStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: '12px',
+    flexWrap: 'wrap',
+    marginBottom: '20px',
+    padding: '16px',
+    background: '#f9fafb',
+    borderRadius: '8px',
+    border: '1px solid #e5e7eb'
+  };
+
   return (
     <div style={containerStyle}>
       <h1 style={headerStyle}>CAPS Review & Management</h1>
@@ -334,15 +371,15 @@ const CapsReviewPage: React.FC = () => {
       {error && (
         <div style={{ background: '#fee2e2', border: '1px solid #ef4444', padding: '12px', borderRadius: '6px', marginBottom: '16px', color: '#991b1b' }}>
           {error}
-          <button onClick={() => setError(null)} style={{ marginLeft: '12px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#991b1b', fontWeight: 'bold' }}>×</button>
+          <button onClick={() => setError(null)} style={{ marginLeft: '12px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#991b1b', fontWeight: 'bold' }}>Ã—</button>
         </div>
       )}
 
       {/* Subject Selector */}
-      <div style={{ marginBottom: '24px' }}>
+      <div style={{ marginBottom: '16px' }}>
         <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px' }}>Select Subject:</label>
         <select
-          style={selectStyle}
+          style={{ ...selectStyle, minWidth: '300px' }}
           value={selectedSubject}
           onChange={(e) => setSelectedSubject(e.target.value)}
         >
@@ -355,6 +392,47 @@ const CapsReviewPage: React.FC = () => {
         </select>
       </div>
 
+      {/* Filters */}
+      {selectedSubject && (
+        <div style={filterRowStyle}>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: '#6b7280' }}>Filter by Grade</label>
+            <select style={selectStyle} value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)}>
+              <option value="">All Grades</option>
+              {GRADES.map(g => <option key={g} value={g.toString()}>Grade {g}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: '#6b7280' }}>Filter by Term</label>
+            <select style={selectStyle} value={filterTerm} onChange={(e) => setFilterTerm(e.target.value)}>
+              <option value="">All Terms</option>
+              {TERMS.map(t => <option key={t} value={t}>Term {t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: '#6b7280' }}>Filter by Strand</label>
+            <select style={selectStyle} value={filterStrand} onChange={(e) => setFilterStrand(e.target.value)}>
+              <option value="">All Strands</option>
+              {STRANDS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: '#6b7280' }}>Search Topic</label>
+            <input
+              style={{ ...inputStyle, marginBottom: 0, minWidth: '180px' }}
+              placeholder="Type topic name..."
+              value={filterTopic}
+              onChange={(e) => setFilterTopic(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button style={{ ...btnPrimary, background: '#6b7280' }} onClick={() => { setFilterGrade(''); setFilterTerm(''); setFilterStrand(''); setFilterTopic(''); }}>
+              Clear Filters
+            </button>
+          </div>
+        </div>
+      )}
+
       {loading && <div style={{ color: '#6b7280', marginBottom: '16px' }}>Loading...</div>}
 
       {/* Topics Section */}
@@ -362,7 +440,7 @@ const CapsReviewPage: React.FC = () => {
         <div style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#374151' }}>
-              Topics ({topics.length})
+              Topics ({filteredTopics.length} of {topics.length})
             </h2>
             <button style={btnPrimary} onClick={() => openTopicModal()}>
               + Add Topic
@@ -383,7 +461,7 @@ const CapsReviewPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {topics.map((topic) => (
+              {filteredTopics.map((topic) => (
                 <tr
                   key={topic.topic_id}
                   style={{
@@ -415,11 +493,21 @@ const CapsReviewPage: React.FC = () => {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#374151' }}>
-              Subtopics for: {selectedTopic.topic_name} ({subtopics.length})
+              Subtopics for: {selectedTopic.topic_name} ({filteredSubtopics.length} of {subtopics.length})
             </h2>
             <button style={btnPrimary} onClick={() => openSubtopicModal()}>
               + Add Subtopic
             </button>
+          </div>
+
+          {/* Subtopic Filter */}
+          <div style={{ marginBottom: '12px' }}>
+            <input
+              style={{ ...inputStyle, maxWidth: '300px', marginBottom: 0 }}
+              placeholder="Search subtopics..."
+              value={filterSubtopic}
+              onChange={(e) => setFilterSubtopic(e.target.value)}
+            />
           </div>
 
           <table style={tableStyle}>
@@ -433,7 +521,7 @@ const CapsReviewPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {subtopics.map((sub) => (
+              {filteredSubtopics.map((sub) => (
                 <tr key={sub.subtopic_id}>
                   <td style={tdStyle}>{sub.subtopic_code}</td>
                   <td style={tdStyle}>{sub.subtopic_name}</td>
@@ -450,22 +538,47 @@ const CapsReviewPage: React.FC = () => {
         </div>
       )}
 
-      {/* Topic Modal */}
+      {/* Topic Modal with Dropdown Lookups */}
       {showTopicModal && (
         <div style={modalOverlay} onClick={() => setShowTopicModal(false)}>
           <div style={modalContent} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginBottom: '16px' }}>{editingTopic ? 'Edit Topic' : 'Create Topic'}</h3>
-            <input style={inputStyle} placeholder="Topic Code" value={topicForm.topic_code || ''} onChange={(e) => setTopicForm({ ...topicForm, topic_code: e.target.value })} />
-            <input style={inputStyle} placeholder="Topic Name" value={topicForm.topic_name || ''} onChange={(e) => setTopicForm({ ...topicForm, topic_name: e.target.value })} />
-            <input style={inputStyle} type="number" placeholder="Grade Number" value={topicForm.grade_number || ''} onChange={(e) => setTopicForm({ ...topicForm, grade_number: parseInt(e.target.value) || null })} />
-            <input style={inputStyle} placeholder="Term" value={topicForm.term || ''} onChange={(e) => setTopicForm({ ...topicForm, term: e.target.value })} />
-            <input style={inputStyle} placeholder="Strand" value={topicForm.strand || ''} onChange={(e) => setTopicForm({ ...topicForm, strand: e.target.value })} />
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Topic Code</label>
+            <input style={inputStyle} placeholder="e.g. CAPS0051" value={topicForm.topic_code || ''} onChange={(e) => setTopicForm({ ...topicForm, topic_code: e.target.value })} />
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Topic Name</label>
+            <input style={inputStyle} placeholder="e.g. Algebraic expressions" value={topicForm.topic_name || ''} onChange={(e) => setTopicForm({ ...topicForm, topic_name: e.target.value })} />
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Grade</label>
+            <select style={inputStyle} value={topicForm.grade_number || ''} onChange={(e) => setTopicForm({ ...topicForm, grade_number: parseInt(e.target.value) || null })}>
+              <option value="">-- Select Grade --</option>
+              {GRADES.map(g => <option key={g} value={g}>Grade {g}</option>)}
+            </select>
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Term</label>
+            <select style={inputStyle} value={topicForm.term || ''} onChange={(e) => setTopicForm({ ...topicForm, term: e.target.value })}>
+              <option value="">-- Select Term --</option>
+              {TERMS.map(t => <option key={t} value={t}>Term {t}</option>)}
+            </select>
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Strand</label>
+            <select style={inputStyle} value={topicForm.strand || ''} onChange={(e) => setTopicForm({ ...topicForm, strand: e.target.value })}>
+              <option value="">-- Select Strand --</option>
+              {STRANDS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Description</label>
             <input style={inputStyle} placeholder="Description" value={topicForm.description || ''} onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} />
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Display Order</label>
             <input style={inputStyle} type="number" placeholder="Display Order" value={topicForm.display_order || ''} onChange={(e) => setTopicForm({ ...topicForm, display_order: parseInt(e.target.value) || null })} />
+
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', fontSize: '14px' }}>
               <input type="checkbox" checked={(topicForm.is_active ?? 1) === 1} onChange={(e) => setTopicForm({ ...topicForm, is_active: e.target.checked ? 1 : 0 })} />
               Active
             </label>
+
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button style={{ ...btnPrimary, background: '#6b7280' }} onClick={() => setShowTopicModal(false)}>Cancel</button>
               <button style={btnPrimary} onClick={saveTopic}>Save</button>
@@ -474,19 +587,35 @@ const CapsReviewPage: React.FC = () => {
         </div>
       )}
 
-      {/* Subtopic Modal */}
+      {/* Subtopic Modal with Topic Dropdown */}
       {showSubtopicModal && (
         <div style={modalOverlay} onClick={() => setShowSubtopicModal(false)}>
           <div style={modalContent} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginBottom: '16px' }}>{editingSubtopic ? 'Edit Subtopic' : 'Create Subtopic'}</h3>
-            <input style={inputStyle} placeholder="Subtopic Code" value={subtopicForm.subtopic_code || ''} onChange={(e) => setSubtopicForm({ ...subtopicForm, subtopic_code: e.target.value })} />
-            <input style={inputStyle} placeholder="Subtopic Name" value={subtopicForm.subtopic_name || ''} onChange={(e) => setSubtopicForm({ ...subtopicForm, subtopic_name: e.target.value })} />
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Topic</label>
+            <select style={inputStyle} value={subtopicForm.topic_id || selectedTopic?.topic_id || ''} onChange={(e) => setSubtopicForm({ ...subtopicForm, topic_id: parseInt(e.target.value) || undefined })}>
+              <option value="">-- Select Topic --</option>
+              {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.topic_code} - {t.topic_name}</option>)}
+            </select>
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Subtopic Code</label>
+            <input style={inputStyle} placeholder="e.g. ASSESS_PRIOR_KNOWLED" value={subtopicForm.subtopic_code || ''} onChange={(e) => setSubtopicForm({ ...subtopicForm, subtopic_code: e.target.value })} />
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Subtopic Name</label>
+            <input style={inputStyle} placeholder="e.g. Assess prior knowledge" value={subtopicForm.subtopic_name || ''} onChange={(e) => setSubtopicForm({ ...subtopicForm, subtopic_name: e.target.value })} />
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Description</label>
             <textarea style={{ ...inputStyle, minHeight: '80px' }} placeholder="Description" value={subtopicForm.description || ''} onChange={(e) => setSubtopicForm({ ...subtopicForm, description: e.target.value })} />
+
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', display: 'block' }}>Display Order</label>
             <input style={inputStyle} type="number" placeholder="Display Order" value={subtopicForm.display_order || ''} onChange={(e) => setSubtopicForm({ ...subtopicForm, display_order: parseInt(e.target.value) || null })} />
+
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', fontSize: '14px' }}>
               <input type="checkbox" checked={(subtopicForm.is_active ?? 1) === 1} onChange={(e) => setSubtopicForm({ ...subtopicForm, is_active: e.target.checked ? 1 : 0 })} />
               Active
             </label>
+
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button style={{ ...btnPrimary, background: '#6b7280' }} onClick={() => setShowSubtopicModal(false)}>Cancel</button>
               <button style={btnPrimary} onClick={saveSubtopic}>Save</button>
