@@ -1,4 +1,4 @@
-// routes/capsParser.js
+﻿// routes/capsParser.js
 const express = require('express');
 const router = express.Router();
 const capsParserService = require('../services/capsParserService');
@@ -120,23 +120,6 @@ router.get('/poa/:subjectCode', async (req, res) => {
       [req.params.subjectCode]
     );
     res.json({ poa });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// GET /api/caps/topics/:subjectCode - Distinct topics from caps_atp_content
-router.get('/topics/:subjectCode', async (req, res) => {
-  try {
-    const db = req.db;
-    const [topics] = await db.query(
-      `SELECT DISTINCT topic, grade
-       FROM caps_atp_content
-       WHERE subject_official_code = ?
-       ORDER BY grade, topic`,
-      [req.params.subjectCode]
-    );
-    res.json({ topics });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

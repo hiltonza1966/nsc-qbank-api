@@ -8,6 +8,7 @@
 const pdf = require('pdf-parse');
 const fs = require('fs');
 const path = require('path');
+const db = require('../backend/db');  // Direct db pool import
 
 // Subject short code mapping for topic_code generation
 const SUBJECT_SHORT_CODES = {
@@ -201,7 +202,7 @@ class CapsTopicParser {
     if (!db || !this.subjectName) return;
 
     try {
-      const [rows] = await db.execute(
+      const [rows] = await db.query(
         'SELECT subject_official_code FROM caps_subjects_master WHERE UPPER(subject_name) = UPPER(?)',
         [this.subjectName]
       );
@@ -515,7 +516,6 @@ router.post('/parse-topics', upload.single('pdf'), async (req, res) => {
       return res.status(400).json({ error: 'No PDF file uploaded' });
     }
 
-    const db = req.app.locals.db;
     const parser = new CapsTopicParser();
     const result = await parser.parse(req.file.path, db);
 
@@ -546,7 +546,6 @@ router.post('/parse-topics', upload.single('pdf'), async (req, res) => {
 // Seed extracted topics/subtopics into database
 router.post('/seed-topics', async (req, res) => {
   const { parsed_data } = req.body;
-  const db = req.app.locals.db;
 
   if (!db) {
     return res.status(500).json({ error: 'Database not available' });
@@ -568,7 +567,7 @@ router.post('/seed-topics', async (req, res) => {
     for (const topic of parsed_data.topics) {
       try {
         // Insert topic
-        const [topicResult] = await db.execute(
+        const [topicResult] = await db.query(
           `INSERT INTO lookup_caps_topics 
            (subject_official_code, grade_id, grade_number, strand, term, topic_code, 
             topic_name, topic_weighting, time_weeks, paper_no, description, 
@@ -597,7 +596,7 @@ router.post('/seed-topics', async (req, res) => {
         // Insert subtopics
         for (const subtopic of (topic.subtopics || [])) {
           try {
-            await db.execute(
+            await db.query(
               `INSERT INTO lookup_caps_subtopics 
                (topic_id, subtopic_code, subtopic_name, description, 
                 is_active, display_order, created_at)
@@ -635,11 +634,10 @@ router.post('/seed-topics', async (req, res) => {
 
 // Get topics for a subject
 router.get('/topics/:subject_code', async (req, res) => {
-  const db = req.app.locals.db;
   const { subject_code } = req.params;
 
   try {
-    const [topics] = await db.execute(
+    const [topics] = await db.query(
       `SELECT t.*, COUNT(s.subtopic_id) as subtopic_count
        FROM lookup_caps_topics t
        LEFT JOIN lookup_caps_subtopics s ON t.topic_id = s.topic_id
@@ -662,11 +660,10 @@ router.get('/topics/:subject_code', async (req, res) => {
 
 // Get subtopics for a topic
 router.get('/subtopics/:topic_id', async (req, res) => {
-  const db = req.app.locals.db;
   const { topic_id } = req.params;
 
   try {
-    const [subtopics] = await db.execute(
+    const [subtopics] = await db.query(
       `SELECT * FROM lookup_caps_subtopics 
        WHERE topic_id = ? AND is_active = 1
        ORDER BY display_order`,

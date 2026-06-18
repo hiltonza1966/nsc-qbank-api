@@ -1,5 +1,6 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
+const db = require('../db');  // Direct db pool import
 // db extracted from req.db per route
 
 const handleError = (res, err, status = 500) => {
