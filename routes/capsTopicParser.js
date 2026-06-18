@@ -681,4 +681,147 @@ router.get('/subtopics/:topic_id', async (req, res) => {
   }
 });
 
+
+// ============================================================
+// CRUD ROUTES for lookup_caps_topics
+// ============================================================
+
+// POST /api/caps/topics - Create new topic
+router.post('/topics', async (req, res) => {
+  const {
+    subject_official_code, grade_id, grade_number, strand, term,
+    topic_code, topic_name, topic_weighting, time_weeks, paper_no,
+    description, is_active, display_order
+  } = req.body;
+
+  try {
+    const [result] = await db.query(
+      `INSERT INTO lookup_caps_topics
+       (subject_official_code, grade_id, grade_number, strand, term,
+        topic_code, topic_name, topic_weighting, time_weeks, paper_no,
+        description, is_active, display_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [subject_official_code, grade_id, grade_number, strand, term,
+       topic_code, topic_name, topic_weighting, time_weeks, paper_no,
+       description, is_active !== undefined ? is_active : 1, display_order]
+    );
+    res.json({ success: true, topic_id: result.insertId, message: 'Topic created' });
+  } catch (err) {
+    console.error('[CRUD] Create topic error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/caps/topics/:topic_id - Update topic
+router.put('/topics/:topic_id', async (req, res) => {
+  const { topic_id } = req.params;
+  const {
+    subject_official_code, grade_id, grade_number, strand, term,
+    topic_code, topic_name, topic_weighting, time_weeks, paper_no,
+    description, is_active, display_order
+  } = req.body;
+
+  try {
+    const [result] = await db.query(
+      `UPDATE lookup_caps_topics SET
+        subject_official_code = ?, grade_id = ?, grade_number = ?, strand = ?,
+        term = ?, topic_code = ?, topic_name = ?, topic_weighting = ?,
+        time_weeks = ?, paper_no = ?, description = ?, is_active = ?,
+        display_order = ?
+       WHERE topic_id = ?`,
+      [subject_official_code, grade_id, grade_number, strand, term,
+       topic_code, topic_name, topic_weighting, time_weeks, paper_no,
+       description, is_active !== undefined ? is_active : 1, display_order,
+       topic_id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Topic not found' });
+    }
+    res.json({ success: true, message: 'Topic updated' });
+  } catch (err) {
+    console.error('[CRUD] Update topic error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/caps/topics/:topic_id - Delete topic (and cascade subtopics)
+router.delete('/topics/:topic_id', async (req, res) => {
+  const { topic_id } = req.params;
+
+  try {
+    await db.query('DELETE FROM lookup_caps_subtopics WHERE topic_id = ?', [topic_id]);
+    const [result] = await db.query('DELETE FROM lookup_caps_topics WHERE topic_id = ?', [topic_id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Topic not found' });
+    }
+    res.json({ success: true, message: 'Topic and subtopics deleted' });
+  } catch (err) {
+    console.error('[CRUD] Delete topic error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
+// CRUD ROUTES for lookup_caps_subtopics
+// ============================================================
+
+// POST /api/caps/subtopics - Create new subtopic
+router.post('/subtopics', async (req, res) => {
+  const { topic_id, subtopic_code, subtopic_name, description, is_active, display_order } = req.body;
+
+  try {
+    const [result] = await db.query(
+      `INSERT INTO lookup_caps_subtopics
+       (topic_id, subtopic_code, subtopic_name, description, is_active, display_order)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [topic_id, subtopic_code, subtopic_name, description,
+       is_active !== undefined ? is_active : 1, display_order]
+    );
+    res.json({ success: true, subtopic_id: result.insertId, message: 'Subtopic created' });
+  } catch (err) {
+    console.error('[CRUD] Create subtopic error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/caps/subtopics/:subtopic_id - Update subtopic
+router.put('/subtopics/:subtopic_id', async (req, res) => {
+  const { subtopic_id } = req.params;
+  const { topic_id, subtopic_code, subtopic_name, description, is_active, display_order } = req.body;
+
+  try {
+    const [result] = await db.query(
+      `UPDATE lookup_caps_subtopics SET
+        topic_id = ?, subtopic_code = ?, subtopic_name = ?,
+        description = ?, is_active = ?, display_order = ?
+       WHERE subtopic_id = ?`,
+      [topic_id, subtopic_code, subtopic_name, description,
+       is_active !== undefined ? is_active : 1, display_order, subtopic_id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Subtopic not found' });
+    }
+    res.json({ success: true, message: 'Subtopic updated' });
+  } catch (err) {
+    console.error('[CRUD] Update subtopic error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/caps/subtopics/:subtopic_id - Delete subtopic
+router.delete('/subtopics/:subtopic_id', async (req, res) => {
+  const { subtopic_id } = req.params;
+
+  try {
+    const [result] = await db.query('DELETE FROM lookup_caps_subtopics WHERE subtopic_id = ?', [subtopic_id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Subtopic not found' });
+    }
+    res.json({ success: true, message: 'Subtopic deleted' });
+  } catch (err) {
+    console.error('[CRUD] Delete subtopic error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
