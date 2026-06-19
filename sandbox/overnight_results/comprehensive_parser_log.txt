@@ -1,0 +1,82 @@
+CAPS Comprehensive Parser Started: 2026-06-18 23:23:08.851739
+Config: {
+  "dpi": 150,
+  "max_pages": 30,
+  "sleep_between": 15
+}
+============================================================
+
+[2026-06-18 23:23:08] Progress loaded: 0 completed, 0 failed
+[2026-06-18 23:23:08] 
+============================================================
+[2026-06-18 23:23:08] Processing: English Home Language (10001014)
+[2026-06-18 23:23:08] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ HOME _ ENGLISH GR 10-12 _ WEB_5478.pdf
+[2026-06-18 23:23:08] ============================================================
+[2026-06-18 23:23:08] Extracting text (max 30 pages)...
+[2026-06-18 23:23:08] Extracted 30 pages with text
+[2026-06-18 23:23:08] Parsing CAPS structure...
+[2026-06-18 23:23:08]   Found Section 3 at page 6
+[2026-06-18 23:23:08]   End of Section 3 at page 7
+[2026-06-18 23:23:08]   Found Section 3 at page 19
+[2026-06-18 23:23:08] Found 0 topics with 0 subtopics
+[2026-06-18 23:23:08] ⚠ No topics found for English Home Language
+[2026-06-18 23:23:08] Cooling down for 15 seconds...
+[2026-06-18 23:23:23] 
+============================================================
+[2026-06-18 23:23:23] Processing: Life Sciences (10001034)
+[2026-06-18 23:23:23] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ LIFE SCIENCES _ GR 10-12 Web_2636.pdf
+[2026-06-18 23:23:23] ============================================================
+[2026-06-18 23:23:23] Extracting text (max 30 pages)...
+[2026-06-18 23:23:24] Extracted 30 pages with text
+[2026-06-18 23:23:24] Parsing CAPS structure...
+[2026-06-18 23:23:24]   Found Section 3 at page 6
+[2026-06-18 23:23:24]   End of Section 3 at page 6
+[2026-06-18 23:23:24] Found 0 topics with 0 subtopics
+[2026-06-18 23:23:24] ⚠ No topics found for Life Sciences
+[2026-06-18 23:23:24] Cooling down for 15 seconds...
+[2026-06-18 23:23:39] 
+============================================================
+[2026-06-18 23:23:39] Processing: Physical Sciences (10001064)
+[2026-06-18 23:23:39] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET PHYSICAL SCIENCE WEB.pdf
+[2026-06-18 23:23:39] ============================================================
+[2026-06-18 23:23:39] Extracting text (max 30 pages)...
+[2026-06-18 23:23:39] Extracted 30 pages with text
+[2026-06-18 23:23:39] Parsing CAPS structure...
+[2026-06-18 23:23:39]   End of Section 3 at page 6
+[2026-06-18 23:23:39] Found 0 topics with 0 subtopics
+[2026-06-18 23:23:39] ⚠ No topics found for Physical Sciences
+[2026-06-18 23:23:39] Cooling down for 15 seconds...
+[2026-06-18 23:23:54] 
+============================================================
+[2026-06-18 23:23:54] Processing: Afrikaans Home Language (10001094)
+[2026-06-18 23:23:54] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ HOME _ AFRIKAANS GR 10-12 _ WEB_0544.PDF
+[2026-06-18 23:23:54] ============================================================
+[2026-06-18 23:23:54] Extracting text (max 30 pages)...
+[2026-06-18 23:23:54] Extracted 30 pages with text
+[2026-06-18 23:23:54] Parsing CAPS structure...
+[2026-06-18 23:23:54] Found 0 topics with 0 subtopics
+[2026-06-18 23:23:54] ⚠ No topics found for Afrikaans Home Language
+[2026-06-18 23:23:54] Cooling down for 15 seconds...
+[2026-06-18 23:24:09] 
+============================================================
+[2026-06-18 23:24:09] Processing: Afrikaans First Additional Language (10001114)
+[2026-06-18 23:24:09] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ FAL _ AFRIKAANS GR 10-12 _ WEB_9455.pdf
+[2026-06-18 23:24:09] ============================================================
+[2026-06-18 23:24:09] Extracting text (max 30 pages)...
+[2026-06-18 23:24:10] Extracted 30 pages with text
+[2026-06-18 23:24:10] Parsing CAPS structure...
+[2026-06-18 23:24:10] Found 0 topics with 0 subtopics
+[2026-06-18 23:24:10] ⚠ No topics found for Afrikaans First Additional Language
+[2026-06-18 23:24:10] Cooling down for 15 seconds...
+[2026-06-18 23:24:25] 
+============================================================
+[2026-06-18 23:24:25] Processing: Computer Applications Technology (10001204)
+[2026-06-18 23:24:25] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ COMPUTER APPLICATIONS TECHNOLOGY _ GR 10-12 _ Web_6AC6.pdf
+[2026-06-18 23:24:25] ============================================================
+[2026-06-18 23:24:25] Extracting text (max 30 pages)...
+[2026-06-18 23:24:25] Extracted 30 pages with text
+[2026-06-18 23:24:25] Parsing CAPS structure...
+[2026-06-18 23:24:25]   End of Section 3 at page 7
+[2026-06-18 23:24:25] Found 0 topics with 0 subtopics
+[2026-06-18 23:24:25] ⚠ No topics found for Computer Applications Technology
+[2026-06-18 23:24:25] Cooling down for 15 seconds...

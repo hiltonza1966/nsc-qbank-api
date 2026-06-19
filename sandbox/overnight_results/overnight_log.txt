@@ -1,0 +1,83 @@
+CAPS Overnight Batch OCR Started: 2026-06-18 23:05:08.966958
+Config: {
+  "dpi": 150,
+  "max_pages": 20,
+  "batch_size": 1,
+  "save_interval": 1,
+  "sleep_between": 30
+}
+============================================================
+
+[2026-06-18 23:05:08] Progress loaded: 0 completed, 0 failed
+[2026-06-18 23:05:08] 
+============================================================
+[2026-06-18 23:05:08] Processing: English Home Language (10001014)
+[2026-06-18 23:05:08] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ HOME _ ENGLISH GR 10-12 _ WEB_5478.pdf
+[2026-06-18 23:05:08] ============================================================
+[2026-06-18 23:05:08] Extracting text (max 20 pages, 150 DPI)...
+[2026-06-18 23:05:09] Extracted 20 pages with text
+[2026-06-18 23:05:09] Parsing topics...
+[2026-06-18 23:05:09] Found 53 topics
+[2026-06-18 23:05:09] SQL saved: C:\dev\nsc-qbank\sandbox\overnight_results\10001014_English_Home_Language.sql
+[2026-06-18 23:05:09] ✓ SUCCESS: English Home Language
+[2026-06-18 23:05:09] Cooling down for 30 seconds...
+[2026-06-18 23:05:39] 
+============================================================
+[2026-06-18 23:05:39] Processing: Life Sciences (10001034)
+[2026-06-18 23:05:39] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ LIFE SCIENCES _ GR 10-12 Web_2636.pdf
+[2026-06-18 23:05:39] ============================================================
+[2026-06-18 23:05:39] Extracting text (max 20 pages, 150 DPI)...
+[2026-06-18 23:05:39] Extracted 20 pages with text
+[2026-06-18 23:05:39] Parsing topics...
+[2026-06-18 23:05:39] Found 78 topics
+[2026-06-18 23:05:39] SQL saved: C:\dev\nsc-qbank\sandbox\overnight_results\10001034_Life_Sciences.sql
+[2026-06-18 23:05:39] ✓ SUCCESS: Life Sciences
+[2026-06-18 23:05:39] Cooling down for 30 seconds...
+[2026-06-18 23:06:09] 
+============================================================
+[2026-06-18 23:06:09] Processing: Physical Sciences (10001064)
+[2026-06-18 23:06:09] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET PHYSICAL SCIENCE WEB.pdf
+[2026-06-18 23:06:09] ============================================================
+[2026-06-18 23:06:09] Extracting text (max 20 pages, 150 DPI)...
+[2026-06-18 23:06:09] Extracted 20 pages with text
+[2026-06-18 23:06:09] Parsing topics...
+[2026-06-18 23:06:09] Found 73 topics
+[2026-06-18 23:06:09] SQL saved: C:\dev\nsc-qbank\sandbox\overnight_results\10001064_Physical_Sciences.sql
+[2026-06-18 23:06:09] ✓ SUCCESS: Physical Sciences
+[2026-06-18 23:06:09] Cooling down for 30 seconds...
+[2026-06-18 23:06:39] 
+============================================================
+[2026-06-18 23:06:39] Processing: Afrikaans Home Language (10001094)
+[2026-06-18 23:06:39] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ HOME _ AFRIKAANS GR 10-12 _ WEB_0544.PDF
+[2026-06-18 23:06:39] ============================================================
+[2026-06-18 23:06:39] Extracting text (max 20 pages, 150 DPI)...
+[2026-06-18 23:06:39] Extracted 20 pages with text
+[2026-06-18 23:06:39] Parsing topics...
+[2026-06-18 23:06:39] Found 53 topics
+[2026-06-18 23:06:39] SQL saved: C:\dev\nsc-qbank\sandbox\overnight_results\10001094_Afrikaans_Home_Language.sql
+[2026-06-18 23:06:39] ✓ SUCCESS: Afrikaans Home Language
+[2026-06-18 23:06:39] Cooling down for 30 seconds...
+[2026-06-18 23:07:09] 
+============================================================
+[2026-06-18 23:07:09] Processing: Afrikaans First Additional Language (10001114)
+[2026-06-18 23:07:09] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ FAL _ AFRIKAANS GR 10-12 _ WEB_9455.pdf
+[2026-06-18 23:07:09] ============================================================
+[2026-06-18 23:07:09] Extracting text (max 20 pages, 150 DPI)...
+[2026-06-18 23:07:09] Extracted 20 pages with text
+[2026-06-18 23:07:09] Parsing topics...
+[2026-06-18 23:07:09] Found 49 topics
+[2026-06-18 23:07:09] SQL saved: C:\dev\nsc-qbank\sandbox\overnight_results\10001114_Afrikaans_First_Additional_Language.sql
+[2026-06-18 23:07:09] ✓ SUCCESS: Afrikaans First Additional Language
+[2026-06-18 23:07:09] Cooling down for 30 seconds...
+[2026-06-18 23:07:39] 
+============================================================
+[2026-06-18 23:07:39] Processing: Computer Applications Technology (10001204)
+[2026-06-18 23:07:39] PDF: C:\Users\visagie.h\Downloads\GIA PROTOCOL START FILES\Qbank\CAPS Documents\CAPS FET _ COMPUTER APPLICATIONS TECHNOLOGY _ GR 10-12 _ Web_6AC6.pdf
+[2026-06-18 23:07:39] ============================================================
+[2026-06-18 23:07:39] Extracting text (max 20 pages, 150 DPI)...
+[2026-06-18 23:07:39] Extracted 20 pages with text
+[2026-06-18 23:07:39] Parsing topics...
+[2026-06-18 23:07:39] Found 50 topics
+[2026-06-18 23:07:39] SQL saved: C:\dev\nsc-qbank\sandbox\overnight_results\10001204_Computer_Applications_Technology.sql
+[2026-06-18 23:07:39] ✓ SUCCESS: Computer Applications Technology
+[2026-06-18 23:07:39] Cooling down for 30 seconds...
