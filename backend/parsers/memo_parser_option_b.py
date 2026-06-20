@@ -1,131 +1,106 @@
 #!/usr/bin/env python3
-"""Memo Parser Option B - Hybrid format for bilingual memos.
-CRITICAL FIX for Technical Sciences: Handle bilingual ticks properly.
-- Count ticks in English section only (before Afrikaans translation)
-- Use (X) marks as primary when available
-- For items with only ticks, count reasonable number (1-6)
-Handles: Physical Sciences, Mathematics, Technical Sciences, Technical Mathematics.
+"""Enhanced Memo Parser - Extracts text, images, tables, and page references per question.
+Uses PyMuPDF (fitz) for comprehensive extraction.
 """
 
 import re
-from PyPDF2 import PdfReader
+import fitz
+import os
+import json
 from bilingual_cleaner import extract_english_from_bilingual
 
-def extract_memo_items_option_b(pdf_path):
-    reader = PdfReader(pdf_path)
+
+SKIP_PATTERNS = [
+    'Copyright reserved', 'Please turn over', 'Please tun over',
+    'DBE/November', 'NSC Confidential', 'Accounting/P1',
+    'MARKING GUIDELINES', '–Marking Guidelines', 'NSC –Marking',
+    'TOTAL:', 'TOTAL MARKS'
+]
+
+
+def extract_memo_items_enhanced(pdf_path, output_dir=None):
+    """Extract memo items with full content including images and tables.
+
+    Returns list of items, each with:
+    - question_number
+    - answer_text
+    - marks
+    - page_numbers
+    - images
+    - tables
+    - has_visual_content
+    """
+    doc = fitz.open(pdf_path)
+
+    # Extract all text with page numbers
     page_texts = []
-    for page in reader.pages:
-        text = page.extract_text()
+    for page_num, page in enumerate(doc):
+        text = page.get_text()
         if text:
-            page_texts.append(text)
-
-    items = []
-
-    for page_text in page_texts:
-        cleaned = extract_english_from_bilingual(page_text)
-
-        pattern = r'(\d+\.\d+(?:\.\d+)?)\s+(.*?)(?=\d+\.\d+(?:\.\d+)?|\Z)'
-        all_matches = list(re.finditer(pattern, cleaned, re.DOTALL))
-
-        parents = set()
-        for i, match in enumerate(all_matches):
-            q_num = match.group(1)
-            if len(q_num.split('.')) == 2:
-                for j in range(i+1, min(i+8, len(all_matches))):
-                    child_num = all_matches[j].group(1)
-                    if child_num.startswith(q_num + '.'):
-                        parents.add(q_num)
-                        break
-
-        for match in all_matches:
-            q_num = match.group(1)
-            content = match.group(2).strip()
-
-            if q_num in parents:
-                continue
-
-            # Skip cross-reference markers
-            if any(x in content for x in ['POSITIVE MARKING FROM', 'POSITIEWE NASIEN VANAF',
-                                          'NEGATIVE MARKING FROM', 'NEGATIEWE NASIEN VANAF']):
-                continue
-
-            # Skip if content is just "VRAAG" or similar (bilingual leftover)
-            if re.match(r'^(VRAAG|QUESTION)\s*\d+', content):
-                continue
-
-            content = re.sub(r'\s+', ' ', content)
-
-            marks = 0
-
-            # STEP 1: Find ALL (X) marks in content (valid marks <= 10)
-            all_marks = re.findall(r'\((\d+)\)(?!\s*x)', content)
-            valid_marks = [int(m) for m in all_marks if int(m) <= 10]
-
-            # STEP 2: If valid marks exist, use LAST one (usually at end of answer)
-            if valid_marks:
-                marks = valid_marks[-1]
-
-            # STEP 3: If no valid marks, check for section marks (N x M)
-            elif all_marks:
-                section_marks = re.findall(r'\((\d+)\s*x\s*(\d+)\)', content)
-                if section_marks:
-                    marks = int(section_marks[0][1])
-
-            # STEP 4: If still no marks, count ticks as ABSOLUTE FALLBACK
-            # But limit to reasonable range (1-6) to avoid over-counting bilingual ticks
-            if marks == 0:
-                ticks = content.count('✓') + content.count('')
-                # Only use ticks if reasonable (1-6) and no valid (X) marks were found
-                if 1 <= ticks <= 6:
-                    marks = ticks
-
-            # Skip section totals: if marks > 10 and there's a [N] nearby
-            if marks > 10:
-                section_total = re.search(r'\[(\d+)\]', content)
-                if section_total:
-                    st = int(section_total.group(1))
-                    if st == marks or st == marks * 2 or abs(st - marks) <= 5:
-                        marks = 0
-
-            # Clean answer text
-            answer_text = content
-            answer_text = re.sub(r'\(\d+\s*x\s*\d+\)', '', answer_text)
-            answer_text = re.sub(r'\(\d+\)(?!\s*x)', '', answer_text)
-            answer_text = re.sub(r'[✓]', '', answer_text)
-            answer_text = re.sub(r'\[\d+\]', '', answer_text)
-            answer_text = re.sub(r'\s+', ' ', answer_text).strip()
-
-            if len(answer_text) < 3 and marks == 0:
-                continue
-
-            format_type = 'X.Y.Z' if len(q_num.split('.')) == 3 else 'X.Y'
-
-            items.append({
-                'question_number': q_num,
-                'answer_text': answer_text[:400],
-                'marks': marks,
-                'source': 'memo',
-                'format': format_type
+            page_texts.append({
+                'page_num': page_num + 1,
+                'text': text
             })
 
-        # MCQ handling: "1.1 B ✓ (2)" pattern
-        mcq_pattern = r'(\d+\.\d+)\s+([A-Z])\s*(?:✓|)*\s*\((\d+)\)'
-        mcq_matches = list(re.finditer(mcq_pattern, cleaned))
+    # Combine all text
+    all_text = extract_english_from_bilingual('\n'.join([p['text'] for p in page_texts]))
+    lines = all_text.split('\n')
 
-        for match in mcq_matches:
-            q_num = match.group(1)
-            answer = match.group(2)
-            marks = int(match.group(3))
+    items = []
+    current_section = None
+    current_item_num = None
+    current_lines = []
+    current_start_pos = 0
 
-            if not any(item['question_number'] == q_num for item in items):
-                items.append({
-                    'question_number': q_num,
-                    'answer_text': answer,
-                    'marks': marks,
-                    'source': 'memo',
-                    'format': 'X.Y'
-                })
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
 
+        # Skip headers
+        if any(skip in line for skip in SKIP_PATTERNS):
+            continue
+
+        # Check for main question header
+        main_q_match = re.match(r'^#\s*QUESTION\s*(\d+)', line, re.IGNORECASE)
+        if main_q_match:
+            # Save previous item
+            if current_item_num and current_lines:
+                _save_enhanced_item(items, current_item_num, current_lines, current_start_pos, i, 
+                                   page_texts, all_text, doc, output_dir)
+
+            current_section = main_q_match.group(1)
+            current_item_num = f"{current_section}.1"
+            current_lines = []
+            current_start_pos = sum(len(l) + 1 for l in lines[:i])
+            continue
+
+        # Check for explicit sub-question
+        sub_q_match = re.match(r'^#?\s*(\d+\.\d+(?:\.\d+)?)\b', line)
+        if sub_q_match:
+            # Save previous item
+            if current_item_num and current_lines:
+                _save_enhanced_item(items, current_item_num, current_lines, current_start_pos, i,
+                                   page_texts, all_text, doc, output_dir)
+
+            current_item_num = sub_q_match.group(1)
+            rest = line[sub_q_match.end():].strip()
+            current_lines = [rest] if rest else []
+            current_start_pos = sum(len(l) + 1 for l in lines[:i])
+            continue
+
+        # Regular line
+        if current_item_num:
+            current_lines.append(line)
+
+    # Save last item
+    if current_item_num and current_lines:
+        _save_enhanced_item(items, current_item_num, current_lines, current_start_pos, len(lines),
+                           page_texts, all_text, doc, output_dir)
+
+    doc.close()
+
+    # Deduplicate
     best_items = {}
     for item in items:
         q_num = item['question_number']
@@ -139,3 +114,97 @@ def extract_memo_items_option_b(pdf_path):
                 best_items[q_num] = item
 
     return list(best_items.values())
+
+
+def _save_enhanced_item(items, q_num, lines, start_pos, end_line_idx, page_texts, all_text, doc, output_dir):
+    """Save an item with enhanced metadata."""
+    content = '\n'.join(lines)
+
+    # Extract marks
+    marks = 0
+    all_mark_matches = re.findall(r'\((\d+)\)', content)
+    if all_mark_matches:
+        marks = int(all_mark_matches[-1])
+
+    if marks == 0:
+        for line in reversed(lines[-5:]):
+            line = line.strip()
+            if re.match(r'^\d{1,2}$', line):
+                marks = int(line)
+                break
+
+    # Clean text
+    text_clean = re.sub(r'[✓✔]', '', content)
+    text_clean = re.sub(r'<table>.*?</table>', '', text_clean, flags=re.DOTALL)
+    text_clean = re.sub(r'\*one part correct', '', text_clean)
+    text_clean = re.sub(r'\bWORKINGS\b', '', text_clean)
+    text_clean = re.sub(r'\bANSWER\b', '', text_clean)
+    text_clean = re.sub(r'\(\d+\)', '', text_clean)
+    text_clean = re.sub(r'\[\d+\]', '', text_clean)
+    text_clean = re.sub(r'\n\s*\d{1,2}\s*$', '', text_clean)
+    text_clean = re.sub(r'one part correct', '', text_clean)
+    text_clean = re.sub(r'one mark', '', text_clean)
+    text_clean = re.sub(r'two marks', '', text_clean)
+    text_clean = re.sub(r'\bm mark\b', '', text_clean)
+    text_clean = re.sub(r'\s+', ' ', text_clean).strip()
+
+    if len(text_clean) < 3 and marks == 0:
+        return
+
+    # Determine page numbers
+    question_start = start_pos
+    question_end = start_pos + len(content)
+
+    page_numbers = []
+    current_pos = 0
+    for pt in page_texts:
+        page_start = current_pos
+        page_end = current_pos + len(pt['text'])
+
+        if (question_start < page_end and question_end > page_start):
+            page_numbers.append(pt['page_num'])
+
+        current_pos = page_end + 1
+
+    # Extract images
+    images = []
+    if output_dir and page_numbers:
+        os.makedirs(output_dir, exist_ok=True)
+        for page_num in page_numbers:
+            page = doc[page_num - 1]
+            image_list = page.get_images()
+            for img_index, img in enumerate(image_list):
+                xref = img[0]
+                pix = fitz.Pixmap(doc, xref)
+                if pix.n > 4:
+                    pix = fitz.Pixmap(fitz.csRGB, pix)
+                img_filename = f"{output_dir}/memo_{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
+                pix.save(img_filename)
+                images.append(img_filename)
+
+    # Extract tables
+    tables = []
+    for page_num in page_numbers:
+        page = doc[page_num - 1]
+        tabs = page.find_tables()
+        for tab in tabs.tables:
+            tables.append(tab.extract())
+
+    items.append({
+        'question_number': q_num,
+        'answer_text': text_clean[:400],
+        'marks': marks,
+        'page_numbers': page_numbers,
+        'images': images,
+        'tables': tables,
+        'has_visual_content': len(images) > 0 or len(tables) > 0,
+        'source': 'memo'
+    })
+
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 1:
+        output_dir = sys.argv[2] if len(sys.argv) > 2 else None
+        items = extract_memo_items_enhanced(sys.argv[1], output_dir)
+        print(json.dumps(items, indent=2))
