@@ -19,7 +19,7 @@ def extract_qp_items_option_b(pdf_path):
     all_text = extract_english_from_bilingual('\n'.join(page_texts))
     items = []
 
-    pattern = r'(\d+\.\d+(?:\.\d+)?)\s+(.*?)(?=\d+\.\d+(?:\.\d+)?|\Z)'
+    pattern = r'(\d+\.\d+(?:\.\d+)?)\s*(.*?)(?=(?:\d+\.\d+(?:\.\d+)?)|\Z)'
     all_matches = list(re.finditer(pattern, all_text, re.DOTALL))
 
     parents = set()
@@ -90,7 +90,7 @@ def extract_qp_items_option_b(pdf_path):
 
         items.append({
             'question_number': q_num,
-            'question_text': text_clean[:300],
+            'question_text': text_clean[:500],
             'marks': marks,
             'source': 'qp',
             'format': format_type

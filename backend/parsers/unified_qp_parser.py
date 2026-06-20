@@ -64,10 +64,22 @@ def extract_qp_items(file_path):
         _, format_type = detect_format(file_path)
         if format_type == 'option_a':
             from qp_parser_option_a import extract_qp_items_option_a
-            return extract_qp_items_option_a(file_path)
+            items_a = extract_qp_items_option_a(file_path)
+            if len(items_a) >= 5:
+                return items_a
+            # Fallback to option_b if option_a returns too few items
+            from qp_parser_option_b import extract_qp_items_option_b
+            items_b = extract_qp_items_option_b(file_path)
+            return items_b if len(items_b) > len(items_a) else items_a
         else:
             from qp_parser_option_b import extract_qp_items_option_b
-            return extract_qp_items_option_b(file_path)
+            items_b = extract_qp_items_option_b(file_path)
+            if len(items_b) >= 5:
+                return items_b
+            # Fallback to option_a if option_b returns too few items
+            from qp_parser_option_a import extract_qp_items_option_a
+            items_a = extract_qp_items_option_a(file_path)
+            return items_a if len(items_a) > len(items_b) else items_b
 
     else:
         raise ValueError(f"Unsupported format: {ext}")

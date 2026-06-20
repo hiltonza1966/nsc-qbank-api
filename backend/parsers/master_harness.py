@@ -225,9 +225,32 @@ def run_harness(qp_path, memo_path, paper_code):
         'green_count': len(green),
         'yellow_count': len(yellow),
         'red_count': len(red),
-        'red_items': [{'q': r['question_number'], 'issue': r['issue']} for r in red[:10]],
-        'yellow_items': [{'q': y['question_number'], 'issue': y['issue']} for y in yellow[:10]],
-        'green_items': [{'q': g['question_number']} for g in green[:5]],
+        'red_items': [{
+            'q': r['question_number'],
+            'question_text': r.get('question_text', ''),
+            'answer_text': r.get('answer_text', ''),
+            'qp_marks': r.get('qp_marks', 0),
+            'memo_marks': r.get('memo_marks', 0),
+            'final_marks': r.get('final_marks', 0),
+            'issue': r.get('issue', '')
+        } for r in red],
+        'yellow_items': [{
+            'q': y['question_number'],
+            'question_text': y.get('question_text', ''),
+            'answer_text': y.get('answer_text', ''),
+            'qp_marks': y.get('qp_marks', 0),
+            'memo_marks': y.get('memo_marks', 0),
+            'final_marks': y.get('final_marks', 0),
+            'issue': y.get('issue', '')
+        } for y in yellow],
+        'green_items': [{
+            'q': g['question_number'],
+            'question_text': g.get('question_text', ''),
+            'answer_text': g.get('answer_text', ''),
+            'qp_marks': g.get('qp_marks', 0),
+            'memo_marks': g.get('memo_marks', 0),
+            'final_marks': g.get('final_marks', 0)
+        } for g in green],
     }
 
     print(f"\n{'='*60}")

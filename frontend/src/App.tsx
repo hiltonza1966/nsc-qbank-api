@@ -17,6 +17,7 @@ import MasterTemplate from './pages/MasterTemplate';
 import WizardPage from './pages/WizardPage';
 import { CAPSManualLinker } from './components/curriculum/CAPSManualLinker';
 import CapsReviewPage from './pages/CapsReviewPage';
+import CAPSParserPage from './pages/CAPSParserPage';
 
 // ============================================
 // TYPES
@@ -185,6 +186,7 @@ const Navigation: React.FC = () => {
       <Link to="/wizard" style={linkStyle}>Wizard</Link>
       <Link to="/caps-linker" style={linkStyle}>CAPS Linker</Link>
       <Link to="/caps-review" style={linkStyle}>CAPS Review</Link>
+      <Link to="/caps-parser" style={linkStyle}>CAPS Parser</Link>
       {userRole === 'admin' && (
         <Link to="/admin" style={linkStyle}>Admin</Link>
       )}
@@ -265,6 +267,7 @@ const App: React.FC = () => {
                 <Route path="/wizard" element={<WizardPage />} />
                 <Route path="/caps-linker" element={<CAPSManualLinker />} />
                 <Route path="/caps-review" element={<CapsReviewPage />} />
+                <Route path="/caps-parser" element={<CAPSParserPage />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

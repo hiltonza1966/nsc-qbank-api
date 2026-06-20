@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 
 // ============================================================
 // TYPES
@@ -171,6 +171,12 @@ export const ParserReviewPanel: React.FC<ParserReviewPanelProps> = ({
     setEditText('');
   };
 
+  const handleDelete = (questionNumber: string) => {
+    if (window.confirm("Delete question " + questionNumber + "? This cannot be undone.")) {
+      setItems(prev => prev.filter(i => i.question_number !== questionNumber));
+    }
+  };
+
   const handleImport = async () => {
     setImporting(true);
     setError(null);
@@ -215,9 +221,9 @@ export const ParserReviewPanel: React.FC<ParserReviewPanelProps> = ({
 
   const getConfidenceBadge = (confidence: string) => {
     switch (confidence) {
-      case 'green': return '✅ Auto-Approved';
-      case 'yellow': return '⚠️ Review';
-      case 'red': return '❌ Must Fix';
+      case 'green': return 'âœ… Auto-Approved';
+      case 'yellow': return 'âš ï¸ Review';
+      case 'red': return 'âŒ Must Fix';
       default: return 'Unknown';
     }
   };
@@ -325,11 +331,11 @@ export const ParserReviewPanel: React.FC<ParserReviewPanelProps> = ({
             onClick={() => window.open(`/api/parser/review/${paperCode}?format=download`)}
             style={{ padding: '10px 20px', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'white', color: '#374151', border: '2px solid #d1d5db' }}
           >
-            ⬇ Download JSON
+            â¬‡ Download JSON
           </button>
           <button
             onClick={handleImport}
-            disabled={importing || result.red_count > 0}
+            disabled={importing || items.filter(i => i.confidence === 'red').length > 0}
             style={{
               padding: '10px 20px', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: importing || result.red_count > 0 ? 'not-allowed' : 'pointer',
               background: importing || result.red_count > 0 ? '#cbd5e1' : '#3b82f6', color: 'white', border: 'none'
@@ -339,9 +345,9 @@ export const ParserReviewPanel: React.FC<ParserReviewPanelProps> = ({
           </button>
         </div>
 
-        {result.red_count > 0 && (
+        {items.filter(i => i.confidence === 'red').length > 0 && (
           <div style={{ marginTop: 16, padding: 12, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, color: '#92400e', fontSize: 14 }}>
-            <strong>Warning:</strong> Fix all {result.red_count} red items before importing. Red items have missing marks or data.
+            <strong>Warning:</strong> Fix all {items.filter(i => i.confidence === 'red').length} red items before importing. Red items have missing marks or data.
           </div>
         )}
 
@@ -424,7 +430,7 @@ export const ParserReviewPanel: React.FC<ParserReviewPanelProps> = ({
                     )}
                     {item.issue && (
                       <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>
-                        ⚠ {item.issue}
+                        âš  {item.issue}
                       </div>
                     )}
                   </td>
@@ -440,13 +446,18 @@ export const ParserReviewPanel: React.FC<ParserReviewPanelProps> = ({
                   <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
                     {editItem === item.question_number ? (
                       <div>
-                        <button onClick={() => handleSave(item)} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#16a34a', color: 'white', border: 'none', marginRight: 4 }}>✓</button>
-                        <button onClick={handleCancel} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#dc2626', color: 'white', border: 'none' }}>✕</button>
+                        <button onClick={() => handleSave(item)} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#16a34a', color: 'white', border: 'none', marginRight: 4 }}>âœ“</button>
+                        <button onClick={handleCancel} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#dc2626', color: 'white', border: 'none' }}>âœ•</button>
                       </div>
                     ) : (
-                      <button onClick={() => handleEdit(item)} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#3b82f6', color: 'white', border: 'none' }}>
-                        ✏ Edit
-                      </button>
+                      <div>
+                        <button onClick={() => handleEdit(item)} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#3b82f6', color: 'white', border: 'none', marginRight: 4 }}>
+                          âœ Edit
+                        </button>
+                        <button onClick={() => handleDelete(item.question_number)} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#dc2626', color: 'white', border: 'none' }}>
+                          ðŸ—‘ Delete
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -466,3 +477,6 @@ export const ParserReviewPanel: React.FC<ParserReviewPanelProps> = ({
 };
 
 export default ParserReviewPanel;
+
+
+

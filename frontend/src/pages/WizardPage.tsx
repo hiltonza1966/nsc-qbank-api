@@ -328,7 +328,7 @@ const WizardPage: React.FC = () => {
     formData.append('language', 'English');
 
     try {
-      const response = await fetch('/api/parser/parse', {
+      const response = await fetch('/api/parser/parse-qp', {
         method: 'POST',
         body: formData
       });
@@ -345,13 +345,12 @@ const WizardPage: React.FC = () => {
         paper_code: result.paper_code || paperCode,
         total_items: result.qp_items || 0,
         total_marks: result.total_marks || 0,
-        items: [],
-        linked: result.matched || 0,
-        unlinked: (result.qp_only || 0) + (result.memo_only || 0)
+        items: result.items || [],
+        linked: 0,
+        unlinked: 0
       });
       setSessionId(result.paper_code || paperCode);
-      setParserResult(result);
-      setSuccessMessage('Question Paper extracted: ' + (result.qp_items || 0) + ' items, ' + (result.total_marks || 0) + ' marks');
+      setSuccessMessage('Question Paper extracted: ' + (result.qp_items || 0) + ' items');
       setCurrentStep(2);
     } catch (err: any) {
       setError(err.message || 'QP extraction failed');
@@ -389,7 +388,7 @@ const WizardPage: React.FC = () => {
     formData.append('language', 'English');
 
     try {
-      const response = await fetch('/api/parser/parse', {
+      const response = await fetch('/api/parser/parse-memo', {
         method: 'POST',
         body: formData
       });
