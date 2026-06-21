@@ -7,13 +7,8 @@ import re
 import fitz
 import os
 import json
+from bilingual_cleaner import extract_english_from_bilingual
 
-# Try to import bilingual cleaner, fallback to identity if not available
-try:
-    from bilingual_cleaner import extract_english_from_bilingual
-except ImportError:
-    def extract_english_from_bilingual(text):
-        return text
 
 SKIP_PATTERNS = [
     'Copyright reserved', 'Please turn over', 'Please tun over',
@@ -71,7 +66,7 @@ def extract_memo_items_enhanced(pdf_path, output_dir=None):
         if main_q_match:
             # Save previous item
             if current_item_num and current_lines:
-                _save_enhanced_item(items, current_item_num, current_lines, current_start_pos, i,
+                _save_enhanced_item(items, current_item_num, current_lines, current_start_pos, i, 
                                    page_texts, all_text, doc, output_dir)
 
             current_section = main_q_match.group(1)
@@ -138,7 +133,7 @@ def _save_enhanced_item(items, q_num, lines, start_pos, end_line_idx, page_texts
                 marks = int(line)
                 break
 
-    # Clean text - keep full content, remove only structural markers
+    # Clean text
     text_clean = re.sub(r'[✓✔]', '', content)
     text_clean = re.sub(r'<table>.*?</table>', '', text_clean, flags=re.DOTALL)
     text_clean = re.sub(r'\*one part correct', '', text_clean)
@@ -180,30 +175,24 @@ def _save_enhanced_item(items, q_num, lines, start_pos, end_line_idx, page_texts
             image_list = page.get_images()
             for img_index, img in enumerate(image_list):
                 xref = img[0]
-                try:
-                    pix = fitz.Pixmap(doc, xref)
-                    if pix.n > 4:
-                        pix = fitz.Pixmap(fitz.csRGB, pix)
-                    img_filename = f"{output_dir}/memo_{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
-                    pix.save(img_filename)
-                    images.append(img_filename)
-                except Exception:
-                    pass
+                pix = fitz.Pixmap(doc, xref)
+                if pix.n > 4:
+                    pix = fitz.Pixmap(fitz.csRGB, pix)
+                img_filename = f"{output_dir}/memo_{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
+                pix.save(img_filename)
+                images.append(img_filename)
 
     # Extract tables
     tables = []
     for page_num in page_numbers:
         page = doc[page_num - 1]
-        try:
-            tabs = page.find_tables()
-            for tab in tabs.tables:
-                tables.append(tab.extract())
-        except Exception:
-            pass
+        tabs = page.find_tables()
+        for tab in tabs.tables:
+            tables.append(tab.extract())
 
     items.append({
         'question_number': q_num,
-        'answer_text': text_clean,
+        'answer_text': text_clean[:400],
         'marks': marks,
         'page_numbers': page_numbers,
         'images': images,

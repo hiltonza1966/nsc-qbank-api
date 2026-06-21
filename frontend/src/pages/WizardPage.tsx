@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
+﻿import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ParserReviewPanel } from '../components/ParserReviewPanel';
+import ParserReviewPanel from '../components/ParserReviewPanel';
 
 // ============================================================
 // TYPES
@@ -165,7 +165,7 @@ const WizardPage: React.FC = () => {
           )
         );
 
-        // Backend returns {success: true, data: [...]} — extract .data
+        // Backend returns {success: true, data: [...]} â€” extract .data
         const extractData = (res: any) => {
           if (res && Array.isArray(res.data)) return res.data;
           if (res && Array.isArray(res)) return res;

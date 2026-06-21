@@ -5,9 +5,9 @@ import sys
 import os
 import io
 
-# Add sandbox parsers to path
-SANDBOX_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'sandbox')
-sys.path.insert(0, SANDBOX_DIR)
+# Add backend/parsers to path for imports
+PARSERS_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PARSERS_DIR)
 
 def run_parser(qp_path, memo_path, paper_code, output_dir=None):
     """Run parser and return clean JSON."""
@@ -19,13 +19,13 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
         sys.stderr = io.StringIO()
 
         from master_harness import run_harness
-        result = run_harness(qp_path, memo_path, paper_code)
+        result = run_harness(qp_path, memo_path, paper_code, output_dir)
 
         # Restore stdout/stderr
         sys.stdout = old_stdout
         sys.stderr = old_stderr
 
-        result['parser_version'] = 'v21'
+        result['parser_version'] = 'v29'
         result['timestamp'] = __import__('datetime').datetime.now().isoformat()
         result['status'] = 'success'
 
@@ -43,26 +43,31 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
             'status': 'error',
             'error': str(e),
             'paper_code': paper_code,
-            'parser_version': 'v21'
+            'parser_version': 'v29'
         }
 
 def get_parser_status():
     """Check parser dependencies."""
     status = {
         'python_version': sys.version,
-        'sandbox_dir_exists': os.path.exists(SANDBOX_DIR),
+        'parsers_dir': PARSERS_DIR,
         'parsers_available': {}
     }
 
     parsers = [
-        'bilingual_cleaner.py', 'docx_extractor.py', 'unified_qp_parser.py',
-        'qp_parser_option_a.py', 'qp_parser_option_b.py',
+        'bilingual_cleaner.py', 'qp_parser_option_b.py',
         'memo_parser_option_b.py', 'master_harness.py'
     ]
 
     for parser in parsers:
-        path = os.path.join(SANDBOX_DIR, parser)
+        path = os.path.join(PARSERS_DIR, parser)
         status['parsers_available'][parser] = os.path.exists(path)
+
+    try:
+        import fitz
+        status['pymupdf'] = True
+    except ImportError:
+        status['pymupdf'] = False
 
     try:
         import PyPDF2
@@ -113,13 +118,13 @@ if __name__ == '__main__':
             old_stderr = sys.stderr
             sys.stdout = io.StringIO()
             sys.stderr = io.StringIO()
-            from unified_qp_parser import extract_qp_items
-            items = extract_qp_items(qp_path)
+            from qp_parser_option_b import extract_qp_items_enhanced
+            items = extract_qp_items_enhanced(qp_path, output_dir)
             sys.stdout = old_stdout
             sys.stderr = old_stderr
             result = {
                 'status': 'success',
-                'parser_version': 'v21',
+                'parser_version': 'v29',
                 'paper_code': paper_code,
                 'qp_items': len(items),
                 'items': items,
@@ -133,7 +138,7 @@ if __name__ == '__main__':
         except Exception as e:
             sys.stdout = old_stdout if 'old_stdout' in dir() else sys.stdout
             sys.stderr = old_stderr if 'old_stderr' in dir() else sys.stderr
-            print(json.dumps({'status': 'error', 'error': str(e), 'parser_version': 'v21'}))
+            print(json.dumps({'status': 'error', 'error': str(e), 'parser_version': 'v29'}))
 
     else:
         print(json.dumps({'error': f'Unknown command: {command}'}))

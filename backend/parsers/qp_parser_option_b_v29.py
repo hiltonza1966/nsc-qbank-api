@@ -7,13 +7,7 @@ import re
 import fitz
 import os
 import json
-
-# Try to import bilingual cleaner, fallback to identity if not available
-try:
-    from bilingual_cleaner import extract_english_from_bilingual
-except ImportError:
-    def extract_english_from_bilingual(text):
-        return text
+from bilingual_cleaner import extract_english_from_bilingual
 
 
 def extract_qp_items_enhanced(pdf_path, output_dir=None):
@@ -83,7 +77,7 @@ def extract_qp_items_enhanced(pdf_path, output_dir=None):
         if end_num_match and marks == 0:
             marks = int(end_num_match.group(1))
 
-        # Clean text - remove marks but keep full content
+        # Clean text
         text_clean = re.sub(r'\(\d+\)', '', content)
         text_clean = re.sub(r'\[\d+\]', '', text_clean)
         text_clean = re.sub(r'\(\d+\s*x\s*\d+\)', '', text_clean)
@@ -96,6 +90,8 @@ def extract_qp_items_enhanced(pdf_path, output_dir=None):
             continue
 
         # Determine which pages this question appears on
+        # Find the position of this question in the combined text
+        # Then map back to page numbers
         question_start = match.start()
         question_end = end_pos
 
@@ -105,44 +101,39 @@ def extract_qp_items_enhanced(pdf_path, output_dir=None):
             page_start = current_pos
             page_end = current_pos + len(pt['text'])
 
+            # Check if question overlaps with this page
             if (question_start < page_end and question_end > page_start):
                 page_numbers.append(pt['page_num'])
 
-            current_pos = page_end + 1
+            current_pos = page_end + 1  # +1 for newline
 
         # Extract images for this question's pages
         images = []
         if output_dir and page_numbers:
             os.makedirs(output_dir, exist_ok=True)
             for page_num in page_numbers:
-                page = doc[page_num - 1]
+                page = doc[page_num - 1]  # 0-indexed
                 image_list = page.get_images()
                 for img_index, img in enumerate(image_list):
                     xref = img[0]
-                    try:
-                        pix = fitz.Pixmap(doc, xref)
-                        if pix.n > 4:  # CMYK: convert to RGB
-                            pix = fitz.Pixmap(fitz.csRGB, pix)
-                        img_filename = f"{output_dir}/q{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
-                        pix.save(img_filename)
-                        images.append(img_filename)
-                    except Exception:
-                        pass
+                    pix = fitz.Pixmap(doc, xref)
+                    if pix.n > 4:  # CMYK: convert to RGB
+                        pix = fitz.Pixmap(fitz.csRGB, pix)
+                    img_filename = f"{output_dir}/q{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
+                    pix.save(img_filename)
+                    images.append(img_filename)
 
         # Extract tables for this question's pages
         tables = []
         for page_num in page_numbers:
             page = doc[page_num - 1]
-            try:
-                tabs = page.find_tables()
-                for tab in tabs.tables:
-                    tables.append(tab.extract())
-            except Exception:
-                pass
+            tabs = page.find_tables()
+            for tab in tabs.tables:
+                tables.append(tab.extract())
 
         items.append({
             'question_number': q_num,
-            'question_text': text_clean,
+            'question_text': text_clean[:500],
             'marks': marks,
             'page_numbers': page_numbers,
             'images': images,

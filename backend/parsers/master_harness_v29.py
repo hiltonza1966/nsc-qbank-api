@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Master Harness - Combines QP and Memo parsers."""
+"""Enhanced Master Harness - Combines QP and Memo with full content including images and tables."""
 
 import os
 import sys
@@ -8,26 +8,25 @@ import json
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from qp_parser_option_b import extract_qp_items_enhanced
-from memo_parser_option_b import extract_memo_items_enhanced
+from unified_qp_parser import extract_qp_items
+from memo_parser_option_b import extract_memo_items_option_b
 
 
-def run_harness(qp_path, memo_path, paper_code, output_dir=None):
-    """Run complete parser and return combined results."""
-    print(f"=== HARNESS: {paper_code} ===")
+def run_harness_enhanced(qp_path, memo_path, paper_code, output_dir=None):
+    """Run complete parser with enhanced output including images and tables."""
+    print(f"=== ENHANCED HARNESS: {paper_code} ===")
 
-    # Create output directories for images
-    qp_img_dir = None
-    memo_img_dir = None
+    # Create output directory for images
     if output_dir:
         qp_img_dir = os.path.join(output_dir, 'qp_images')
         memo_img_dir = os.path.join(output_dir, 'memo_images')
-        os.makedirs(qp_img_dir, exist_ok=True)
-        os.makedirs(memo_img_dir, exist_ok=True)
+    else:
+        qp_img_dir = None
+        memo_img_dir = None
 
     # Extract QP items
     print("\n[1/4] Running QP Parser...")
-    qp_items = extract_qp_items_enhanced(qp_path, qp_img_dir)
+    qp_items = extract_qp_items(qp_path)
     print(f"  QP items: {len(qp_items)}")
     if qp_items:
         print(f"  Sample: {qp_items[0]['question_number']} - {qp_items[0]['marks']} marks")
@@ -35,7 +34,7 @@ def run_harness(qp_path, memo_path, paper_code, output_dir=None):
 
     # Extract Memo items
     print("\n[2/4] Running Memo Parser...")
-    memo_items = extract_memo_items_enhanced(memo_path, memo_img_dir)
+    memo_items = extract_memo_items_option_b(memo_path)
     print(f"  Memo items: {len(memo_items)}")
     if memo_items:
         print(f"  Sample: {memo_items[0]['question_number']} - {memo_items[0]['marks']} marks")
@@ -143,6 +142,6 @@ def run_harness(qp_path, memo_path, paper_code, output_dir=None):
 
 if __name__ == '__main__':
     if len(sys.argv) >= 3:
-        result = run_harness(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else 'TEST')
+        result = run_harness_enhanced(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else 'TEST')
         print("\n=== FINAL OUTPUT ===")
         print(json.dumps(result, indent=2))
