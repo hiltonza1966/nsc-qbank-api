@@ -104,6 +104,25 @@ safeRequire('./routes/loadedDashboard', '/api/dashboard');
 // Parser API for QBank wizard (v20)
 safeRequire('./routes/parser', '/api/parser');
 
+// === CORPORATE API VERSIONING ===
+const { isEnabled } = require('./config/features');
+
+// v2 API: Wizard Parser (v30) - ISOLATED from CAPS
+if (isEnabled('wizard_parser_v30')) {
+  safeRequire('./routes/v2/parser', '/api/v2/parser');
+  safeRequire('./routes/v2/batch_parser', '/api/v2/parser');
+}
+
+// v1 API: CAPS Parser (v9) - ISOLATED from Wizard
+if (isEnabled('caps_parser_v9')) {
+  safeRequire('./routes/v1/caps', '/api/v1/caps');
+}
+
+// Legacy routes (backward compatibility)
+if (isEnabled('legacy_routes')) {
+  safeRequire('./routes/legacy', '/api');
+}
+
 // Supporting Modules
 safeRequire('./routes/attachments', '/api/attachments');
 safeRequire('./routes/taxonomy', '/api/taxonomy');
