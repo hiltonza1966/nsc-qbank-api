@@ -447,14 +447,13 @@ const WizardPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paper_code: paperCode,
-          approved_items: parserResult,
-          paper_metadata: {
-            subject_id: dimensions.subject_id,
-            grade_id: dimensions.grade_id,
-            year: yearValue,
-            language: 'English',
-            paper_number: paperNo
-          }
+          year_id: dimensions.year_id,
+          grade_id: dimensions.grade_id,
+          subject_id: dimensions.subject_id,
+          paper_id: dimensions.paper_id,
+          assessment_type_id: dimensions.assessment_type_id,
+          assessment_body_id: dimensions.assessment_body_id,
+          approved_items: parserResult
         })
       });
 
@@ -464,7 +463,7 @@ const WizardPage: React.FC = () => {
         throw new Error(result.error || 'Import failed');
       }
 
-      setSuccessMessage('Import complete: ' + (result.items_imported || 0) + ' items imported to item_master');
+      setSuccessMessage('Import complete: ' + (result.total_items || 0) + ' items imported');
     } catch (err: any) {
       setError(err.message || 'Import failed');
     } finally {

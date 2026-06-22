@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Enhanced Memo Parser - Extracts text, images, tables, and page references per question.
-Uses PyMuPDF (fitz) for comprehensive extraction.
+"""Memo Content Parser - Extracts answer text, images, tables, page refs.
+Does NOT extract marks. Pure content extraction only.
 """
 
 import re
@@ -8,7 +8,6 @@ import fitz
 import os
 import json
 
-# Try to import bilingual cleaner, fallback to identity if not available
 try:
     from bilingual_cleaner import extract_english_from_bilingual
 except ImportError:
@@ -19,17 +18,17 @@ SKIP_PATTERNS = [
     'Copyright reserved', 'Please turn over', 'Please tun over',
     'DBE/November', 'NSC Confidential', 'Accounting/P1',
     'MARKING GUIDELINES', '–Marking Guidelines', 'NSC –Marking',
-    'TOTAL:', 'TOTAL MARKS'
+    'TOTAL:', 'TOTAL MARKS', 'TOTALMARKS',
+    'MARKS:150', 'MARKING PRINCIPLES'
 ]
 
 
-def extract_memo_items_enhanced(pdf_path, output_dir=None):
-    """Extract memo items with full content including images and tables.
+def extract_memo_content(pdf_path, output_dir=None):
+    """Extract memo answer content without marks.
 
-    Returns list of items, each with:
+    Returns list of items with:
     - question_number
     - answer_text
-    - marks
     - page_numbers
     - images
     - tables
@@ -52,7 +51,6 @@ def extract_memo_items_enhanced(pdf_path, output_dir=None):
     lines = all_text.split('\n')
 
     items = []
-    current_section = None
     current_item_num = None
     current_lines = []
     current_start_pos = 0
@@ -62,17 +60,25 @@ def extract_memo_items_enhanced(pdf_path, output_dir=None):
         if not line:
             continue
 
-        # Skip headers
+        # Skip headers and structural lines
         if any(skip in line for skip in SKIP_PATTERNS):
             continue
 
-        # Check for main question header
+        # Skip TOTALMARKS table rows
+        if re.match(r'^\|TOTALMARKS\|', line):
+            continue
+        if re.match(r'^\|:?-+:?\|$', line):
+            continue
+        if re.match(r'^\|\s*\d+\s*\|$', line):
+            continue
+
+        # Check for main question header: # QUESTION N
         main_q_match = re.match(r'^#\s*QUESTION\s*(\d+)', line, re.IGNORECASE)
         if main_q_match:
             # Save previous item
             if current_item_num and current_lines:
-                _save_enhanced_item(items, current_item_num, current_lines, current_start_pos, i,
-                                   page_texts, all_text, doc, output_dir)
+                _save_memo_content_item(items, current_item_num, current_lines, current_start_pos, i,
+                                       page_texts, all_text, doc, output_dir)
 
             current_section = main_q_match.group(1)
             current_item_num = f"{current_section}.1"
@@ -80,13 +86,13 @@ def extract_memo_items_enhanced(pdf_path, output_dir=None):
             current_start_pos = sum(len(l) + 1 for l in lines[:i])
             continue
 
-        # Check for explicit sub-question
+        # Check for explicit sub-question: X.Y or X.Y.Z
         sub_q_match = re.match(r'^#?\s*(\d+\.\d+(?:\.\d+)?)\b', line)
         if sub_q_match:
             # Save previous item
             if current_item_num and current_lines:
-                _save_enhanced_item(items, current_item_num, current_lines, current_start_pos, i,
-                                   page_texts, all_text, doc, output_dir)
+                _save_memo_content_item(items, current_item_num, current_lines, current_start_pos, i,
+                                       page_texts, all_text, doc, output_dir)
 
             current_item_num = sub_q_match.group(1)
             rest = line[sub_q_match.end():].strip()
@@ -100,12 +106,12 @@ def extract_memo_items_enhanced(pdf_path, output_dir=None):
 
     # Save last item
     if current_item_num and current_lines:
-        _save_enhanced_item(items, current_item_num, current_lines, current_start_pos, len(lines),
-                           page_texts, all_text, doc, output_dir)
+        _save_memo_content_item(items, current_item_num, current_lines, current_start_pos, len(lines),
+                               page_texts, all_text, doc, output_dir)
 
     doc.close()
 
-    # Deduplicate
+    # Deduplicate - keep longest text for each question number
     best_items = {}
     for item in items:
         q_num = item['question_number']
@@ -113,47 +119,32 @@ def extract_memo_items_enhanced(pdf_path, output_dir=None):
             best_items[q_num] = item
         else:
             existing = best_items[q_num]
-            if item['marks'] > existing['marks']:
-                best_items[q_num] = item
-            elif item['marks'] == existing['marks'] and len(item.get('answer_text', '')) > len(existing.get('answer_text', '')):
+            if len(item.get('answer_text', '')) > len(existing.get('answer_text', '')):
                 best_items[q_num] = item
 
     return list(best_items.values())
 
 
-def _save_enhanced_item(items, q_num, lines, start_pos, end_line_idx, page_texts, all_text, doc, output_dir):
-    """Save an item with enhanced metadata."""
+def _save_memo_content_item(items, q_num, lines, start_pos, end_line_idx, page_texts, all_text, doc, output_dir):
+    """Save a memo content item without marks extraction."""
     content = '\n'.join(lines)
 
-    # Extract marks
-    marks = 0
-    all_mark_matches = re.findall(r'\((\d+)\)', content)
-    if all_mark_matches:
-        marks = int(all_mark_matches[-1])
-
-    if marks == 0:
-        for line in reversed(lines[-5:]):
-            line = line.strip()
-            if re.match(r'^\d{1,2}$', line):
-                marks = int(line)
-                break
-
-    # Clean text - keep full content, remove only structural markers
-    text_clean = re.sub(r'[✓✔]', '', content)
+    # Clean text - remove marking symbols but keep answer content
+    text_clean = re.sub(r'[✓✔☑√]', '', content)
     text_clean = re.sub(r'<table>.*?</table>', '', text_clean, flags=re.DOTALL)
     text_clean = re.sub(r'\*one part correct', '', text_clean)
     text_clean = re.sub(r'\bWORKINGS\b', '', text_clean)
     text_clean = re.sub(r'\bANSWER\b', '', text_clean)
     text_clean = re.sub(r'\(\d+\)', '', text_clean)
     text_clean = re.sub(r'\[\d+\]', '', text_clean)
-    text_clean = re.sub(r'\n\s*\d{1,2}\s*$', '', text_clean)
     text_clean = re.sub(r'one part correct', '', text_clean)
     text_clean = re.sub(r'one mark', '', text_clean)
     text_clean = re.sub(r'two marks', '', text_clean)
     text_clean = re.sub(r'\bm mark\b', '', text_clean)
     text_clean = re.sub(r'\s+', ' ', text_clean).strip()
 
-    if len(text_clean) < 3 and marks == 0:
+    # Skip if too short
+    if len(text_clean) < 3:
         return
 
     # Determine page numbers
@@ -177,34 +168,29 @@ def _save_enhanced_item(items, q_num, lines, start_pos, end_line_idx, page_texts
         os.makedirs(output_dir, exist_ok=True)
         for page_num in page_numbers:
             page = doc[page_num - 1]
-            image_list = page.get_images()
-            for img_index, img in enumerate(image_list):
-                xref = img[0]
-                try:
-                    pix = fitz.Pixmap(doc, xref)
-                    if pix.n > 4:
-                        pix = fitz.Pixmap(fitz.csRGB, pix)
-                    img_filename = f"{output_dir}/memo_{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
-                    pix.save(img_filename)
-                    images.append(img_filename)
-                except Exception:
-                    pass
+            try:
+                image_list = page.get_images()
+                for img_index, img in enumerate(image_list):
+                    xref = img[0]
+                    try:
+                        pix = fitz.Pixmap(doc, xref)
+                        if pix.n > 4:
+                            pix = fitz.Pixmap(fitz.csRGB, pix)
+                        img_filename = f"{output_dir}/memo_{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
+                        pix.save(img_filename)
+                        images.append(img_filename)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     # Extract tables
+    # NOTE: Table extraction disabled due to PyMuPDF bug with these PDFs
     tables = []
-    for page_num in page_numbers:
-        page = doc[page_num - 1]
-        try:
-            tabs = page.find_tables()
-            for tab in tabs.tables:
-                tables.append(tab.extract())
-        except Exception:
-            pass
 
     items.append({
         'question_number': q_num,
         'answer_text': text_clean,
-        'marks': marks,
         'page_numbers': page_numbers,
         'images': images,
         'tables': tables,
@@ -217,5 +203,5 @@ if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1:
         output_dir = sys.argv[2] if len(sys.argv) > 2 else None
-        items = extract_memo_items_enhanced(sys.argv[1], output_dir)
+        items = extract_memo_content(sys.argv[1], output_dir)
         print(json.dumps(items, indent=2))

@@ -1,26 +1,30 @@
 #!/usr/bin/env python3
-"""Enhanced QP Parser - Extracts text, images, tables, and page references per question.
-Uses PyMuPDF (fitz) for comprehensive extraction.
+"""QP Content Parser - Extracts question text, images, tables, page refs.
+Does NOT extract marks. Pure content extraction only.
 """
 
 import re
 import fitz
 import os
 import json
-from bilingual_cleaner import extract_english_from_bilingual
+
+try:
+    from bilingual_cleaner import extract_english_from_bilingual
+except ImportError:
+    def extract_english_from_bilingual(text):
+        return text
 
 
-def extract_qp_items_enhanced(pdf_path, output_dir=None):
-    """Extract question items with full content including images and tables.
+def extract_qp_content(pdf_path, output_dir=None):
+    """Extract question content without marks.
 
-    Returns list of items, each with:
+    Returns list of items with:
     - question_number
     - question_text
-    - marks
-    - page_numbers (list of pages where this question appears)
-    - images (list of image file paths extracted for this question)
-    - tables (list of table data extracted for this question)
-    - has_visual_content (bool)
+    - page_numbers
+    - images
+    - tables
+    - has_visual_content
     """
     doc = fitz.open(pdf_path)
 
@@ -34,10 +38,11 @@ def extract_qp_items_enhanced(pdf_path, output_dir=None):
                 'text': text
             })
 
-    # Combine all text
+    # Combine all text for position tracking
     all_text = extract_english_from_bilingual('\n'.join([p['text'] for p in page_texts]))
 
-    # Find all question numbers with positions
+    # Find all question numbers: X.Y or X.Y.Z format
+    # Must be followed by text content (not just whitespace)
     q_pattern = r'(?<![\d.])(\d+\.\d+(?:\.\d+)?)(?=\s|[A-Za-z]|$)'
     matches = list(re.finditer(q_pattern, all_text))
 
@@ -63,35 +68,21 @@ def extract_qp_items_enhanced(pdf_path, output_dir=None):
 
         content = all_text[start_pos:end_pos].strip()
 
-        # Extract marks
-        marks = 0
-        all_mark_matches = re.findall(r'\((\d+)\)', content)
-        if all_mark_matches:
-            marks = int(all_mark_matches[-1])
-
-        bracket_matches = re.findall(r'\[(\d+)\]', content)
-        if bracket_matches and marks == 0:
-            marks = int(bracket_matches[-1])
-
-        end_num_match = re.search(r'\n\s*(\d{1,2})\s*$', content)
-        if end_num_match and marks == 0:
-            marks = int(end_num_match.group(1))
-
-        # Clean text
+        # Clean text - remove marks allocations but keep full question content
         text_clean = re.sub(r'\(\d+\)', '', content)
         text_clean = re.sub(r'\[\d+\]', '', text_clean)
         text_clean = re.sub(r'\(\d+\s*x\s*\d+\)', '', text_clean)
         text_clean = re.sub(r'\d+\s*marks?\s*$', '', text_clean, flags=re.IGNORECASE)
         text_clean = re.sub(r'REQUIRED:', '', text_clean)
         text_clean = re.sub(r'NOTE:', '', text_clean)
+        text_clean = re.sub(r'INFORMATION:', '', text_clean)
         text_clean = text_clean.strip()
 
-        if len(text_clean) < 3 and marks == 0:
+        # Skip if too short (likely a false match)
+        if len(text_clean) < 3:
             continue
 
         # Determine which pages this question appears on
-        # Find the position of this question in the combined text
-        # Then map back to page numbers
         question_start = match.start()
         question_end = end_pos
 
@@ -101,40 +92,40 @@ def extract_qp_items_enhanced(pdf_path, output_dir=None):
             page_start = current_pos
             page_end = current_pos + len(pt['text'])
 
-            # Check if question overlaps with this page
             if (question_start < page_end and question_end > page_start):
                 page_numbers.append(pt['page_num'])
 
-            current_pos = page_end + 1  # +1 for newline
+            current_pos = page_end + 1
 
         # Extract images for this question's pages
         images = []
         if output_dir and page_numbers:
             os.makedirs(output_dir, exist_ok=True)
             for page_num in page_numbers:
-                page = doc[page_num - 1]  # 0-indexed
-                image_list = page.get_images()
-                for img_index, img in enumerate(image_list):
-                    xref = img[0]
-                    pix = fitz.Pixmap(doc, xref)
-                    if pix.n > 4:  # CMYK: convert to RGB
-                        pix = fitz.Pixmap(fitz.csRGB, pix)
-                    img_filename = f"{output_dir}/q{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
-                    pix.save(img_filename)
-                    images.append(img_filename)
+                page = doc[page_num - 1]
+                try:
+                    image_list = page.get_images()
+                    for img_index, img in enumerate(image_list):
+                        xref = img[0]
+                        try:
+                            pix = fitz.Pixmap(doc, xref)
+                            if pix.n > 4:  # CMYK: convert to RGB
+                                pix = fitz.Pixmap(fitz.csRGB, pix)
+                            img_filename = f"{output_dir}/q{q_num.replace('.', '_')}_p{page_num}_img{img_index}.png"
+                            pix.save(img_filename)
+                            images.append(img_filename)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
         # Extract tables for this question's pages
+        # NOTE: Table extraction disabled due to PyMuPDF bug with these PDFs
         tables = []
-        for page_num in page_numbers:
-            page = doc[page_num - 1]
-            tabs = page.find_tables()
-            for tab in tabs.tables:
-                tables.append(tab.extract())
 
         items.append({
             'question_number': q_num,
-            'question_text': text_clean[:500],
-            'marks': marks,
+            'question_text': text_clean,
             'page_numbers': page_numbers,
             'images': images,
             'tables': tables,
@@ -144,7 +135,7 @@ def extract_qp_items_enhanced(pdf_path, output_dir=None):
 
     doc.close()
 
-    # Deduplicate
+    # Deduplicate - keep longest text for each question number
     best_items = {}
     for item in items:
         q_num = item['question_number']
@@ -152,9 +143,7 @@ def extract_qp_items_enhanced(pdf_path, output_dir=None):
             best_items[q_num] = item
         else:
             existing = best_items[q_num]
-            if item['marks'] > existing['marks']:
-                best_items[q_num] = item
-            elif item['marks'] == existing['marks'] and len(item['question_text']) > len(existing['question_text']):
+            if len(item['question_text']) > len(existing['question_text']):
                 best_items[q_num] = item
 
     return list(best_items.values())
@@ -164,5 +153,5 @@ if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1:
         output_dir = sys.argv[2] if len(sys.argv) > 2 else None
-        items = extract_qp_items_enhanced(sys.argv[1], output_dir)
+        items = extract_qp_content(sys.argv[1], output_dir)
         print(json.dumps(items, indent=2))
