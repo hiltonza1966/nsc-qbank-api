@@ -1,92 +1,40 @@
 const express = require('express');
 const router = express.Router();
 
-// ============================================================
-// LOADED DASHBOARD API
-// ============================================================
-
-// GET /api/dashboard/loaded - Summary of all loaded papers
-router.get('/loaded', async (req, res) => {
-  try {
-    const db = req.db;
-
-    let hasAttachments = false;
-    try {
-      await db.query('SELECT 1 FROM item_attachments LIMIT 1');
-      hasAttachments = true;
-    } catch (e) {
-      hasAttachments = false;
-    }
-
-    const attachmentJoin = hasAttachments
-      ? 'LEFT JOIN item_attachments att ON im.item_id = att.item_id'
-      : '';
-    const attachmentCount = hasAttachments
-      ? 'COUNT(DISTINCT att.attachment_id) as attachment_count'
-      : '0 as attachment_count';
-
-    const [papers] = await db.query(`
-      SELECT
-        gp.paper_id,
-        gp.paper_title,
-        gp.status,
-        gp.total_marks,
-        gp.subject_alpha_code,
-        gp.paper_no,
-        gp.year_id,
-        gp.grade_id,
-        gp.assessment_body_id,
-        COUNT(DISTINCT im.item_id) as item_count,
-        ${attachmentCount}
-      FROM generated_papers gp
-      LEFT JOIN item_master im ON gp.paper_id = im.paper_id
-      ${attachmentJoin}
-      GROUP BY gp.paper_id
-      ORDER BY gp.assembled_at DESC
-    `);
-
-    res.json({ success: true, papers });
-  } catch (error) {
-    console.error('Error fetching loaded dashboard:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ============================================================
-// DASHBOARD STATS API
-// ============================================================
-
-// GET /api/dashboard/stats - Comprehensive dashboard statistics
+// ============================================
+// GET /api/dashboard/stats
+// Comprehensive dashboard statistics
+// ============================================
 router.get('/stats', async (req, res) => {
   try {
     const db = req.db;
 
     // 1. Total Items
-    const [totalItemsResult] = await db.query('SELECT COUNT(*) as count FROM item_master');
+    const [totalItemsResult] = await db.execute('SELECT COUNT(*) as count FROM item_master');
     const totalItems = totalItemsResult[0].count;
 
     // 2. Total Papers (generated_papers)
-    const [totalPapersResult] = await db.query('SELECT COUNT(*) as count FROM generated_papers');
+    const [totalPapersResult] = await db.execute('SELECT COUNT(*) as count FROM generated_papers');
     const totalPapers = totalPapersResult[0].count;
 
     // 3. Total Paper Templates
-    const [totalTemplatesResult] = await db.query('SELECT COUNT(*) as count FROM paper_templates');
+    const [totalTemplatesResult] = await db.execute('SELECT COUNT(*) as count FROM paper_templates');
     const totalTemplates = totalTemplatesResult[0].count;
 
     // 4. Total Subjects
-    const [totalSubjectsResult] = await db.query('SELECT COUNT(*) as count FROM lookup_subjects WHERE is_active = 1');
+    const [totalSubjectsResult] = await db.execute('SELECT COUNT(*) as count FROM lookup_subjects WHERE is_active = 1');
     const totalSubjects = totalSubjectsResult[0].count;
 
     // 5. Total CAPS Topics
-    const [totalTopicsResult] = await db.query('SELECT COUNT(*) as count FROM lookup_caps_topics');
+    const [totalTopicsResult] = await db.execute('SELECT COUNT(*) as count FROM lookup_caps_topics');
     const totalTopics = totalTopicsResult[0].count;
 
     // 6. Total CAPS Subtopics
-    const [totalSubtopicsResult] = await db.query('SELECT COUNT(*) as count FROM lookup_caps_subtopics');
+    const [totalSubtopicsResult] = await db.execute('SELECT COUNT(*) as count FROM lookup_caps_subtopics');
     const totalSubtopics = totalSubtopicsResult[0].count;
 
     // 7. Items by Status
-    const [itemsByStatus] = await db.query(`
+    const [itemsByStatus] = await db.execute(`
       SELECT status, COUNT(*) as count
       FROM item_master
       GROUP BY status
@@ -95,7 +43,7 @@ router.get('/stats', async (req, res) => {
     itemsByStatus.forEach(row => { statusMap[row.status] = row.count; });
 
     // 8. Papers by Status
-    const [papersByStatus] = await db.query(`
+    const [papersByStatus] = await db.execute(`
       SELECT status, COUNT(*) as count
       FROM generated_papers
       GROUP BY status
@@ -103,9 +51,9 @@ router.get('/stats', async (req, res) => {
     const paperStatusMap = {};
     papersByStatus.forEach(row => { paperStatusMap[row.status] = row.count; });
 
-    // 9. Items by Assessment Body (using CORRECT column names: body_code, body_name)
-    const [itemsByBody] = await db.query(`
-      SELECT ab.body_code, ab.body_name, COUNT(*) as count
+    // 9. Items by Assessment Body
+    const [itemsByBody] = await db.execute(`
+      SELECT ab.assessment_body_name, ab.assessment_origin, COUNT(*) as count
       FROM item_master im
       JOIN lookup_assessment_bodies ab ON im.assessment_body_id = ab.assessment_body_id
       GROUP BY ab.assessment_body_id
@@ -113,7 +61,7 @@ router.get('/stats', async (req, res) => {
     `);
 
     // 10. Items by Year
-    const [itemsByYear] = await db.query(`
+    const [itemsByYear] = await db.execute(`
       SELECT ly.year_value, COUNT(*) as count
       FROM item_master im
       JOIN lookup_years ly ON im.year_id = ly.year_id
@@ -121,9 +69,9 @@ router.get('/stats', async (req, res) => {
       ORDER BY ly.year_value DESC
     `);
 
-    // 11. Items by Grade (using CORRECT column: grade_label, NOT grade_name)
-    const [itemsByGrade] = await db.query(`
-      SELECT lg.grade_number, lg.grade_label, COUNT(*) as count
+    // 11. Items by Grade
+    const [itemsByGrade] = await db.execute(`
+      SELECT lg.grade_number, lg.grade_name, COUNT(*) as count
       FROM item_master im
       JOIN lookup_grades lg ON im.grade_id = lg.grade_id
       GROUP BY lg.grade_id
@@ -131,7 +79,7 @@ router.get('/stats', async (req, res) => {
     `);
 
     // 12. Items by Subject
-    const [itemsBySubject] = await db.query(`
+    const [itemsBySubject] = await db.execute(`
       SELECT ls.subject_alpha_code, ls.subject_name, COUNT(*) as count
       FROM item_master im
       JOIN lookup_subjects ls ON im.subject_id = ls.subject_id
@@ -140,7 +88,7 @@ router.get('/stats', async (req, res) => {
     `);
 
     // 13. Items by Paper
-    const [itemsByPaper] = await db.query(`
+    const [itemsByPaper] = await db.execute(`
       SELECT lp.paper_no, lp.paper_name, COUNT(*) as count
       FROM item_master im
       JOIN lookup_papers lp ON im.paper_id = lp.paper_id
@@ -149,9 +97,9 @@ router.get('/stats', async (req, res) => {
     `);
 
     // 14. Recent Papers (last 5)
-    const [recentPapers] = await db.query(`
+    const [recentPapers] = await db.execute(`
       SELECT gp.paper_title, gp.status, gp.total_marks, gp.subject_alpha_code, gp.paper_no,
-             ly.year_value, lg.grade_label, ab.body_code,
+             ly.year_value, lg.grade_name, ab.assessment_origin,
              gp.assembled_at
       FROM generated_papers gp
       LEFT JOIN lookup_years ly ON gp.year_id = ly.year_id
@@ -162,7 +110,7 @@ router.get('/stats', async (req, res) => {
     `);
 
     // 15. Recent Items (last 5)
-    const [recentItems] = await db.query(`
+    const [recentItems] = await db.execute(`
       SELECT im.question_number, im.status, im.subject_alpha_code, im.grade_id,
              im.created_at
       FROM item_master im
@@ -171,7 +119,7 @@ router.get('/stats', async (req, res) => {
     `);
 
     // 16. Workflow Summary (last 10 transitions)
-    const [recentWorkflow] = await db.query(`
+    const [recentWorkflow] = await db.execute(`
       SELECT rw.current_state, rw.previous_state, rw.changed_by_role,
              rw.transition_reason, rw.created_at, im.question_number
       FROM review_workflow rw
