@@ -30,6 +30,15 @@ def extract_qp_marks(pdf_path):
     all_text = ""
     for page in doc:
         text = page.get_text()
+        if not text:
+            try:
+                import pytesseract
+                from PIL import Image
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img = Image.frombytes('RGB', [pix.width, pix.height], pix.samples)
+                text = pytesseract.image_to_string(img)
+            except Exception as e:
+                text = ''
         if text:
             all_text += text + "\n"
 

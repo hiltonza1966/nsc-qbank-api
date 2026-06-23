@@ -11,9 +11,15 @@ const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 function runPythonScript(args, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
+    const spawnEnv = Object.assign({}, process.env);
+    const pathKey = Object.keys(process.env).find(k => k.toLowerCase() === 'path') || 'PATH';
+    const currentPath = process.env[pathKey] || '';
+    if (!currentPath.includes('Tesseract-OCR')) {
+      spawnEnv[pathKey] = currentPath + ';C:\\Program Files\\Tesseract-OCR';
+    }
     const child = spawn(pythonPath, ['-u', path.join(PARSERS_DIR, 'parser_api_v2.py'), ...args], {
       cwd: PARSERS_DIR,
-      env: process.env,
+      env: spawnEnv,
       windowsHide: true
     });
     let stdout = '';
