@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { debugLogger } from './utils/debugLogger';
 import DebugPanel from './components/DebugPanel';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 
 // Real pages
 import Dashboard from './pages/Dashboard';
@@ -153,6 +153,8 @@ const LoadingFallback: React.FC = () => (
 // ============================================
 const Navigation: React.FC = () => {
   const [userRole, setUserRole] = useState('author');
+  const [reviewsOpen, setReviewsOpen] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     const storedRole = localStorage.getItem('qbank_role') || 'author';
@@ -177,23 +179,76 @@ const Navigation: React.FC = () => {
     borderRadius: '4px'
   };
 
+  const activeLinkStyle: React.CSSProperties = {
+    ...linkStyle,
+    color: '#ffffff',
+    background: '#374151'
+  };
+
+  const isReviewActive = location.pathname === '/reviews' || 
+                         location.pathname === '/reviewer-dashboard' || 
+                         location.pathname === '/moderator-dashboard' ||
+                         location.pathname === '/review-board';
+
   return (
     <nav style={navStyle}>
       <div style={{ fontWeight: 'bold', fontSize: '16px', marginRight: '16px' }}>
         NSC QBank
       </div>
-      <Link to="/" style={linkStyle}>Dashboard</Link>
-      <Link to="/items" style={linkStyle}>Items</Link>
-      <Link to="/papers" style={linkStyle}>Papers</Link>
-      <Link to="/reviews" style={linkStyle}>Reviews</Link>
-      <Link to="/templates" style={linkStyle}>Templates</Link>
-      <Link to="/master-template" style={linkStyle}>Master Template</Link>
-      <Link to="/wizard" style={linkStyle}>Wizard</Link>
-      <Link to="/caps-linker" style={linkStyle}>CAPS Linker</Link>
-      <Link to="/caps-review" style={linkStyle}>CAPS Review</Link>
-      <Link to="/caps-parser" style={linkStyle}>CAPS Parser</Link>
+      <Link to="/" style={location.pathname === '/' ? activeLinkStyle : linkStyle}>Dashboard</Link>
+      <Link to="/items" style={location.pathname === '/items' ? activeLinkStyle : linkStyle}>Items</Link>
+      <Link to="/papers" style={location.pathname === '/papers' ? activeLinkStyle : linkStyle}>Papers</Link>
+
+      {/* Reviews Dropdown */}
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={() => setReviewsOpen(!reviewsOpen)}
+          onMouseEnter={() => setReviewsOpen(true)}
+          style={{
+            ...linkStyle,
+            ...(isReviewActive ? activeLinkStyle : {}),
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          Reviews
+          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: reviewsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+        </button>
+        {reviewsOpen && (
+          <div 
+            onMouseLeave={() => setReviewsOpen(false)}
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              background: '#1f2937',
+              borderRadius: '4px',
+              padding: '8px 0',
+              minWidth: '180px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+              zIndex: 1000
+            }}
+          >
+            <Link to="/reviews" onClick={() => setReviewsOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Review Board</Link>
+            <Link to="/reviewer-dashboard" onClick={() => setReviewsOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Item Review</Link>
+            <Link to="/moderator-dashboard" onClick={() => setReviewsOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Moderator Review</Link>
+          </div>
+        )}
+      </div>
+
+      <Link to="/templates" style={location.pathname === '/templates' ? activeLinkStyle : linkStyle}>Templates</Link>
+      <Link to="/master-template" style={location.pathname === '/master-template' ? activeLinkStyle : linkStyle}>Master Template</Link>
+      <Link to="/wizard" style={location.pathname === '/wizard' ? activeLinkStyle : linkStyle}>Wizard</Link>
+      <Link to="/batch-parser" style={location.pathname === '/batch-parser' ? activeLinkStyle : linkStyle}>Batch Parser</Link>
+      <Link to="/caps-linker" style={location.pathname === '/caps-linker' ? activeLinkStyle : linkStyle}>CAPS Linker</Link>
+      <Link to="/caps-review" style={location.pathname === '/caps-review' ? activeLinkStyle : linkStyle}>CAPS Review</Link>
+      <Link to="/caps-parser" style={location.pathname === '/caps-parser' ? activeLinkStyle : linkStyle}>CAPS Parser</Link>
       {userRole === 'admin' && (
-        <Link to="/admin" style={linkStyle}>Admin</Link>
+        <Link to="/admin" style={location.pathname === '/admin' ? activeLinkStyle : linkStyle}>Admin</Link>
       )}
       <div style={{ marginLeft: 'auto', fontSize: '12px', color: '#9ca3af' }}>
         Role: {userRole}
@@ -265,25 +320,25 @@ const App: React.FC = () => {
                 <Route path="/items/:id/edit" element={<ItemStudio />} />
                 <Route path="/items/:id" element={<ItemDetail />} />
                 <Route path="/reviews" element={<Reviews />} />
+                <Route path="/reviewer-dashboard" element={<ReviewerDashboard />} />
+                <Route path="/moderator-dashboard" element={<ModeratorDashboard />} />
+                <Route path="/review-board" element={<ReviewBoard />} />
                 <Route path="/papers" element={<Papers />} />
                 <Route path="/papers/:id" element={<PaperDetail />} />
                 <Route path="/templates" element={<Templates />} />
                 <Route path="/master-template" element={<MasterTemplate />} />
                 <Route path="/wizard" element={<WizardPage />} />
+                <Route path="/batch-parser" element={<BatchParserDashboard />} />
                 <Route path="/caps-linker" element={<CAPSManualLinker />} />
                 <Route path="/caps-review" element={<CapsReviewPage />} />
                 <Route path="/caps-parser" element={<CAPSParserPage />} />
-                <Route path="/batch-parser" element={<BatchParserDashboard />} />
-                <Route path="/review-board" element={<ReviewBoard />} />
                 <Route path="/admin" element={<AdminPage />} />
+                <Route path="/admin/assignments" element={<AdminAssignmentPanel />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
-              <Route path="/reviewer-dashboard" element={<ReviewerDashboard />} />
-        <Route path="/admin/assignments" element={<AdminAssignmentPanel />} />
-        <Route path="/moderator-dashboard" element={<ModeratorDashboard />} />
-      </Routes>
+              </Routes>
             </React.Suspense>
           </main>
-      <DebugPanel />
+          <DebugPanel />
         </div>
       </BrowserRouter></QueryClientProvider>
     </ErrorBoundary>
@@ -291,15 +346,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-
-
-
-
-
-
-
-
-
-
-
