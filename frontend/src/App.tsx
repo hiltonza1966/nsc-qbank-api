@@ -19,6 +19,7 @@ import { CAPSManualLinker } from './components/curriculum/CAPSManualLinker';
 import CapsReviewPage from './pages/CapsReviewPage';
 import CAPSParserPage from './pages/CAPSParserPage';
 import BatchParserDashboard from './pages/BatchParserDashboard';
+import ReviewBoard from './pages/ReviewBoard';
 
 // ============================================
 // TYPES
@@ -270,6 +271,7 @@ const App: React.FC = () => {
                 <Route path="/caps-review" element={<CapsReviewPage />} />
                 <Route path="/caps-parser" element={<CAPSParserPage />} />
                 <Route path="/batch-parser" element={<BatchParserDashboard />} />
+                <Route path="/review-board" element={<ReviewBoard />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

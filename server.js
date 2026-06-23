@@ -111,6 +111,7 @@ const { isEnabled } = require('./config/features');
 if (isEnabled('wizard_parser_v30')) {
   safeRequire('./routes/v2/parser', '/api/v2/parser');
   safeRequire('./routes/v2/batch_parser', '/api/v2/parser');
+  safeRequire('./routes/v2/parser_review', '/api/v2/parser');
 }
 
 // v1 API: CAPS Parser (v9) - ISOLATED from Wizard
