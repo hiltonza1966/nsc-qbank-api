@@ -154,9 +154,9 @@ router.post('/submit-review', async (req, res) => {
     // Determine new status
     let newStatus = currentStatus;
     if (decision === 'approve') {
-      if (reviewer_role === 'peer_reviewer' && currentStatus === 'draft') newStatus = 'peer_approved';
-      else if (reviewer_role === 'subject_expert' && currentStatus === 'peer_approved') newStatus = 'expert_approved';
-      else if (reviewer_role === 'moderator' && currentStatus === 'expert_approved') newStatus = 'moderated';
+      if ((reviewer_role === 'peer_reviewer' || reviewer_role === 'admin') && currentStatus === 'draft') newStatus = 'peer_approved';
+      else if ((reviewer_role === 'subject_expert' || reviewer_role === 'admin') && currentStatus === 'peer_approved') newStatus = 'expert_approved';
+      else if ((reviewer_role === 'moderator' || reviewer_role === 'admin') && currentStatus === 'expert_approved') newStatus = 'moderated';
     } else if (decision === 'reject' || decision === 'request_revision') {
       newStatus = 'revision_required';
     }
@@ -174,9 +174,9 @@ router.post('/submit-review', async (req, res) => {
       await db.execute('UPDATE item_master SET status = ?, review_status = ? WHERE item_id = ?', [newStatus, newStatus, item_id]);
       await db.execute(
         `INSERT INTO review_workflow (subject_official_code, subject_alpha_code, paper_no, item_id, current_state, previous_state, changed_by, changed_by_role, transition_reason)
-         SELECT ls.subject_official_code, ls.subject_alpha_code, im.paper_no, im.item_id, ?, im.status, ?, ?, ?
+         SELECT ls.subject_official_code, ls.subject_alpha_code, im.paper_no, im.item_id, ?, ?, ?, ?, ?
          FROM item_master im JOIN lookup_subjects ls ON im.subject_id = ls.subject_id WHERE im.item_id = ?`,
-        [newStatus, reviewer_id, reviewer_role, transition_reason || `Reviewed by ${reviewer_role}`, item_id]
+        [newStatus, currentStatus, reviewer_id, reviewer_role, transition_reason || `Reviewed by ${reviewer_role}`, item_id]
       );
     }
 
@@ -268,6 +268,67 @@ router.get('/workflow-history/:itemId', async (req, res) => {
     );
     res.json({ success: true, history });
   } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// ============================================
+// MODERATOR: PUBLISH ITEM TO PRODUCTION
+// ============================================
+router.post('/publish-item', async (req, res) => {
+  try {
+    const db = req.db;
+    const { item_id, moderator_id, publish_reason } = req.body;
+
+    if (!item_id || !moderator_id) {
+      return res.status(400).json({ success: false, error: 'item_id and moderator_id required' });
+    }
+
+    // Get current item status
+    const [itemRows] = await db.execute(
+      'SELECT status, subject_id, paper_no, question_number FROM item_master WHERE item_id = ?',
+      [item_id]
+    );
+    if (itemRows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Item not found' });
+    }
+    const currentStatus = itemRows[0].status;
+
+    // Only allow publishing from expert_approved or moderated status
+    if (currentStatus !== 'expert_approved' && currentStatus !== 'moderated') {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Cannot publish item with status '${currentStatus}'. Must be 'expert_approved' or 'moderated'.` 
+      });
+    }
+
+    // Update item status to published
+    await db.execute(
+      'UPDATE item_master SET status = ?, review_status = ?, published_at = NOW(), published_by = ? WHERE item_id = ?',
+      ['published', 'published', moderator_id, item_id]
+    );
+
+    // Log workflow transition
+    await db.execute(
+      `INSERT INTO review_workflow (subject_official_code, subject_alpha_code, paper_no, item_id, current_state, previous_state, changed_by, changed_by_role, transition_reason)
+       SELECT ls.subject_official_code, ls.subject_alpha_code, im.paper_no, im.item_id, 'published', im.status, ?, 'moderator', ?
+       FROM item_master im
+       JOIN lookup_subjects ls ON im.subject_id = ls.subject_id
+       WHERE im.item_id = ?`,
+      [moderator_id, publish_reason || 'Published to production by moderator', item_id]
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'Item published to production',
+      new_status: 'published',
+      previous_status: currentStatus,
+      published_at: new Date().toISOString()
+    });
+
+  } catch (e) {
+    console.error('Publish item error:', e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
