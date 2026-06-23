@@ -20,6 +20,8 @@ import CapsReviewPage from './pages/CapsReviewPage';
 import CAPSParserPage from './pages/CAPSParserPage';
 import BatchParserDashboard from './pages/BatchParserDashboard';
 import ReviewBoard from './pages/ReviewBoard';
+import ReviewerDashboard from './pages/ReviewerDashboard';
+import AdminAssignmentPanel from './pages/AdminAssignmentPanel';
 
 // ============================================
 // TYPES
@@ -192,6 +194,8 @@ const Navigation: React.FC = () => {
       {userRole === 'admin' && (
         <Link to="/admin" style={linkStyle}>Admin</Link>
       )}
+      <Link to="/reviewer-dashboard" style={linkStyle}>Reviewer</Link>
+      <Link to="/admin/assignments" style={linkStyle}>Assignments</Link>
       <div style={{ marginLeft: 'auto', fontSize: '12px', color: '#9ca3af' }}>
         Role: {userRole}
       </div>
@@ -274,7 +278,9 @@ const App: React.FC = () => {
                 <Route path="/review-board" element={<ReviewBoard />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+              <Route path="/reviewer-dashboard" element={<ReviewerDashboard />} />
+        <Route path="/admin/assignments" element={<AdminAssignmentPanel />} />
+      </Routes>
             </React.Suspense>
           </main>
       <DebugPanel />
