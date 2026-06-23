@@ -32,6 +32,18 @@ def extract_qp_content(pdf_path, output_dir=None):
     page_texts = []
     for page_num, page in enumerate(doc):
         text = page.get_text()
+        if not text:
+            # OCR fallback for image-based PDFs
+            try:
+                import pytesseract
+                from PIL import Image
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img = Image.frombytes('RGB', [pix.width, pix.height], pix.samples)
+                text = pytesseract.image_to_string(img)
+                print(f'  [OCR] Page {page_num + 1}: extracted {len(text)} chars')
+            except Exception as e:
+                print(f'  [OCR] Page {page_num + 1}: failed - {e}')
+                text = ''
         if text:
             page_texts.append({
                 'page_num': page_num + 1,
