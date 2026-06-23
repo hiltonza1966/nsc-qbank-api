@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
@@ -149,7 +149,12 @@ router.post('/batch', async (req, res) => {
           [sessionId, yearId, gradeId, subjectId, paperId, assessmentTypeId, assessmentBodyId, `${paperCode}_QP_Memo.pdf`, crypto.createHash('sha256').update(paperCode).digest('hex').substring(0, 64), 'v30-batch', totalItems, totalMarks, 150, totalMarks, greenCount, 0, totalItems - greenCount, 'imported', null, now, now, paperCode, 0]
         );
 
-        const items = parseResult.items || [];
+        const items = [
+          ...(parseResult.green_items || []),
+          ...(parseResult.yellow_items || []),
+          ...(parseResult.red_items || []),
+          ...(parseResult.qp_only_items || [])
+        ];
         for (const item of items) {
           await db.execute(
             `INSERT INTO parse_results (session_id, paper_code, question_number, question_text, answer_text, parsed_type_id, parsed_section, parser_extracted_marks, expected_marks, auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes, is_memo, created_at, updated_at)
@@ -158,7 +163,13 @@ router.post('/batch', async (req, res) => {
           );
         }
 
-        for (const item of items) {
+        const memoItems = [
+          ...(parseResult.green_items || []),
+          ...(parseResult.yellow_items || []),
+          ...(parseResult.red_items || []),
+          ...(parseResult.memo_only_items || [])
+        ];
+        for (const item of memoItems) {
           await db.execute(
             `INSERT INTO parse_memos (session_id, paper_code, question_number, question_text, answer_text, parser_extracted_marks, expected_marks, auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -189,3 +200,4 @@ router.get('/batch/status', async (req, res) => {
 });
 
 module.exports = router;
+
