@@ -32,3 +32,5 @@ check_all_schemas.js
 check_qp_schema.js
 
 check_qp_tables.js
+
+HANDOVER_v34.md
