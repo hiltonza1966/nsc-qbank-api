@@ -23,6 +23,8 @@ import ReviewBoard from './pages/ReviewBoard';
 import ReviewerDashboard from './pages/ReviewerDashboard';
 import AdminAssignmentPanel from './pages/AdminAssignmentPanel';
 import ModeratorDashboard from './pages/ModeratorDashboard';
+import QPMemoRegister from './pages/QPMemoRegister';
+import CapsRegister from './pages/CapsRegister';
 
 // ============================================
 // TYPES
@@ -154,6 +156,8 @@ const LoadingFallback: React.FC = () => (
 const Navigation: React.FC = () => {
   const [userRole, setUserRole] = useState('author');
   const [reviewsOpen, setReviewsOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [capsParserOpen, setCapsParserOpen] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -189,6 +193,13 @@ const Navigation: React.FC = () => {
                          location.pathname === '/reviewer-dashboard' || 
                          location.pathname === '/moderator-dashboard' ||
                          location.pathname === '/review-board';
+
+  const isWizardActive = location.pathname === '/wizard' || 
+                         location.pathname === '/batch-parser' ||
+                         location.pathname === '/qp-memo-register';
+
+  const isCapsParserActive = location.pathname === '/caps-parser' || 
+                             location.pathname === '/caps-register';
 
   return (
     <nav style={navStyle}>
@@ -242,11 +253,90 @@ const Navigation: React.FC = () => {
 
       <Link to="/templates" style={location.pathname === '/templates' ? activeLinkStyle : linkStyle}>Templates</Link>
       <Link to="/master-template" style={location.pathname === '/master-template' ? activeLinkStyle : linkStyle}>Master Template</Link>
-      <Link to="/wizard" style={location.pathname === '/wizard' ? activeLinkStyle : linkStyle}>Wizard</Link>
-      <Link to="/batch-parser" style={location.pathname === '/batch-parser' ? activeLinkStyle : linkStyle}>Batch Parser</Link>
+
+      {/* Wizard Dropdown */}
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={() => setWizardOpen(!wizardOpen)}
+          onMouseEnter={() => setWizardOpen(true)}
+          style={{
+            ...linkStyle,
+            ...(isWizardActive ? activeLinkStyle : {}),
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          Wizard
+          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: wizardOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+        </button>
+        {wizardOpen && (
+          <div 
+            onMouseLeave={() => setWizardOpen(false)}
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              background: '#1f2937',
+              borderRadius: '4px',
+              padding: '8px 0',
+              minWidth: '200px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+              zIndex: 1000
+            }}
+          >
+            <Link to="/wizard" onClick={() => setWizardOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Import Wizard</Link>
+            <Link to="/batch-parser" onClick={() => setWizardOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Batch Parser</Link>
+            <Link to="/qp-memo-register" onClick={() => setWizardOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>QP & Memo Register</Link>
+          </div>
+        )}
+      </div>
+
       <Link to="/caps-linker" style={location.pathname === '/caps-linker' ? activeLinkStyle : linkStyle}>CAPS Linker</Link>
       <Link to="/caps-review" style={location.pathname === '/caps-review' ? activeLinkStyle : linkStyle}>CAPS Review</Link>
-      <Link to="/caps-parser" style={location.pathname === '/caps-parser' ? activeLinkStyle : linkStyle}>CAPS Parser</Link>
+
+      {/* CAPS Parser Dropdown */}
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={() => setCapsParserOpen(!capsParserOpen)}
+          onMouseEnter={() => setCapsParserOpen(true)}
+          style={{
+            ...linkStyle,
+            ...(isCapsParserActive ? activeLinkStyle : {}),
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          CAPS Parser
+          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: capsParserOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>&#9660;</span>
+        </button>
+        {capsParserOpen && (
+          <div
+            onMouseLeave={() => setCapsParserOpen(false)}
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              background: '#1f2937',
+              borderRadius: '4px',
+              padding: '8px 0',
+              minWidth: '200px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+              zIndex: 1000
+            }}
+          >
+            <Link to="/caps-parser" onClick={() => setCapsParserOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>CAPS Parser</Link>
+            <Link to="/caps-register" onClick={() => setCapsParserOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>CAPS Register</Link>
+          </div>
+        )}
+      </div>
       {userRole === 'admin' && (
         <Link to="/admin" style={location.pathname === '/admin' ? activeLinkStyle : linkStyle}>Admin</Link>
       )}
@@ -258,7 +348,7 @@ const Navigation: React.FC = () => {
 };
 
 // ============================================
-// PLACEHOLDER PAGES (for routes not yet built)
+// PLACEHOLDER PAGES
 // ============================================
 const PlaceholderPage: React.FC<PlaceholderProps> = ({ title }) => (
   <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif', maxWidth: '800px', margin: '0 auto' }}>
@@ -329,6 +419,8 @@ const App: React.FC = () => {
                 <Route path="/master-template" element={<MasterTemplate />} />
                 <Route path="/wizard" element={<WizardPage />} />
                 <Route path="/batch-parser" element={<BatchParserDashboard />} />
+                <Route path="/qp-memo-register" element={<QPMemoRegister />} />
+                <Route path="/caps-register" element={<CapsRegister />} />
                 <Route path="/caps-linker" element={<CAPSManualLinker />} />
                 <Route path="/caps-review" element={<CapsReviewPage />} />
                 <Route path="/caps-parser" element={<CAPSParserPage />} />
