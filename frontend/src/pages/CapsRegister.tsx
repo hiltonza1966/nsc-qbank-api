@@ -338,15 +338,6 @@ export default function CapsRegister() {
               <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>Sets term for all NULL/empty records</p>
             </div>
 
-            {/* Auto fix term */}
-            <div>
-              <label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Auto Term</label>
-              <button onClick={autoFixTerm} disabled={fixing} style={{ padding: '8px 16px', background: '#06b6d4', color: 'white', border: 'none', borderRadius: '6px', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 'bold', opacity: fixing ? 0.6 : 1 }}>
-                {fixing ? 'Working...' : 'Auto Fix Term'}
-              </button>
-              <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>Smart distribute terms 1-4</p>
-            </div>
-
             {/* Corporate Fix Button */}
             <div>
               <button
@@ -426,7 +417,16 @@ export default function CapsRegister() {
                   <td style={{ padding: '12px', textAlign: 'center' }}><MatchBadge match={row.poa_topic_match} label={row.poa_topic_variance === 0 ? 'Match' : `Diff ${row.poa_topic_variance}`} /></td>
                   <td style={{ padding: '12px', textAlign: 'center' }}><MatchBadge match={row.atp_subtopic_match} label={row.atp_subtopic_variance === 0 ? 'Match' : `Diff ${row.atp_subtopic_variance}`} /></td>
                   <td style={{ padding: '12px', textAlign: 'center' }}><MatchBadge match={row.poa_subtopic_match} label={row.poa_subtopic_variance === 0 ? 'Match' : `Diff ${row.poa_subtopic_variance}`} /></td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}><ErrorBadge count={row.error_count} /></td>
+                  <td style={{ padding: '12px', textAlign: 'center' }}>
+                    <ErrorBadge count={row.error_count} />
+                    {row.error_count > 0 && (
+                      <div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px', maxWidth: '250px', lineHeight: '1.4', textAlign: 'left' }}>
+                        {row.data_quality_issues.map((issue: string, i: number) => (
+                          <div key={i} style={{ marginBottom: '2px' }}>• {issue}</div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))
             )}

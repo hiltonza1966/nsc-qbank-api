@@ -495,4 +495,187 @@ router.post('/qp-memo-register/corporate-fix', async (req, res) => {
   }
 });
 
+
+// ============================================
+// GET /api/v2/qp-memo-register/items/:paper_code
+// Get all QP and Memo items for a specific paper
+// ============================================
+router.get('/qp-memo-register/items/:paper_code', async (req, res) => {
+  try {
+    const db = req.db;
+    const { paper_code } = req.params;
+
+    // Get QP items
+    const [qpItems] = await db.query(
+      'SELECT result_id, question_number, question_text, answer_text, expected_marks, auto_corrected_marks, correction_status, variance, is_red_flag, user_corrected_marks, reviewer_notes, created_at FROM parse_results WHERE paper_code = ? AND is_memo = 0 ORDER BY question_number',
+      [paper_code]
+    );
+
+    // Get Memo items
+    const [memoItems] = await db.query(
+      'SELECT memo_id, question_number, question_text, answer_text, expected_marks, auto_corrected_marks, correction_status, variance, is_red_flag, user_corrected_marks, reviewer_notes, created_at FROM parse_memos WHERE paper_code = ? ORDER BY question_number',
+      [paper_code]
+    );
+
+    res.json({
+      success: true,
+      paper_code: paper_code,
+      qp_items: qpItems,
+      memo_items: memoItems
+    });
+  } catch (error) {
+    console.error('Error fetching items:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// PUT /api/v2/qp-memo-register/qp/:result_id
+// Update a QP item
+// ============================================
+router.put('/qp-memo-register/qp/:result_id', async (req, res) => {
+  try {
+    const db = req.db;
+    const { result_id } = req.params;
+    const { question_number, question_text, expected_marks, auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes } = req.body;
+
+    const updates = [];
+    const params = [];
+
+    if (question_number !== undefined) { updates.push('question_number = ?'); params.push(question_number); }
+    if (question_text !== undefined) { updates.push('question_text = ?'); params.push(question_text); }
+    if (expected_marks !== undefined) { updates.push('expected_marks = ?'); params.push(expected_marks); }
+    if (auto_corrected_marks !== undefined) { updates.push('auto_corrected_marks = ?'); params.push(auto_corrected_marks); }
+    if (correction_status !== undefined) { updates.push('correction_status = ?'); params.push(correction_status); }
+    if (user_corrected_marks !== undefined) { updates.push('user_corrected_marks = ?'); params.push(user_corrected_marks); }
+    if (reviewer_notes !== undefined) { updates.push('reviewer_notes = ?'); params.push(reviewer_notes); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    params.push(result_id);
+    const query = `UPDATE parse_results SET ${updates.join(', ')} WHERE result_id = ?`;
+    const [result] = await db.query(query, params);
+
+    res.json({ success: true, message: 'QP item updated', affected_rows: result.affectedRows });
+  } catch (error) {
+    console.error('Error updating QP item:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// PUT /api/v2/qp-memo-register/memo/:memo_id
+// Update a Memo item
+// ============================================
+router.put('/qp-memo-register/memo/:memo_id', async (req, res) => {
+  try {
+    const db = req.db;
+    const { memo_id } = req.params;
+    const { question_number, question_text, answer_text, expected_marks, auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes } = req.body;
+
+    const updates = [];
+    const params = [];
+
+    if (question_number !== undefined) { updates.push('question_number = ?'); params.push(question_number); }
+    if (question_text !== undefined) { updates.push('question_text = ?'); params.push(question_text); }
+    if (answer_text !== undefined) { updates.push('answer_text = ?'); params.push(answer_text); }
+    if (expected_marks !== undefined) { updates.push('expected_marks = ?'); params.push(expected_marks); }
+    if (auto_corrected_marks !== undefined) { updates.push('auto_corrected_marks = ?'); params.push(auto_corrected_marks); }
+    if (correction_status !== undefined) { updates.push('correction_status = ?'); params.push(correction_status); }
+    if (user_corrected_marks !== undefined) { updates.push('user_corrected_marks = ?'); params.push(user_corrected_marks); }
+    if (reviewer_notes !== undefined) { updates.push('reviewer_notes = ?'); params.push(reviewer_notes); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    params.push(memo_id);
+    const query = `UPDATE parse_memos SET ${updates.join(', ')} WHERE memo_id = ?`;
+    const [result] = await db.query(query, params);
+
+    res.json({ success: true, message: 'Memo item updated', affected_rows: result.affectedRows });
+  } catch (error) {
+    console.error('Error updating memo item:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// POST /api/v2/qp-memo-register/qp
+// Create a new QP item
+// ============================================
+router.post('/qp-memo-register/qp', async (req, res) => {
+  try {
+    const db = req.db;
+    const { paper_code, question_number, question_text, expected_marks, session_id } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO parse_results (session_id, paper_code, question_number, question_text, expected_marks, is_memo, created_at) VALUES (?, ?, ?, ?, ?, 0, NOW())',
+      [session_id || 'manual', paper_code, question_number, question_text, expected_marks || 0]
+    );
+
+    res.json({ success: true, message: 'QP item created', result_id: result.insertId });
+  } catch (error) {
+    console.error('Error creating QP item:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// POST /api/v2/qp-memo-register/memo
+// Create a new Memo item
+// ============================================
+router.post('/qp-memo-register/memo', async (req, res) => {
+  try {
+    const db = req.db;
+    const { paper_code, question_number, question_text, answer_text, expected_marks, session_id } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO parse_memos (session_id, paper_code, question_number, question_text, answer_text, expected_marks, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+      [session_id || 'manual', paper_code, question_number, question_text, answer_text, expected_marks || 0]
+    );
+
+    res.json({ success: true, message: 'Memo item created', memo_id: result.insertId });
+  } catch (error) {
+    console.error('Error creating memo item:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// DELETE /api/v2/qp-memo-register/qp/:result_id
+// Delete a QP item
+// ============================================
+router.delete('/qp-memo-register/qp/:result_id', async (req, res) => {
+  try {
+    const db = req.db;
+    const { result_id } = req.params;
+
+    const [result] = await db.query('DELETE FROM parse_results WHERE result_id = ?', [result_id]);
+    res.json({ success: true, message: 'QP item deleted', affected_rows: result.affectedRows });
+  } catch (error) {
+    console.error('Error deleting QP item:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// DELETE /api/v2/qp-memo-register/memo/:memo_id
+// Delete a Memo item
+// ============================================
+router.delete('/qp-memo-register/memo/:memo_id', async (req, res) => {
+  try {
+    const db = req.db;
+    const { memo_id } = req.params;
+
+    const [result] = await db.query('DELETE FROM parse_memos WHERE memo_id = ?', [memo_id]);
+    res.json({ success: true, message: 'Memo item deleted', affected_rows: result.affectedRows });
+  } catch (error) {
+    console.error('Error deleting memo item:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;

@@ -77,6 +77,13 @@ export default function QPMemoRegister() {
   // Diagnostics panel
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
+  // CRUD State
+  const [crudPanelOpen, setCrudPanelOpen] = useState(false);
+  const [crudPaperCode, setCrudPaperCode] = useState('');
+  const [crudItems, setCrudItems] = useState<{ qp_items: any[], memo_items: any[] }>({ qp_items: [], memo_items: [] });
+  const [crudLoading, setCrudLoading] = useState(false);
+  const [crudMessage, setCrudMessage] = useState('');
+
   useEffect(() => {
     fetchData();
   }, [dataSource, viewMode]);
@@ -181,6 +188,133 @@ export default function QPMemoRegister() {
       else { setError(result.message); }
     } catch (err: any) { setError(err.message); }
     finally { setFixing(false); }
+  };
+
+  // CRUD Functions
+  const openCrudPanel = async (paper_code: string) => {
+    setCrudPaperCode(paper_code);
+    setCrudPanelOpen(true);
+    setCrudLoading(true);
+    setCrudMessage('');
+    try {
+      const res = await fetch(`http://localhost:4000/api/v2/qp-memo-register/items/${encodeURIComponent(paper_code)}`);
+      const result = await res.json();
+      if (result.success) {
+        setCrudItems({ qp_items: result.qp_items, memo_items: result.memo_items });
+      } else {
+        setCrudMessage(result.message);
+      }
+    } catch (err: any) {
+      setCrudMessage(err.message);
+    } finally {
+      setCrudLoading(false);
+    }
+  };
+
+  const updateQpItem = async (result_id: number, field: string, value: any) => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/v2/qp-memo-register/qp/${result_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+      const result = await res.json();
+      if (result.success) {
+        setCrudMessage('QP item updated');
+        setTimeout(() => setCrudMessage(''), 2000);
+      } else {
+        setCrudMessage(result.message);
+      }
+    } catch (err: any) {
+      setCrudMessage(err.message);
+    }
+  };
+
+  const updateMemoItem = async (memo_id: number, field: string, value: any) => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/v2/qp-memo-register/memo/${memo_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+      const result = await res.json();
+      if (result.success) {
+        setCrudMessage('Memo item updated');
+        setTimeout(() => setCrudMessage(''), 2000);
+      } else {
+        setCrudMessage(result.message);
+      }
+    } catch (err: any) {
+      setCrudMessage(err.message);
+    }
+  };
+
+  const deleteQpItem = async (result_id: number) => {
+    if (!confirm('Delete this QP item?')) return;
+    try {
+      const res = await fetch(`http://localhost:4000/api/v2/qp-memo-register/qp/${result_id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (result.success) {
+        setCrudItems(prev => ({ ...prev, qp_items: prev.qp_items.filter(i => i.result_id !== result_id) }));
+        setCrudMessage('QP item deleted');
+      }
+    } catch (err: any) {
+      setCrudMessage(err.message);
+    }
+  };
+
+  const deleteMemoItem = async (memo_id: number) => {
+    if (!confirm('Delete this memo item?')) return;
+    try {
+      const res = await fetch(`http://localhost:4000/api/v2/qp-memo-register/memo/${memo_id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (result.success) {
+        setCrudItems(prev => ({ ...prev, memo_items: prev.memo_items.filter(i => i.memo_id !== memo_id) }));
+        setCrudMessage('Memo item deleted');
+      }
+    } catch (err: any) {
+      setCrudMessage(err.message);
+    }
+  };
+
+  const createQpItem = async () => {
+    const qn = prompt('Question number:');
+    if (!qn) return;
+    const marks = prompt('Expected marks:', '0');
+    try {
+      const res = await fetch('http://localhost:4000/api/v2/qp-memo-register/qp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paper_code: crudPaperCode, question_number: qn, expected_marks: parseInt(marks || '0') })
+      });
+      const result = await res.json();
+      if (result.success) {
+        setCrudItems(prev => ({ ...prev, qp_items: [...prev.qp_items, { result_id: result.result_id, question_number: qn, expected_marks: parseInt(marks || '0'), question_text: '', auto_corrected_marks: null, correction_status: 'parser_missing' }] }));
+        setCrudMessage('QP item created');
+      }
+    } catch (err: any) {
+      setCrudMessage(err.message);
+    }
+  };
+
+  const createMemoItem = async () => {
+    const qn = prompt('Question number:');
+    if (!qn) return;
+    const marks = prompt('Expected marks:', '0');
+    try {
+      const res = await fetch('http://localhost:4000/api/v2/qp-memo-register/memo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paper_code: crudPaperCode, question_number: qn, expected_marks: parseInt(marks || '0') })
+      });
+      const result = await res.json();
+      if (result.success) {
+        setCrudItems(prev => ({ ...prev, memo_items: [...prev.memo_items, { memo_id: result.memo_id, question_number: qn, expected_marks: parseInt(marks || '0'), question_text: '', answer_text: '', auto_corrected_marks: null, correction_status: 'parser_missing' }] }));
+        setCrudMessage('Memo item created');
+      }
+    } catch (err: any) {
+      setCrudMessage(err.message);
+    }
   };
 
   const MatchBadge = ({ match, label }: { match: boolean; label: string }) => (
@@ -434,11 +568,18 @@ export default function QPMemoRegister() {
                     <VarianceBadge value={row.corrected_marks_variance} />
                   </td>
                   <td style={{ padding: '12px', textAlign: 'center' }}>
+                    <button
+                      onClick={() => openCrudPanel(row.paper_code)}
+                      style={{ padding: '4px 10px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', marginBottom: '4px' }}
+                    >
+                      Edit Items
+                    </button>
                     <IssueBadge count={row.error_count} />
                     {row.error_count > 0 && (
-                      <div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px', maxWidth: '200px' }}>
-                        {row.data_quality_issues.slice(0, 2).join(', ')}
-                        {row.data_quality_issues.length > 2 && ` +${row.data_quality_issues.length - 2} more`}
+                      <div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px', maxWidth: '250px', lineHeight: '1.4' }}>
+                        {row.data_quality_issues.map((issue, i) => (
+                          <div key={i} style={{ marginBottom: '2px' }}>• {issue}</div>
+                        ))}
                       </div>
                     )}
                   </td>
@@ -511,6 +652,83 @@ export default function QPMemoRegister() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CRUD Panel Modal */}
+      {crudPanelOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', borderRadius: '12px', width: '90%', maxWidth: '1200px', maxHeight: '90vh', overflow: 'auto', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Edit Items: {crudPaperCode}</h2>
+              <button onClick={() => setCrudPanelOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>×</button>
+            </div>
+
+            {crudMessage && (
+              <div style={{ background: '#d1fae5', padding: '8px 12px', borderRadius: '6px', marginBottom: '12px', color: '#065f46' }}>
+                {crudMessage}
+              </div>
+            )}
+
+            {crudLoading ? (
+              <div>Loading items...</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                {/* QP Items Column */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#3b82f6' }}>QP Items ({crudItems.qp_items.length})</h3>
+                    <button onClick={createQpItem} style={{ padding: '6px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>+ Add QP</button>
+                  </div>
+                  <div style={{ maxHeight: '500px', overflow: 'auto' }}>
+                    {crudItems.qp_items.length === 0 ? (
+                      <p style={{ color: '#9ca3af', fontSize: '13px' }}>No QP items</p>
+                    ) : (
+                      crudItems.qp_items.map(item => (
+                        <div key={item.result_id} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px', marginBottom: '8px', background: item.is_red_flag ? '#fef2f2' : 'white' }}>
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                            <input type="text" defaultValue={item.question_number} onBlur={(e) => updateQpItem(item.result_id, 'question_number', e.target.value)} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px' }} placeholder="Q#" />
+                            <input type="number" defaultValue={item.expected_marks} onBlur={(e) => updateQpItem(item.result_id, 'expected_marks', parseInt(e.target.value))} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px' }} placeholder="Marks" />
+                            <input type="number" defaultValue={item.auto_corrected_marks || ''} onBlur={(e) => updateQpItem(item.result_id, 'auto_corrected_marks', e.target.value ? parseInt(e.target.value) : null)} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px' }} placeholder="Corrected" />
+                            <button onClick={() => deleteQpItem(item.result_id)} style={{ padding: '4px 8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del</button>
+                          </div>
+                          <textarea defaultValue={item.question_text || ''} onBlur={(e) => updateQpItem(item.result_id, 'question_text', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px', minHeight: '40px', resize: 'vertical' }} placeholder="Question text..." />
+                          <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>Status: {item.correction_status} | Variance: {item.variance || 0}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Memo Items Column */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#8b5cf6' }}>Memo Items ({crudItems.memo_items.length})</h3>
+                    <button onClick={createMemoItem} style={{ padding: '6px 12px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>+ Add Memo</button>
+                  </div>
+                  <div style={{ maxHeight: '500px', overflow: 'auto' }}>
+                    {crudItems.memo_items.length === 0 ? (
+                      <p style={{ color: '#9ca3af', fontSize: '13px' }}>No memo items</p>
+                    ) : (
+                      crudItems.memo_items.map(item => (
+                        <div key={item.memo_id} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px', marginBottom: '8px', background: item.is_red_flag ? '#fef2f2' : 'white' }}>
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                            <input type="text" defaultValue={item.question_number} onBlur={(e) => updateMemoItem(item.memo_id, 'question_number', e.target.value)} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px' }} placeholder="Q#" />
+                            <input type="number" defaultValue={item.expected_marks} onBlur={(e) => updateMemoItem(item.memo_id, 'expected_marks', parseInt(e.target.value))} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px' }} placeholder="Marks" />
+                            <input type="number" defaultValue={item.auto_corrected_marks || ''} onBlur={(e) => updateMemoItem(item.memo_id, 'auto_corrected_marks', e.target.value ? parseInt(e.target.value) : null)} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px' }} placeholder="Corrected" />
+                            <button onClick={() => deleteMemoItem(item.memo_id)} style={{ padding: '4px 8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del</button>
+                          </div>
+                          <textarea defaultValue={item.question_text || ''} onBlur={(e) => updateMemoItem(item.memo_id, 'question_text', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px', minHeight: '30px', resize: 'vertical' }} placeholder="Question text..." />
+                          <textarea defaultValue={item.answer_text || ''} onBlur={(e) => updateMemoItem(item.memo_id, 'answer_text', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px', minHeight: '30px', resize: 'vertical', marginTop: '4px' }} placeholder="Answer text..." />
+                          <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>Status: {item.correction_status} | Variance: {item.variance || 0}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
