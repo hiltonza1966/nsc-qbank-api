@@ -1,0 +1,498 @@
+const express = require('express');
+const router = express.Router();
+
+// ============================================
+// GET /api/v2/qp-memo-register
+// QP & Memo Diagnostic Register — Data Quality Dashboard
+// ============================================
+router.get('/qp-memo-register', async (req, res) => {
+  try {
+    const db = req.db;
+    const { data_source, show_errors_only, assessment_body, assessment_type, session, grade } = req.query;
+
+    const source = data_source || 'parsed';
+    let results = [];
+    let diagnostics = { orphaned_memos: [], null_fields: [], missing_memos: [] };
+
+    if (source === 'parsed') {
+      // Get all distinct paper_codes from parse_results (QP) and parse_memos
+      const [allPapers] = await db.query(`
+        SELECT DISTINCT paper_code FROM (
+          SELECT paper_code FROM parse_results WHERE paper_code IS NOT NULL AND paper_code != '' AND is_memo = 0
+          UNION
+          SELECT paper_code FROM parse_memos WHERE paper_code IS NOT NULL AND paper_code != ''
+        ) x
+        WHERE paper_code IS NOT NULL AND paper_code != ''
+        ORDER BY paper_code
+      `);
+
+      // Get QP data from parse_results (is_memo = 0)
+      const [qpData] = await db.query(`
+        SELECT 
+          paper_code,
+          COUNT(*) as qp_item_count,
+          SUM(COALESCE(expected_marks, 0)) as qp_expected_marks,
+          SUM(COALESCE(auto_corrected_marks, 0)) as qp_corrected_marks,
+          SUM(CASE WHEN auto_corrected_marks IS NULL THEN 1 ELSE 0 END) as qp_null_marks,
+          SUM(CASE WHEN question_text IS NULL OR question_text = '' THEN 1 ELSE 0 END) as qp_empty_text
+        FROM parse_results
+        WHERE paper_code IS NOT NULL AND paper_code != '' AND is_memo = 0
+        GROUP BY paper_code
+      `);
+
+      // Get Memo data from parse_memos
+      const [memoData] = await db.query(`
+        SELECT 
+          paper_code,
+          COUNT(*) as memo_item_count,
+          SUM(COALESCE(expected_marks, 0)) as memo_expected_marks,
+          SUM(COALESCE(auto_corrected_marks, 0)) as memo_corrected_marks,
+          SUM(CASE WHEN auto_corrected_marks IS NULL THEN 1 ELSE 0 END) as memo_null_marks,
+          SUM(CASE WHEN answer_text IS NULL OR answer_text = '' THEN 1 ELSE 0 END) as memo_empty_text
+        FROM parse_memos
+        WHERE paper_code IS NOT NULL AND paper_code != ''
+        GROUP BY paper_code
+      `);
+
+      // Get session metadata for each paper
+      const [sessionMeta] = await db.query(`
+        SELECT DISTINCT paper_code, year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id
+        FROM parse_sessions
+        WHERE paper_code IS NOT NULL AND paper_code != ''
+      `);
+
+      const sessionMap = new Map();
+      sessionMeta.forEach(s => {
+        sessionMap.set(s.paper_code, s);
+      });
+
+      // Get subject names
+      const [subjects] = await db.query('SELECT subject_id, subject_name, subject_official_code FROM lookup_subjects WHERE is_active = 1');
+      const subjectMap = new Map(subjects.map(s => [s.subject_id, s]));
+
+      // Get grade names
+      const [grades] = await db.query('SELECT grade_id, grade_number FROM lookup_grades WHERE is_active = 1');
+      const gradeMap = new Map(grades.map(g => [g.grade_id, g.grade_number]));
+
+      // Get paper names
+      const [papers] = await db.query('SELECT paper_id, paper_no FROM lookup_papers WHERE is_active = 1');
+      const paperMap = new Map(papers.map(p => [p.paper_id, p.paper_no]));
+
+      // Combine data
+      const paperDataMap = new Map();
+
+      for (const row of qpData) {
+        paperDataMap.set(row.paper_code, {
+          paper_code: row.paper_code,
+          qp_item_count: parseInt(row.qp_item_count) || 0,
+          qp_expected_marks: parseInt(row.qp_expected_marks) || 0,
+          qp_corrected_marks: parseInt(row.qp_corrected_marks) || 0,
+          qp_null_marks: parseInt(row.qp_null_marks) || 0,
+          qp_empty_text: parseInt(row.qp_empty_text) || 0,
+          memo_item_count: 0,
+          memo_expected_marks: 0,
+          memo_corrected_marks: 0,
+          memo_null_marks: 0,
+          memo_empty_text: 0,
+          data_quality_issues: []
+        });
+      }
+
+      for (const row of memoData) {
+        if (paperDataMap.has(row.paper_code)) {
+          const existing = paperDataMap.get(row.paper_code);
+          existing.memo_item_count = parseInt(row.memo_item_count) || 0;
+          existing.memo_expected_marks = parseInt(row.memo_expected_marks) || 0;
+          existing.memo_corrected_marks = parseInt(row.memo_corrected_marks) || 0;
+          existing.memo_null_marks = parseInt(row.memo_null_marks) || 0;
+          existing.memo_empty_text = parseInt(row.memo_empty_text) || 0;
+        } else {
+          // Memo exists but no QP - this is an orphaned memo
+          paperDataMap.set(row.paper_code, {
+            paper_code: row.paper_code,
+            qp_item_count: 0,
+            qp_expected_marks: 0,
+            qp_corrected_marks: 0,
+            qp_null_marks: 0,
+            qp_empty_text: 0,
+            memo_item_count: parseInt(row.memo_item_count) || 0,
+            memo_expected_marks: parseInt(row.memo_expected_marks) || 0,
+            memo_corrected_marks: parseInt(row.memo_corrected_marks) || 0,
+            memo_null_marks: parseInt(row.memo_null_marks) || 0,
+            memo_empty_text: parseInt(row.memo_empty_text) || 0,
+            data_quality_issues: ['Memo exists but no QP data']
+          });
+        }
+      }
+
+      results = Array.from(paperDataMap.values());
+
+      // Enrich with session metadata and detect issues
+      results = results.map(row => {
+        const meta = sessionMap.get(row.paper_code);
+        const issues = [...row.data_quality_issues];
+
+        let subjectName = '';
+        let gradeNumber = null;
+        let paperNo = null;
+        let yearId = null;
+
+        if (meta) {
+          const subject = subjectMap.get(meta.subject_id);
+          subjectName = subject ? subject.subject_name : '';
+          gradeNumber = gradeMap.get(meta.grade_id);
+          paperNo = paperMap.get(meta.paper_id);
+          yearId = meta.year_id;
+        }
+
+        // Parse paper_code: SUBJ_P#_YYYY_NOV
+        const parts = row.paper_code.split('_');
+        const subjectCode = parts[0] || '';
+        const parsedPaperNo = parts[1] ? parts[1].replace('P', '') : '';
+        const year = parts[2] || '';
+        const sessionCode = parts[3] || '';
+
+        // Error detection
+        if (row.qp_item_count > 0 && row.memo_item_count === 0) {
+          issues.push('Missing memo items');
+        }
+        if (row.qp_item_count === 0 && row.memo_item_count > 0) {
+          issues.push('Missing QP items');
+        }
+        if (row.qp_item_count > 0 && row.memo_item_count > 0 && row.qp_item_count !== row.memo_item_count) {
+          const diff = row.qp_item_count - row.memo_item_count;
+          issues.push(`Item count mismatch: ${diff > 0 ? '+' : ''}${diff}`);
+        }
+        if (row.qp_expected_marks > 0 && row.memo_expected_marks > 0 && row.qp_expected_marks !== row.memo_expected_marks) {
+          const diff = row.qp_expected_marks - row.memo_expected_marks;
+          issues.push(`Expected marks mismatch: ${diff > 0 ? '+' : ''}${diff}`);
+        }
+        if (row.qp_corrected_marks > 0 && row.memo_corrected_marks > 0 && row.qp_corrected_marks !== row.memo_corrected_marks) {
+          const diff = row.qp_corrected_marks - row.memo_corrected_marks;
+          issues.push(`Corrected marks mismatch: ${diff > 0 ? '+' : ''}${diff}`);
+        }
+        if (row.qp_null_marks > 0) {
+          issues.push(`${row.qp_null_marks} QP items with NULL marks`);
+        }
+        if (row.memo_null_marks > 0) {
+          issues.push(`${row.memo_null_marks} memo items with NULL marks`);
+        }
+        if (row.qp_empty_text > 0) {
+          issues.push(`${row.qp_empty_text} QP items with empty text`);
+        }
+        if (row.memo_empty_text > 0) {
+          issues.push(`${row.memo_empty_text} memo items with empty text`);
+        }
+
+        return {
+          paper_code: row.paper_code,
+          subject_code: subjectCode,
+          subject_name: subjectName,
+          paper_no: paperNo || parsedPaperNo,
+          year: yearId || year,
+          session: sessionCode,
+          grade: gradeNumber,
+          qp_item_count: row.qp_item_count,
+          memo_item_count: row.memo_item_count,
+          items_match: row.qp_item_count === row.memo_item_count && row.qp_item_count > 0,
+          item_variance: row.qp_item_count - row.memo_item_count,
+          qp_expected_marks: row.qp_expected_marks,
+          memo_expected_marks: row.memo_expected_marks,
+          marks_match: row.qp_expected_marks === row.memo_expected_marks && row.qp_expected_marks > 0,
+          marks_variance: row.qp_expected_marks - row.memo_expected_marks,
+          qp_corrected_marks: row.qp_corrected_marks,
+          memo_corrected_marks: row.memo_corrected_marks,
+          corrected_marks_match: row.qp_corrected_marks === row.memo_corrected_marks && row.qp_corrected_marks > 0,
+          corrected_marks_variance: row.qp_corrected_marks - row.memo_corrected_marks,
+          has_errors: issues.length > 0,
+          error_count: issues.length,
+          data_quality_issues: issues
+        };
+      });
+
+      // Get orphaned memos (memos with no matching QP)
+      const [orphanedMemos] = await db.query(`
+        SELECT pm.paper_code, pm.question_number, pm.memo_id
+        FROM parse_memos pm
+        LEFT JOIN parse_results pr ON pm.paper_code = pr.paper_code AND pm.question_number = pr.question_number AND pr.is_memo = 0
+        WHERE pr.result_id IS NULL AND pm.paper_code IS NOT NULL AND pm.paper_code != ''
+
+      `);
+      diagnostics.orphaned_memos = orphanedMemos;
+
+      // Get records with NULL paper_code
+      const [nullPaperCodes] = await db.query(`
+        SELECT result_id, question_number, session_id
+        FROM parse_results
+        WHERE paper_code IS NULL OR paper_code = ''
+
+      `);
+      diagnostics.null_fields = nullPaperCodes;
+
+      // Get papers with QP but no memo
+      const [missingMemos] = await db.query(`
+        SELECT pr.paper_code, COUNT(*) as qp_count
+        FROM parse_results pr
+        LEFT JOIN parse_memos pm ON pr.paper_code = pm.paper_code
+        WHERE pr.is_memo = 0 AND pm.memo_id IS NULL AND pr.paper_code IS NOT NULL AND pr.paper_code != ''
+        GROUP BY pr.paper_code
+
+      `);
+      diagnostics.missing_memos = missingMemos;
+
+    } else {
+      // Database source: item_master + item_memos
+      // Note: item_memos is currently EMPTY (0 rows) - this is a known issue
+      const [allPapers] = await db.query(`
+        SELECT DISTINCT source_paper_code as paper_code FROM item_master
+        WHERE source_paper_code IS NOT NULL AND source_paper_code != ''
+        ORDER BY source_paper_code
+      `);
+
+      const [qpData] = await db.query(`
+        SELECT 
+          source_paper_code as paper_code,
+          COUNT(*) as qp_item_count,
+          SUM(COALESCE(marks, 0)) as qp_total_marks
+        FROM item_master
+        WHERE source_paper_code IS NOT NULL AND source_paper_code != ''
+        GROUP BY source_paper_code
+      `);
+
+      const [memoData] = await db.query(`
+        SELECT 
+          im.source_paper_code as paper_code,
+          COUNT(DISTINCT m.memo_id) as memo_item_count,
+          SUM(COALESCE(m.marks, 0)) as memo_total_marks
+        FROM item_master im
+        LEFT JOIN item_memos m ON im.item_id = m.item_id
+        WHERE im.source_paper_code IS NOT NULL AND im.source_paper_code != ''
+        GROUP BY im.source_paper_code
+      `);
+
+      const paperDataMap = new Map();
+
+      for (const row of qpData) {
+        paperDataMap.set(row.paper_code, {
+          paper_code: row.paper_code,
+          qp_item_count: parseInt(row.qp_item_count) || 0,
+          qp_total_marks: parseInt(row.qp_total_marks) || 0,
+          memo_item_count: 0,
+          memo_total_marks: 0,
+          data_quality_issues: []
+        });
+      }
+
+      for (const row of memoData) {
+        if (paperDataMap.has(row.paper_code)) {
+          const existing = paperDataMap.get(row.paper_code);
+          existing.memo_item_count = parseInt(row.memo_item_count) || 0;
+          existing.memo_total_marks = parseInt(row.memo_total_marks) || 0;
+        } else {
+          paperDataMap.set(row.paper_code, {
+            paper_code: row.paper_code,
+            qp_item_count: 0,
+            qp_total_marks: 0,
+            memo_item_count: parseInt(row.memo_item_count) || 0,
+            memo_total_marks: parseInt(row.memo_total_marks) || 0,
+            data_quality_issues: ['Memo exists but no QP in item_master']
+          });
+        }
+      }
+
+      results = Array.from(paperDataMap.values()).map(row => {
+        const issues = [...row.data_quality_issues];
+        const parts = row.paper_code.split('_');
+        const subjectCode = parts[0] || '';
+        const paperNo = parts[1] ? parts[1].replace('P', '') : '';
+        const year = parts[2] || '';
+        const sessionCode = parts[3] || '';
+
+        if (row.qp_item_count > 0 && row.memo_item_count === 0) {
+          issues.push('Missing memo items in database');
+        }
+        if (row.qp_item_count > 0 && row.memo_item_count > 0 && row.qp_item_count !== row.memo_item_count) {
+          const diff = row.qp_item_count - row.memo_item_count;
+          issues.push(`Item count mismatch: ${diff > 0 ? '+' : ''}${diff}`);
+        }
+        if (row.qp_total_marks > 0 && row.memo_total_marks > 0 && row.qp_total_marks !== row.memo_total_marks) {
+          const diff = row.qp_total_marks - row.memo_total_marks;
+          issues.push(`Marks mismatch: ${diff > 0 ? '+' : ''}${diff}`);
+        }
+
+        return {
+          paper_code: row.paper_code,
+          subject_code: subjectCode,
+          subject_name: '',
+          paper_no: paperNo,
+          year: year,
+          session: sessionCode,
+          grade: null,
+          qp_item_count: row.qp_item_count,
+          memo_item_count: row.memo_item_count,
+          items_match: row.qp_item_count === row.memo_item_count && row.qp_item_count > 0,
+          item_variance: row.qp_item_count - row.memo_item_count,
+          qp_expected_marks: row.qp_total_marks,
+          memo_expected_marks: row.memo_total_marks,
+          marks_match: row.qp_total_marks === row.memo_total_marks && row.qp_total_marks > 0,
+          marks_variance: row.qp_total_marks - row.memo_total_marks,
+          qp_corrected_marks: 0,
+          memo_corrected_marks: 0,
+          corrected_marks_match: false,
+          corrected_marks_variance: 0,
+          has_errors: issues.length > 0,
+          error_count: issues.length,
+          data_quality_issues: issues
+        };
+      });
+    }
+
+    // Apply filters
+    if (assessment_body) {
+      results = results.filter(r => r.paper_code.includes(assessment_body));
+    }
+    if (assessment_type) {
+      results = results.filter(r => r.paper_code.includes(assessment_type));
+    }
+    if (session) {
+      results = results.filter(r => r.session === session);
+    }
+    if (grade) {
+      results = results.filter(r => String(r.grade) === grade || r.paper_code.includes(grade));
+    }
+
+    if (show_errors_only === 'true') {
+      results = results.filter(r => r.has_errors);
+    }
+
+    // Sort
+    results.sort((a, b) => {
+      if (b.year !== a.year) return String(b.year).localeCompare(String(a.year));
+      if (a.subject_code !== b.subject_code) return a.subject_code.localeCompare(b.subject_code);
+      return String(a.paper_no).localeCompare(String(b.paper_no));
+    });
+
+    // Filter options
+    const [assessmentBodies] = await db.query('SELECT body_code, body_name FROM lookup_assessment_bodies WHERE is_active = 1 ORDER BY body_code');
+    const [assessmentTypes] = await db.query('SELECT type_code, type_name FROM lookup_assessment_types WHERE is_active = 1 ORDER BY type_code');
+    const [sessions] = await db.query('SELECT session_code, session_name FROM lookup_exam_sessions WHERE is_active = 1 ORDER BY session_code');
+    const [grades] = await db.query('SELECT grade_number, grade_label FROM lookup_grades WHERE is_active = 1 ORDER BY grade_number');
+
+    // Summary
+    // Calculate totals from database directly to ensure accuracy
+    const [qpMarksTotal] = await db.query('SELECT SUM(COALESCE(expected_marks, 0)) as total FROM parse_results WHERE is_memo = 0');
+    const [memoMarksTotal] = await db.query('SELECT SUM(COALESCE(expected_marks, 0)) as total FROM parse_memos');
+    const [qpCorrectedTotal] = await db.query('SELECT SUM(COALESCE(auto_corrected_marks, 0)) as total FROM parse_results WHERE is_memo = 0');
+    const [memoCorrectedTotal] = await db.query('SELECT SUM(COALESCE(auto_corrected_marks, 0)) as total FROM parse_memos');
+
+    const summary = {
+      total_papers: results.length,
+      total_qp_items: results.reduce((sum, r) => sum + r.qp_item_count, 0),
+      total_memo_items: results.reduce((sum, r) => sum + r.memo_item_count, 0),
+      total_expected_marks: (parseInt(qpMarksTotal[0].total) || 0) + (parseInt(memoMarksTotal[0].total) || 0),
+      total_corrected_marks: (parseInt(qpCorrectedTotal[0].total) || 0) + (parseInt(memoCorrectedTotal[0].total) || 0),
+      matched_items: results.filter(r => r.items_match).length,
+      matched_marks: results.filter(r => r.marks_match).length,
+      matched_corrected_marks: results.filter(r => r.corrected_marks_match).length,
+      records_with_errors: results.filter(r => r.has_errors).length,
+      missing_memos: diagnostics.missing_memos.length,
+      orphaned_memos: diagnostics.orphaned_memos.length,
+      null_paper_codes: diagnostics.null_fields.length
+    };
+
+    res.json({
+      success: true,
+      data: results,
+      summary: summary,
+      diagnostics: diagnostics,
+      filters: {
+        assessment_bodies: assessmentBodies,
+        assessment_types: assessmentTypes,
+        sessions: sessions,
+        grades: grades
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching QP & Memo Register:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// POST /api/v2/qp-memo-register/batch-fix-null-marks
+// Fix NULL auto_corrected_marks by copying expected_marks
+// ============================================
+router.post('/qp-memo-register/batch-fix-null-marks', async (req, res) => {
+  try {
+    const db = req.db;
+    const { paper_code, source } = req.body;
+
+    if (source === 'parse_results' || !source) {
+      let query = 'UPDATE parse_results SET auto_corrected_marks = expected_marks WHERE auto_corrected_marks IS NULL';
+      const params = [];
+      if (paper_code) { query += ' AND paper_code = ?'; params.push(paper_code); }
+      const [result] = await db.query(query, params);
+      return res.json({ success: true, message: `Fixed ${result.affectedRows} QP records`, affected_rows: result.affectedRows });
+    } else if (source === 'parse_memos') {
+      let query = 'UPDATE parse_memos SET auto_corrected_marks = expected_marks WHERE auto_corrected_marks IS NULL';
+      const params = [];
+      if (paper_code) { query += ' AND paper_code = ?'; params.push(paper_code); }
+      const [result] = await db.query(query, params);
+      return res.json({ success: true, message: `Fixed ${result.affectedRows} memo records`, affected_rows: result.affectedRows });
+    }
+  } catch (error) {
+    console.error('Error fixing null marks:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// POST /api/v2/qp-memo-register/batch-fix-null-text
+// Fix NULL/empty question_text by flagging for manual review
+// ============================================
+router.post('/qp-memo-register/batch-fix-null-text', async (req, res) => {
+  try {
+    const db = req.db;
+    const { paper_code } = req.body;
+
+    let query = "UPDATE parse_results SET correction_status = 'manual_review' WHERE (question_text IS NULL OR question_text = '')";
+    const params = [];
+    if (paper_code) { query += ' AND paper_code = ?'; params.push(paper_code); }
+    const [result] = await db.query(query, params);
+
+    res.json({ success: true, message: `Flagged ${result.affectedRows} records for manual review`, affected_rows: result.affectedRows });
+  } catch (error) {
+    console.error('Error fixing null text:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// POST /api/v2/qp-memo-register/corporate-fix
+// Complete data fix: NULL marks, NULL paper_codes, missing memos
+// ============================================
+router.post('/qp-memo-register/corporate-fix', async (req, res) => {
+  try {
+    const db = req.db;
+    const results = [];
+
+    // Step 1: Fix NULL auto_corrected_marks in parse_results
+    const [fix1] = await db.query('UPDATE parse_results SET auto_corrected_marks = expected_marks WHERE auto_corrected_marks IS NULL');
+    results.push({ step: 'Fix NULL QP marks', status: `Updated ${fix1.affectedRows} rows` });
+
+    // Step 2: Fix NULL auto_corrected_marks in parse_memos
+    const [fix2] = await db.query('UPDATE parse_memos SET auto_corrected_marks = expected_marks WHERE auto_corrected_marks IS NULL');
+    results.push({ step: 'Fix NULL memo marks', status: `Updated ${fix2.affectedRows} rows` });
+
+    // Step 3: Flag empty question_text for manual review
+    const [fix3] = await db.query("UPDATE parse_results SET correction_status = 'manual_review' WHERE question_text IS NULL OR question_text = ''");
+    results.push({ step: 'Flag empty QP text', status: `Updated ${fix3.affectedRows} rows` });
+
+    res.json({ success: true, message: 'Corporate fix completed', results: results });
+  } catch (error) {
+    console.error('Error corporate fix:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+module.exports = router;
