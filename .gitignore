@@ -24,3 +24,11 @@ check_nulls.js
 verify_caps.js
 
 verify_totals.js
+
+verify_qp_v3.js
+
+check_all_schemas.js
+
+check_qp_schema.js
+
+check_qp_tables.js
