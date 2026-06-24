@@ -18,3 +18,9 @@ uploads/
 temp_wizard/
 *.log.old
 debug.log.old
+
+check_nulls.js
+
+verify_caps.js
+
+verify_totals.js
