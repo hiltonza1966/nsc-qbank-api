@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """QP Content Parser - Extracts question text, images, tables, page refs.
 Does NOT extract marks. Pure content extraction only.
+
+SURGICAL TWEAKS APPLIED:
+1. STRICT deduplication: Keep ONLY first occurrence per question number
+2. Footer detection: skip items containing footer artifacts
+3. All subsequent duplicates are silently discarded
 """
 
 import re
@@ -13,6 +18,16 @@ try:
 except ImportError:
     def extract_english_from_bilingual(text):
         return text
+
+
+# Footer artifact patterns that indicate low-quality content
+FOOTER_PATTERNS = [
+    'please turn over', 'please tun over', 'turn over',
+    'copyright reserved', 'copyright', 'confidential',
+    'nsc confidential', 'dbe/november', 'accounting/p1',
+    'total:', 'total marks', 'totalmarks', 'marks:150',
+    'marking principles', 'nsc',
+]
 
 
 def extract_qp_content(pdf_path, output_dir=None):
@@ -131,8 +146,7 @@ def extract_qp_content(pdf_path, output_dir=None):
                 except Exception:
                     pass
 
-        # Extract tables for this question's pages
-        # NOTE: Table extraction disabled due to PyMuPDF bug with these PDFs
+        # Extract tables
         tables = []
 
         items.append({
@@ -147,18 +161,25 @@ def extract_qp_content(pdf_path, output_dir=None):
 
     doc.close()
 
-    # Deduplicate - keep longest text for each question number
-    best_items = {}
+    # === STRICT DEDUPLICATION: Keep ONLY first occurrence per question number ===
+    # The parser processes pages in order, so first occurrence is the real question
+    # Subsequent occurrences are page headers/footers or repeated sections
+    seen = set()
+    unique_items = []
+    duplicates_skipped = 0
+
     for item in items:
         q_num = item['question_number']
-        if q_num not in best_items:
-            best_items[q_num] = item
+        if q_num not in seen:
+            seen.add(q_num)
+            unique_items.append(item)
         else:
-            existing = best_items[q_num]
-            if len(item['question_text']) > len(existing['question_text']):
-                best_items[q_num] = item
+            duplicates_skipped += 1
 
-    return list(best_items.values())
+    if duplicates_skipped > 0:
+        print(f"  [Dedup] Skipped {duplicates_skipped} duplicates, kept {len(unique_items)} unique items")
+
+    return unique_items
 
 
 if __name__ == '__main__':

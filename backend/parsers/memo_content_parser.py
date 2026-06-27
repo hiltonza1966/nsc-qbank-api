@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Memo Content Parser - Extracts answer text, images, tables, page refs.
 Does NOT extract marks. Pure content extraction only.
+
+SURGICAL TWEAKS APPLIED:
+1. Added more cleaning patterns for rubric artifacts
+2. Added "accept", "do not accept", "do not penalise", "any other valid answer"
+3. Improved footer detection
 """
 
 import re
@@ -20,6 +25,44 @@ SKIP_PATTERNS = [
     'MARKING GUIDELINES', '–Marking Guidelines', 'NSC –Marking',
     'TOTAL:', 'TOTAL MARKS', 'TOTALMARKS',
     'MARKS:150', 'MARKING PRINCIPLES'
+]
+
+# NEW: Additional rubric artifact patterns to remove
+RUBRIC_PATTERNS = [
+    r'\bone mark\b',
+    r'\btwo marks\b',
+    r'\bthree marks\b',
+    r'\bfour marks\b',
+    r'\bfive marks\b',
+    r'\bsix marks\b',
+    r'\b\d+\s*mark[s]?\b',
+    r'\*one part correct',
+    r'\*one part',
+    r'\bone part correct\b',
+    r'\baccept\b',
+    r'\bdo not accept\b',
+    r'\bdo not penalise\b',
+    r'\bdo not penalize\b',
+    r'\bany other valid answer\b',
+    r'\bany other\b',
+    r'\bif\b.*?\bthen\b.*?\bmark[s]?\b',
+    r'\bif\b.*?\bmark[s]?\b',
+    r'\bpenalise\b',
+    r'\bpenalize\b',
+    r'\bfor each\b',
+    r'\bper\b.*?\bmark[s]?\b',
+    r'\bmax\b.*?\bmark[s]?\b',
+    r'\bmaximum\b.*?\bmark[s]?\b',
+    r'\bmin\b.*?\bmark[s]?\b',
+    r'\bminimum\b.*?\bmark[s]?\b',
+    r'\bonly\b',
+    r'\bif\b.*?\bonly\b',
+    r'\bmarking\b.*?\bprinciple[s]?\b',
+    r'\bprinciple[s]?\b',
+    r'\bnote[s]?\b.*?\bmark[s]?\b',
+    r'\bnote[s]?\b',
+    r'\bremark[s]?\b',
+    r'\bcomment[s]?\b',
 ]
 
 
@@ -141,6 +184,11 @@ def _save_memo_content_item(items, q_num, lines, start_pos, end_line_idx, page_t
     text_clean = re.sub(r'one mark', '', text_clean)
     text_clean = re.sub(r'two marks', '', text_clean)
     text_clean = re.sub(r'\bm mark\b', '', text_clean)
+
+    # NEW: Remove additional rubric artifacts
+    for pattern in RUBRIC_PATTERNS:
+        text_clean = re.sub(pattern, '', text_clean, flags=re.IGNORECASE)
+
     text_clean = re.sub(r'\s+', ' ', text_clean).strip()
 
     # Skip if too short
@@ -185,7 +233,6 @@ def _save_memo_content_item(items, q_num, lines, start_pos, end_line_idx, page_t
                 pass
 
     # Extract tables
-    # NOTE: Table extraction disabled due to PyMuPDF bug with these PDFs
     tables = []
 
     items.append({

@@ -21,7 +21,7 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
         from master_harness_v2 import run_harness_v2
         result = run_harness_v2(qp_path, memo_path, paper_code, output_dir)
 
-        result['parser_version'] = 'v30'
+        result['parser_version'] = 'v30-tweaked'
         result['timestamp'] = __import__('datetime').datetime.now().isoformat()
         result['status'] = 'success'
 
@@ -37,7 +37,7 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
             'status': 'error',
             'error': str(e),
             'paper_code': paper_code,
-            'parser_version': 'v30'
+            'parser_version': 'v30-tweaked'
         }
 
 def get_parser_status():
@@ -79,7 +79,7 @@ def get_parser_status():
     except ImportError:
         status['python-docx'] = False
 
-    status['apiVersion'] = 'v30'
+    status['apiVersion'] = 'v30-tweaked'
     return status
 
 if __name__ == '__main__':
@@ -122,7 +122,7 @@ if __name__ == '__main__':
             items = extract_qp_content(qp_path, output_dir)
             result = {
                 'status': 'success',
-                'parser_version': 'v30',
+                'parser_version': 'v30-tweaked',
                 'paper_code': paper_code,
                 'qp_items': len(items),
                 'items': items,
@@ -135,7 +135,7 @@ if __name__ == '__main__':
             print(json.dumps(result))
             sys.stdout.flush()
         except Exception as e:
-            print(json.dumps({'status': 'error', 'error': str(e), 'parser_version': 'v30'}))
+            print(json.dumps({'status': 'error', 'error': str(e), 'parser_version': 'v30-tweaked'}))
             sys.stdout.flush()
 
     else:

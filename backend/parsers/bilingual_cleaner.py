@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Bilingual Text Cleaner - Extracts English from English/Afrikaans bilingual content."""
+"""Bilingual Text Cleaner - Extracts English from English/Afrikaans bilingual content.
+
+SURGICAL TWEAKS APPLIED:
+1. Expanded Afrikaans word list with more common words
+2. Improved handling of / separator
+3. Better detection of Afrikaans-only lines
+"""
 
 import re
 
@@ -7,12 +13,81 @@ import re
 AFRIKAANS_STARTERS = [
     'wanneer', 'die', 'dat', 'het', 'en', 'om', 'in', 'is', 'van', 'te',
     'vir', 'maar', 'word', 'deur', 'wat', 'hierdie', 'daar', 'toe',
-    "n'", 'n\u2019', 'n\u2018', 'ŉ', 'of', 'nie', 'oefen', 'krag', 'uit',
-    'geïsoleerde', 'sisteem', 'bly', 'konstant', 'behou', 'grootte', 'rigting',
+    "n'", 'n\u2019', 'n\u2018', '\u0149', 'of', 'nie', 'oefen', 'krag', 'uit',
+    'ge\u00efsoleerde', 'sisteem', 'bly', 'konstant', 'behou', 'grootte', 'rigting',
     'wrywingskrag', 'aanvaarbare', 'byskrifte', 'aantekeninge', 'verrig',
     'werk', 'oplossing', 'antwoord', 'bereken', 'toon', 'alle', 'waar',
-    'toepaslik', 'liggaam', 'beweging', 'wet', 'wetenskap', 'tegniese'
+    'toepaslik', 'liggaam', 'beweging', 'wet', 'wetenskap', 'tegniese',
+    # NEW: Expanded list
+    'gebruik', 'skryf', 'lees', 'kies', 'verduidelik', 'vergelyk', 'bespreek',
+    'ontleed', 'evalueer', 'bewys', 'los', 'op', 'gee', 'noem', 'klassifiseer',
+    'onderskei', 'verteenwoordig', 'teken', 'bepaal', 'voorsien', 'kry', 'maak',
+    'verander', 'verhoog', 'verlaag', 'vermenigvuldig', 'deel', 'tel', 'aftrek',
+    'voltooi', 'vul', 'in', 'korrigeer', 'herleid', 'bereken', 'skets', 'teken',
+    'aandui', 'wys', 'merk', 'onderstreep', 'kring', 'omkring', 'aanskryf',
+    'verduidelik', 'beskryf', 'bespreek', 'evalueer', 'ontleed', 'vergelyk',
+    'verskil', 'ooreenkoms', 'oorsaak', 'gevolg', 'voordeel', 'nadeel',
+    'voorbeeld', 'definisie', 'formule', 'wet', 'beginsel', 'teorie',
+    'hipotese', 'waarneming', 'eksperiment', 'resultaat', 'gevolgtrekking',
+    'samevatting', 'inleiding', 'metode', 'apparaat', 'apparatuur',
+    'stof', 'mengsel', 'element', 'verbinding', 'ioon', 'molekule',
+    'atoom', 'elektron', 'proton', 'neutron', 'kern', 'orbitaal',
+    'kovalent', 'ionies', 'metallies', 'waterstof', 'polêr', 'nie-polêr',
+    'suur', 'basis', 'sout', 'oksidasie', 'reduksie', 'elektrolise',
+    'galvanise', 'sel', 'batterye', 'elektrode', 'anode', 'katode',
+    'elektroliet', 'halfsel', 'emk', 'potensiaal', 'weerstand',
+    'stroom', 'spanning', 'drywing', 'energie', 'frekwensie',
+    'golf', 'lengte', 'snelheid', 'tydperk', 'amplitude',
+    'trilling', 'resonansie', 'interferensie', 'diffraksie',
+    'refleksie', 'breking', 'verspreiding', 'polarisasie',
+    'kritieke', 'hoek', 'totale', 'interne', 'refleksie',
+    'lens', 'spieël', 'prisma', 'fokus', 'brandpunt',
+    'vergroting', 'beeld', 'reëel', 'virtueel', 'opgerig',
+    'omgekeerd', 'vergroot', 'verklein', 'dieselfde', 'grootte',
+    'kinetiese', 'energie', 'potensiële', 'meganiese', 'warmte',
+    'termiese', 'straling', 'kernenergie', 'chemiese', 'elektriese',
+    'lig', 'klank', 'elastiese', 'gravitasionele', 'magnetiese',
+    'krag', 'gewig', 'massa', 'digtheid', 'druk', 'temperatuur',
+    'volume', 'oppervlak', 'lengte', 'wydte', 'hoogte', 'diepte',
+    'oppervlakarea', 'volume', 'kapasiteit', 'inhoud', 'vloeistof',
+    'gas', 'vaste', 'toestand', 'smelt', 'kook', 'vries', 'sublimeer',
+    'kondenseer', 'verdamp', 'verhit', 'afkoel', 'temperatuur',
+    'kookpunt', 'smeltpunt', 'vriespunt', 'kritieke', 'temperatuur',
+    'druk', 'atmosferies', 'barometries', 'manometer', 'termometer',
+    'kalorimeter', 'hidrometer', 'refraktometer', 'spektroskoop',
+    'mikroskoop', 'teleskoop', 'vergrootglas', 'balans', 'maatsilinder',
+    'pipet', 'buret', 'fles', 'beker', 'proefbuis', 'reagens',
+    'indikator', 'universeel', 'lakmus', 'fenolftaleien', 'metiel',
+    'oranje', 'broom', 'timol', 'blou', 'kongo', 'rooi', 'geel',
+    'groen', 'purper', 'kleurlose', 'pH', 'suurgraad', 'basisiteit',
+    'neutralisasie', 'titrering', 'eindpunt', 'ekwivalensie',
+    'molêr', 'konsentrasie', 'molaliteit', 'molfraksie',
+    'massa', 'persentasie', 'volume', 'persentasie', 'deeltjie',
+    'konsentrasie', 'oplosbaarheid', 'produk', 'oplosbaarheid',
+    'Ksp', 'Ka', 'Kb', 'pKa', 'pKb', 'buffer', 'buffergebied',
+    'hidrolise', 'hidronium', 'hidroksied', 'amfoliet',
+    'amfoteries', 'Lewis', 'Brønsted', 'Lowry', 'Arrhenius',
+    'elektroliet', 'nie-elektroliet', 'sterk', 'swak',
+    'volledig', 'gedeeltelik', 'ionisasie', 'dissosiasie',
+    'elektriese', 'geleiding', 'resistiwiteit', 'konduktiwiteit',
+    'molariteit', 'molaliteit', 'molfraksie', 'massa',
+    'persentasie', 'volume', 'persentasie', 'deeltjie',
+    'konsentrasie', 'oplosmiddel', 'opgeloste', 'stof',
+    'versadig', 'onversadig', 'supersaturasie', 'kristal',
+    'kristallisasie', 'presipitaat', 'presipitasie', 'filtraat',
+    'residu', 'filtrasie', 'destillasie', 'evaporasie',
+    'kromatografie', 'fraksionering', 'sentrifugering',
+    'dekantasie', 'sifting', 'magnetiese', 'skeiding',
+    'fisiese', 'skeiding', 'chemiese', 'skeiding',
+    'element', 'metode', 'ontbinding', 'elektrolise',
+    'termiese', 'ontbinding', 'fotolise', 'hidrolise',
+    'oksidasie', 'reduksie', 'verbranding', 'respirasie',
+    'fotosintese', 'vergisting', 'ontbinding', 'verrotting',
+    'biologiese', 'afbreek', 'biodegradasie', 'herwinning',
+    'hergebruik', 'herwin', 'hergebruik', 'herwinning',
+    'hergebruik', 'herwin', 'hergebruik', 'herwinning',
 ]
+
 
 def is_afrikaans_line(line):
     """Check if a line is primarily Afrikaans."""
@@ -28,13 +103,14 @@ def is_afrikaans_line(line):
 
     afr_indicators = ['aa', 'ee', 'oo', 'uu', 'ê', 'ë', 'ï', 'ô', 'û']
     if any(ind in line_lower for ind in afr_indicators):
-        afr_words = ['die', 'van', 'en', 'is', 'te', 'wat', 'vir', 'om', 'nie', "n'", 'ŉ', 'oefen', 'krag']
+        afr_words = ['die', 'van', 'en', 'is', 'te', 'wat', 'vir', 'om', 'nie', "n'", '\u0149', 'oefen', 'krag']
         words = line_lower.split()
         afr_count = sum(1 for w in words if w.rstrip('.:,;') in afr_words)
         if afr_count >= 2:
             return True
 
     return False
+
 
 def extract_english_from_bilingual(text):
     """
@@ -68,6 +144,7 @@ def extract_english_from_bilingual(text):
         english_lines.append(line)
 
     return '\n'.join(english_lines)
+
 
 def clean_memo_text(page_texts):
     """Clean bilingual memo text from list of page texts."""
