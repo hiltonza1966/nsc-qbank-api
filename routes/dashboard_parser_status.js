@@ -28,10 +28,7 @@ router.get('/parser-import-status', async (req, res) => {
       whereClause += ' AND ps.paper_id = ?';
       params.push(paper);
     }
-    if (language) {
-      whereClause += ' AND ps.language = ?';
-      params.push(language);
-    }
+    
     
     // Get parsed data grouped by paper
     const [parsedData] = await db.query(`
@@ -41,7 +38,7 @@ router.get('/parser-import-status', async (req, res) => {
         ps.grade_id,
         ps.subject_id,
         ps.paper_id,
-        ps.language,
+        
         s.subject_name,
         s.subject_alpha_code,
         p.paper_no,
@@ -59,7 +56,7 @@ router.get('/parser-import-status', async (req, res) => {
       LEFT JOIN parse_results pr ON ps.session_id = pr.session_id AND pr.is_memo = 0
       LEFT JOIN parse_memos pm ON ps.session_id = pm.session_id
       WHERE 1=1 ${whereClause}
-      GROUP BY ps.paper_code
+      GROUP BY ps.paper_code, ps.year_id, ps.grade_id, ps.subject_id, ps.paper_id, s.subject_name, s.subject_alpha_code, p.paper_no, p.paper_name, y.year_value, g.grade_number
       ORDER BY s.subject_name, p.paper_no, y.year_value
     `, params);
     
@@ -68,8 +65,8 @@ router.get('/parser-import-status', async (req, res) => {
       SELECT 
         source_paper_code,
         COUNT(*) as qp_items_db,
-        SUM(CASE WHEN memo_marks IS NOT NULL THEN 1 ELSE 0 END) as memo_items_db,
-        SUM(CASE WHEN item_media_file IS NOT NULL THEN 1 ELSE 0 END) as attachments_db
+        CAST(SUM(CASE WHEN memo_marks IS NOT NULL THEN 1 ELSE 0 END) AS UNSIGNED) as memo_items_db,
+        CAST(SUM(CASE WHEN item_media_file IS NOT NULL THEN 1 ELSE 0 END) AS UNSIGNED) as attachments_db
       FROM item_master
       WHERE source_paper_code IS NOT NULL
       GROUP BY source_paper_code
@@ -104,7 +101,7 @@ router.get('/parser-import-status', async (req, res) => {
         paper_name: row.paper_name,
         year_value: row.year_value,
         grade_number: row.grade_number,
-        language: row.language,
+        language: 'English',
         parsed: {
           qp_items: qpParsed,
           memo_items: memoParsed,
@@ -168,3 +165,9 @@ router.get('/filters', async (req, res) => {
 });
 
 module.exports = router;
+
+
+
+
+
+

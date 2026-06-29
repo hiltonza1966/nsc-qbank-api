@@ -58,7 +58,7 @@ const ParserImportDashboard: React.FC = () => {
 
   // Fetch filter options on mount
   useEffect(() => {
-    fetch('/api/dashboard/filters')
+    fetch('/api/dashboard/parser/filters')
       .then(r => r.json())
       .then(res => {
         if (res.success) setFilterOptions(res.data);
@@ -82,7 +82,7 @@ const ParserImportDashboard: React.FC = () => {
       if (filters.paper) params.append('paper', filters.paper);
       if (filters.language) params.append('language', filters.language);
       
-      const response = await fetch(`/api/dashboard/parser-import-status?${params}`);
+      const response = await fetch(`/api/dashboard/parser/parser-import-status?${params}`);
       const result = await response.json();
       
       if (!result.success) throw new Error(result.error);
