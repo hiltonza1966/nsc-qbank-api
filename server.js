@@ -100,6 +100,7 @@ safeRequire('./routes/curriculum', '/api/curriculum');
 
 // Loaded Dashboard
 safeRequire('./routes/loadedDashboard', '/api/dashboard');
+safeRequire('./routes/dashboard_parser_status', '/api/dashboard/parser');
 
 // Parser API for QBank wizard (v20)
 safeRequire('./routes/parser', '/api/parser');
@@ -247,3 +248,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { debugLogger } from './utils/debugLogger';
 import DebugPanel from './components/DebugPanel';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -24,6 +24,7 @@ import ReviewerDashboard from './pages/ReviewerDashboard';
 import AdminAssignmentPanel from './pages/AdminAssignmentPanel';
 import ModeratorDashboard from './pages/ModeratorDashboard';
 import QPMemoRegister from './pages/QPMemoRegister';
+import ParserImportDashboard from './pages/ParserImportDashboard';
 import CapsRegister from './pages/CapsRegister';
 
 // ============================================
@@ -227,7 +228,7 @@ const Navigation: React.FC = () => {
           }}
         >
           Reviews
-          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: reviewsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: reviewsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>â–¼</span>
         </button>
         {reviewsOpen && (
           <div 
@@ -271,7 +272,7 @@ const Navigation: React.FC = () => {
           }}
         >
           Wizard
-          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: wizardOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: wizardOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>â–¼</span>
         </button>
         {wizardOpen && (
           <div 
@@ -291,6 +292,7 @@ const Navigation: React.FC = () => {
             <Link to="/wizard" onClick={() => setWizardOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Import Wizard</Link>
             <Link to="/batch-parser" onClick={() => setWizardOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Batch Parser</Link>
             <Link to="/qp-memo-register" onClick={() => setWizardOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>QP & Memo Register</Link>
+            <Link to="/parser-import-dashboard" onClick={() => setWizardOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Parser Import Dashboard</Link>
           </div>
         )}
       </div>
@@ -420,6 +422,7 @@ const App: React.FC = () => {
                 <Route path="/wizard" element={<WizardPage />} />
                 <Route path="/batch-parser" element={<BatchParserDashboard />} />
                 <Route path="/qp-memo-register" element={<QPMemoRegister />} />
+                <Route path="/parser-import-dashboard" element={<ParserImportDashboard />} />
                 <Route path="/caps-register" element={<CapsRegister />} />
                 <Route path="/caps-linker" element={<CAPSManualLinker />} />
                 <Route path="/caps-review" element={<CapsReviewPage />} />
@@ -438,3 +441,6 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+
+
