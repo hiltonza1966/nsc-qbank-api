@@ -119,6 +119,7 @@ if (isEnabled('wizard_parser_v30')) {
 // v3 API: Shared Promotion Function - Unified Import Wizard and Batch Parser
 safeRequire('./routes/v3/batch_parser', '/api/v3/parser');
 safeRequire('./routes/v3/parser_review', '/api/v3/review');
+  safeRequire('./routes/v3/parser', '/api/v3/parser');
 }
 
 // v1 API: CAPS Parser (v9) - ISOLATED from Wizard
