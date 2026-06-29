@@ -95,6 +95,11 @@ def is_afrikaans_line(line):
     if not line_lower:
         return False
 
+    # FIX: If line starts with a question number, it's likely English
+    # Question numbers like "1.1", "2.3", "3.1.1" should be preserved
+    if re.match(r'^\d+\.\d+', line_lower):
+        return False
+
     first_word = line_lower.split()[0].rstrip('.:,;/') if line_lower.split() else ''
     if first_word in AFRIKAANS_STARTERS:
         if re.match(r'^\d+\.\d+', first_word):

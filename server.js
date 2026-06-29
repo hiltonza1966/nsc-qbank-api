@@ -1,4 +1,4 @@
-const { requestLogger, errorHandler, wrapRoute, debug } = require('./debug_logger');
+﻿const { requestLogger, errorHandler, wrapRoute, debug } = require('./debug_logger');
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // ============================================
-// COMPREHENSIVE DEBUG SYSTEM — Log ALL requests
+// COMPREHENSIVE DEBUG SYSTEM â€” Log ALL requests
 // ============================================
 app.use(requestLogger);
 
@@ -20,7 +20,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ============================================
-// STATIC FILE SERVING — Uploads folder for images
+// STATIC FILE SERVING â€” Uploads folder for images
 // ============================================
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -50,7 +50,7 @@ app.use('/api/wizard', pdfExtractRouter);
 app.use('/api/wizard', wizardImportRouter);
 
 // ============================================
-// API ROUTES — FIXED PATHS FOR CONSISTENCY
+// API ROUTES â€” FIXED PATHS FOR CONSISTENCY
 // ============================================
 
 function safeRequire(routePath, mountPath) {
@@ -115,6 +115,10 @@ if (isEnabled('wizard_parser_v30')) {
   safeRequire('./routes/v2/review_workflow', '/api/v2/review');
   safeRequire('./routes/v2/qp_memo_register', '/api/v2');
   safeRequire('./routes/v2/caps_register', '/api/v2');
+
+// v3 API: Shared Promotion Function - Unified Import Wizard and Batch Parser
+safeRequire('./routes/v3/batch_parser', '/api/v3/parser');
+safeRequire('./routes/v3/parser_review', '/api/v3/review');
 }
 
 // v1 API: CAPS Parser (v9) - ISOLATED from Wizard
@@ -139,7 +143,7 @@ safeRequire('./routes/staging', '/api/staging');
 // SECURITY-ALIGNED ENDPOINTS
 // ============================================
 
-// GET /api/qbank/sandbox-config/:toolName — Get CSP policy for tool
+// GET /api/qbank/sandbox-config/:toolName â€” Get CSP policy for tool
 app.get('/api/qbank/sandbox-config/:toolName', async (req, res) => {
   try {
     const [configs] = await req.db.execute(
@@ -166,7 +170,7 @@ app.get('/api/qbank/sandbox-config/:toolName', async (req, res) => {
   }
 });
 
-// GET /api/qbank/subject-tools/:subjectCode — Get tools for subject
+// GET /api/qbank/subject-tools/:subjectCode â€” Get tools for subject
 app.get('/api/qbank/subject-tools/:subjectCode', async (req, res) => {
   try {
     const [tools] = await req.db.execute(
@@ -221,7 +225,7 @@ app.get('/api/lookup/:table', async (req, res) => {
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // ============================================
-// COMPREHENSIVE ERROR HANDLER — Catch ALL errors
+// COMPREHENSIVE ERROR HANDLER â€” Catch ALL errors
 // ============================================
 app.use(errorHandler);
 
@@ -238,7 +242,7 @@ app.listen(PORT, () => {
   console.log(`API Base: http://localhost:${PORT}/api/qbank`);
   console.log(`Uploads: http://localhost:${PORT}/uploads`);
   console.log(`Security: All tools sandboxed, audit logging enabled`);
-  console.log(`Debug: Comprehensive logging active — check debug.log and /api/debug/logs`);
+  console.log(`Debug: Comprehensive logging active â€” check debug.log and /api/debug/logs`);
 });
 
 module.exports = app;

@@ -80,6 +80,42 @@ def extract_memo_marks(pdf_path):
                             section_totals[current_question] = val
                             break
 
+    # STRATEGY 4: Look for section totals near the end of each question section
+    # Format: "TOTAL: 50" or "TOTAL MARKS: 50" or just "50" after a question
+    for i, line in enumerate(lines):
+        if re.search(r'\bTOTAL\b', line, re.IGNORECASE):
+            # Look for a number near this line
+            for j in range(max(0, i-5), min(len(lines), i+5)):
+                num_match = re.search(r'\b(\d{2,3})\b', lines[j])
+                if num_match:
+                    val = int(num_match.group(1))
+                    if 10 <= val <= 150:
+                        # Try to find which question this belongs to
+                        current_question = None
+                        for k in range(max(0, i-50), i):
+                            q_match = re.search(r'QUESTION\s+(\d+)', lines[k], re.IGNORECASE)
+                            if q_match:
+                                current_question = q_match.group(1)
+                                break
+                        if current_question and current_question not in section_totals:
+                            section_totals[current_question] = val
+
+    # STRATEGY 5: Look for marks in table format
+    # Format: | Question | Marks | Time |
+    #         | 1        | 50    | 45   |
+    table_rows = re.findall(r'\|\s*(\d+)\s*\|[^|]+\|\s*(\d+)\s*\|[^|]+\|', all_text)
+    for q_num, mark_val in table_rows:
+        val = int(mark_val)
+        if 10 <= val <= 150 and q_num not in section_totals:
+            section_totals[q_num] = val
+
+    # STRATEGY 6: Look for "(50 marks)" or "[50]" near QUESTION headers
+    for match in re.finditer(r'QUESTION\s+(\d+).*?[(\[](\d+)[)\]]', all_text, re.IGNORECASE | re.DOTALL):
+        q_num = match.group(1)
+        val = int(match.group(2))
+        if 10 <= val <= 150 and q_num not in section_totals:
+            section_totals[q_num] = val
+
     # Build result - only section totals
     result = []
     for q_num in sorted(section_totals.keys(), key=int):

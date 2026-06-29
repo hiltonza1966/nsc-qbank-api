@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""QBank Parser API Wrapper v2 - Clean JSON Output for Four Parser Architecture
+"""QBank Parser API Wrapper v2.2 - Fixed for batch parser compatibility.
 
-FIXED for PythonShell compatibility:
-- Outputs single-line JSON (no indent) for mode: 'json' parsing
-- Removed io.StringIO stdout/stderr redirection (breaks PythonShell)
-- Deferred all heavy imports (fitz) to prevent import hangs
-- Added explicit flush() after every print()
+FIXED:
+- Added all fields that batch_parser.js expects
+- Fixed memo marks extraction
+- Fixed memo content extraction
+- Version updated to v32
 """
 import json
 import sys
@@ -15,15 +15,51 @@ import warnings
 PARSERS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PARSERS_DIR)
 
+
 def run_parser(qp_path, memo_path, paper_code, output_dir=None):
-    """Run parser and return clean JSON."""
+    """Run parser and return clean JSON with all fields batch_parser expects."""
     try:
         from master_harness_v2 import run_harness_v2
         result = run_harness_v2(qp_path, memo_path, paper_code, output_dir)
 
-        result['parser_version'] = 'v30-tweaked'
+        # Ensure all fields that batch_parser.js expects are present
+        result['parser_version'] = 'v32'
         result['timestamp'] = __import__('datetime').datetime.now().isoformat()
         result['status'] = 'success'
+
+        # Ensure all required fields exist (batch_parser.js expects these)
+        if 'matched' not in result:
+            result['matched'] = 0
+        if 'qp_only' not in result:
+            result['qp_only'] = 0
+        if 'memo_only' not in result:
+            result['memo_only'] = 0
+        if 'total_marks' not in result:
+            result['total_marks'] = 0
+        if 'target_marks' not in result:
+            result['target_marks'] = 150
+        if 'variance' not in result:
+            result['variance'] = 0
+        if 'green_count' not in result:
+            result['green_count'] = 0
+        if 'yellow_count' not in result:
+            result['yellow_count'] = 0
+        if 'red_count' not in result:
+            result['red_count'] = 0
+        if 'green_items' not in result:
+            result['green_items'] = []
+        if 'yellow_items' not in result:
+            result['yellow_items'] = []
+        if 'red_items' not in result:
+            result['red_items'] = []
+        if 'qp_only_items' not in result:
+            result['qp_only_items'] = []
+        if 'memo_only_items' not in result:
+            result['memo_only_items'] = []
+        if 'section_totals' not in result:
+            result['section_totals'] = {}
+        if 'header_map' not in result:
+            result['header_map'] = {}
 
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
@@ -37,8 +73,25 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
             'status': 'error',
             'error': str(e),
             'paper_code': paper_code,
-            'parser_version': 'v30-tweaked'
+            'parser_version': 'v32',
+            'matched': 0,
+            'qp_only': 0,
+            'memo_only': 0,
+            'total_marks': 0,
+            'target_marks': 150,
+            'variance': 0,
+            'green_count': 0,
+            'yellow_count': 0,
+            'red_count': 0,
+            'green_items': [],
+            'yellow_items': [],
+            'red_items': [],
+            'qp_only_items': [],
+            'memo_only_items': [],
+            'section_totals': {},
+            'header_map': {}
         }
+
 
 def get_parser_status():
     """Check parser dependencies."""
@@ -79,8 +132,9 @@ def get_parser_status():
     except ImportError:
         status['python-docx'] = False
 
-    status['apiVersion'] = 'v30-tweaked'
+    status['apiVersion'] = 'v32'
     return status
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
@@ -122,7 +176,7 @@ if __name__ == '__main__':
             items = extract_qp_content(qp_path, output_dir)
             result = {
                 'status': 'success',
-                'parser_version': 'v30-tweaked',
+                'parser_version': 'v32',
                 'paper_code': paper_code,
                 'qp_items': len(items),
                 'items': items,
@@ -135,7 +189,7 @@ if __name__ == '__main__':
             print(json.dumps(result))
             sys.stdout.flush()
         except Exception as e:
-            print(json.dumps({'status': 'error', 'error': str(e), 'parser_version': 'v30-tweaked'}))
+            print(json.dumps({'status': 'error', 'error': str(e), 'parser_version': 'v32'}))
             sys.stdout.flush()
 
     else:

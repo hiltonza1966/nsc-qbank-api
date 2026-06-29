@@ -104,7 +104,7 @@ def extract_qp_marks(pdf_path):
 
     # === SOURCE 2d: Multi-part (3) + (4) = 7 ===
     # Examples: "1.1 ... (3) + (4) = (7)", "2.3 ... (2) + (3)"
-    multipart_pattern = r'(\d+\.\d+(?:\.\d+)?)[^\(]*?\((\d+)\)\s*+\s*\((\d+)\)'
+    multipart_pattern = r'(\d+\.\d+(?:\.\d+)?)[^\(]*?\((\d+)\)\s*\+\s*\((\d+)\)'
     multipart_matches = re.findall(multipart_pattern, all_text)
     for q_num, part1, part2 in multipart_matches:
         total = int(part1) + int(part2)

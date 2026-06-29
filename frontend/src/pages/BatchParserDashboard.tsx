@@ -55,7 +55,7 @@ const BatchParserDashboard: React.FC = () => {
 
   const fetchBatchStatus = async () => {
     try {
-      const res = await fetch('/api/v2/parser/batch/status');
+      const res = await fetch('/api/v3/parser/batch/status');
       const data = await res.json();
       if (data.success) {
         setSessions(data.batches || []);
@@ -75,7 +75,7 @@ const BatchParserDashboard: React.FC = () => {
     setBatchResult(null);
 
     try {
-      const res = await fetch('/api/v2/parser/batch', {
+      const res = await fetch('/api/v3/parser/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder_path: folderPath.trim() })

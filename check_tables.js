@@ -1,23 +1,19 @@
-const db = require('./backend/db');
+﻿const mysql = require('mysql2/promise');
+
 async function check() {
-  try {
-    const [tables] = await db.query("SHOW TABLES LIKE 'parse%'");
-    console.log('Parse tables:', tables.map(x => Object.values(x)[0]).join(', '));
-
-    const [itemTables] = await db.query("SHOW TABLES LIKE 'item%'");
-    console.log('Item tables:', itemTables.map(x => Object.values(x)[0]).join(', '));
-
-    const [counts] = await db.query(`
-      SELECT 
-        (SELECT COUNT(*) FROM parse_results) as parse_results,
-        (SELECT COUNT(*) FROM parse_memos) as parse_memos,
-        (SELECT COUNT(*) FROM parse_sessions) as parse_sessions,
-        (SELECT COUNT(*) FROM item_master) as item_master
-    `);
-    console.log('\nRow counts:', counts[0]);
-  } catch(e) {
-    console.log('Error:', e.message);
-  }
-  process.exit(0);
+  const c = await mysql.createConnection({host: 'localhost', user: 'root', password: 'Hilton@66', database: 'nsc_qbank'});
+  
+  // Check for language lookup table
+  const [tables] = await c.execute('SHOW TABLES LIKE "%language%"');
+  console.log('Language-related tables:');
+  tables.forEach(t => console.log('  - ' + Object.values(t)[0]));
+  
+  // Check for user-related tables
+  const [userTables] = await c.execute('SHOW TABLES LIKE "%user%"');
+  console.log('User-related tables:');
+  userTables.forEach(t => console.log('  - ' + Object.values(t)[0]));
+  
+  c.end();
 }
-check();
+
+check().catch(e => console.log(e.message));
