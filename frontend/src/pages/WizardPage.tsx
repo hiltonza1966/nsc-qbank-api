@@ -442,18 +442,19 @@ const WizardPage: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch('/api/parser/approve', {
+      const response = await fetch('/api/v3/parser/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paper_code: paperCode,
+          session_id: sessionId,
           year_id: dimensions.year_id,
           grade_id: dimensions.grade_id,
           subject_id: dimensions.subject_id,
           paper_id: dimensions.paper_id,
           assessment_type_id: dimensions.assessment_type_id,
           assessment_body_id: dimensions.assessment_body_id,
-          approved_items: parserResult
+          language: 'English'
         })
       });
 
@@ -743,3 +744,6 @@ const WizardPage: React.FC = () => {
 };
 
 export default WizardPage;
+
+
+
