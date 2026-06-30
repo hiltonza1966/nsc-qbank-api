@@ -5,6 +5,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const { promoteSessionToItemMaster } = require('../../utils/promoteSession');
+const { parseMachineFilename, lookupAllIds } = require('./step1_preprocessing');
 
 const PARSERS_DIR = path.join(__dirname, '..', '..', 'backend', 'parsers');
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
@@ -108,62 +109,103 @@ function extractDimensionsFromFilename(qpFilename) {
   return { subject_name: subjectName, subject_alpha: subjectAlpha, paper_no: paperNo, year: year, paper_code: paperCode, session_name: sessionName, base_name: clean, language: language };
 }
 
-function pairFiles(folderPath) {
-  const files = fs.readdirSync(folderPath).filter(f => f.toLowerCase().endsWith('.pdf')).map(f => ({ name: f, fullPath: path.join(folderPath, f) }));
+async function pairFiles(folderPath, db, options = {}) {
+  const {
+    defaultGradeId = 3,
+    defaultAssessmentTypeId = 1,
+    defaultAssessmentBodyId = 1
+  } = options;
 
-  // Separate QPs and Memos, and detect language
-  const qps = [];
-  const memos = [];
+  const files = fs.readdirSync(folderPath).filter(f =>
+    f.toLowerCase().endsWith('.pdf')).map(f => ({ name: f, fullPath: path.join(folderPath, f) }));
 
-  for (const f of files) {
-    const nameLower = f.name.toLowerCase();
-    // Detect language
-    let lang = 'ENG';
-    if (/\bafr\b/.test(nameLower) || /\bafrikaans\b/.test(nameLower)) {
-      lang = 'AFR';
-    }
+  // Separate QP and Memo files
+  const qpFiles = [];
+  const memoFiles = [];
 
-    // QP: ends with ' eng.pdf' or ' afr.pdf', but NOT 'mg' or 'memo' or 'marking'
-    const isMemo = nameLower.includes(' mg ') || nameLower.includes(' memo') || nameLower.includes(' marking') || nameLower.includes(' nasien');
-    const isQP = !isMemo && (nameLower.endsWith(' eng.pdf') || nameLower.endsWith(' afr.pdf') || nameLower.endsWith(' english.pdf') || nameLower.endsWith(' afrikaans.pdf'));
-
-    if (isQP) {
-      qps.push({ ...f, language: lang });
-    } else if (isMemo) {
-      memos.push({ ...f, language: lang });
+  for (const file of files) {
+    const parsed = parseMachineFilename(file.name);
+    if (parsed.isQP) {
+      qpFiles.push({ file, parsed });
+    } else if (parsed.isMemo) {
+      memoFiles.push({ file, parsed });
     }
   }
 
+  // Build maps by paper key
+  const qpMap = {};
+  for (const { file, parsed } of qpFiles) {
+    const key = `${parsed.subject}_P${parsed.paperNo}_${parsed.year}_${parsed.session}_${parsed.language}`;
+    qpMap[key] = { file, parsed };
+  }
+
+  const memoMap = {};
+  for (const { file, parsed } of memoFiles) {
+    const key = `${parsed.subject}_P${parsed.paperNo}_${parsed.year}_${parsed.session}_${parsed.language}`;
+    memoMap[key] = { file, parsed };
+  }
+
+  // Pair QP and Memo files
   const pairs = [];
   const unmatched = [];
 
-  for (const qp of qps) {
-    const qpBase = qp.name.replace(/\s+(Eng|Afr|English|Afrikaans)\.pdf$/i, '').trim();
-    const qpLang = qp.language;
+  for (const key in qpMap) {
+    if (memoMap[key]) {
+      // Look up all IDs from database
+      const lookupResult = await lookupAllIds(
+        db,
+        qpMap[key].parsed,
+        defaultGradeId,
+        defaultAssessmentTypeId,
+        defaultAssessmentBodyId
+      );
 
-    // Find matching memo with same language
-    const memo = memos.find(m => {
-      const mName = m.name.toLowerCase();
-      const mLang = m.language;
-      // Must match language
-      if (mLang !== qpLang) return false;
-
-      // Check if memo filename contains the QP base name (without language suffix)
-      const qpBaseLower = qpBase.toLowerCase();
-      return mName.includes(qpBaseLower.replace(' eng', '').replace(' afr', '').trim()) ||
-             mName.includes(qpBaseLower.replace(/\s+(eng|afr)$/i, '').trim());
-    });
-
-    if (memo) {
-      pairs.push({ qp, memo, dimensions: extractDimensionsFromFilename(qp.name) });
+      if (lookupResult.success) {
+        pairs.push({
+          qp: qpMap[key].file,
+          memo: memoMap[key].file,
+          dimensions: {
+            paper_code: key,
+            subject_id: lookupResult.subject_id,
+            subject_official_code: lookupResult.subject_official_code,
+            year_id: lookupResult.year_id,
+            exam_session_id: lookupResult.exam_session_id,
+            paper_id: lookupResult.paper_id,
+            language_id: lookupResult.language_id,
+            grade_id: lookupResult.grade_id,
+            assessment_type_id: lookupResult.assessment_type_id,
+            assessment_body_id: lookupResult.assessment_body_id,
+            language: qpMap[key].parsed.language,
+            subject_name: qpMap[key].parsed.subject,
+            paper_no: parseInt(qpMap[key].parsed.paperNo) || 1,
+            year: parseInt(qpMap[key].parsed.year) || null,
+            session_name: qpMap[key].parsed.session
+          }
+        });
+      } else {
+        unmatched.push({
+          qp: qpMap[key].file.name,
+          memo: memoMap[key].file.name,
+          reason: 'Lookup failed: ' + lookupResult.errors.join(', ')
+        });
+      }
     } else {
-      unmatched.push({ qp, reason: `No matching ${qpLang} memo found` });
+      unmatched.push({
+        qp: qpMap[key].file.name,
+        memo: null,
+        reason: 'No matching memo file'
+      });
     }
   }
 
-  for (const memo of memos) {
-    const hasPair = pairs.some(p => p.memo.name === memo.name);
-    if (!hasPair) unmatched.push({ memo, reason: `No matching ${memo.language} QP found` });
+  for (const key in memoMap) {
+    if (!qpMap[key]) {
+      unmatched.push({
+        qp: null,
+        memo: memoMap[key].file.name,
+        reason: 'No matching QP file'
+      });
+    }
   }
 
   return { pairs, unmatched };
@@ -184,9 +226,13 @@ router.post('/batch', async (req, res) => {
     const db = req.db;
     if (!db) return res.status(500).json({ success: false, error: 'Database not available' });
 
-    const { pairs, unmatched } = pairFiles(folderPath);
+    const { pairs, unmatched } = await pairFiles(folderPath, db, {
+      defaultGradeId: gradeId || 3,
+      defaultAssessmentTypeId: assessmentTypeId || 1,
+      defaultAssessmentBodyId: assessmentBodyId || 1
+    });
     if (pairs.length === 0) {
-      return res.status(400).json({ success: false, error: 'No QP+Memo pairs found in folder', unmatched: unmatched.map(u => ({ file: u.qp?.name || u.memo?.name, reason: u.reason })) });
+      return res.status(400).json({ success: false, error: 'No QP+Memo pairs found in folder', unmatched: unmatched.map(u => ({ file: u.qp || u.memo, reason: u.reason })) });
     }
 
     const results = [];
@@ -206,35 +252,18 @@ router.post('/batch', async (req, res) => {
         const sessionId = crypto.randomUUID();
         const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-        let subjectId = null;
-        let paperId = null;
-        let languageId = null;
-        try {
-          const [subjectRows] = await db.execute('SELECT subject_id FROM lookup_subjects WHERE UPPER(parser_subject_code) = UPPER(?) OR UPPER(subject_official_code) = UPPER(?) OR UPPER(subject_name) = UPPER(?) LIMIT 1', [dimensions.subject_alpha, dimensions.subject_alpha, dimensions.subject_name]);
-          if (subjectRows.length > 0) subjectId = subjectRows[0].subject_id;
-          const [paperRows] = await db.execute('SELECT paper_id FROM lookup_papers WHERE paper_no = ? LIMIT 1', [dimensions.paper_no]);
-          if (paperRows.length > 0) paperId = paperRows[0].paper_id;
-
-          // Lookup language_id
-          // languageId already declared in outer scope
-          const langCode = dimensions.language === 'ENG' ? 'EN' : dimensions.language === 'AFR' ? 'AF' : dimensions.language;
-          const [langRows] = await db.execute('SELECT language_id FROM lookup_languages WHERE UPPER(language_code) = UPPER(?) LIMIT 1', [langCode]);
-          if (langRows.length > 0) languageId = langRows[0].language_id;
-          
-          // Lookup year_id from filename year
-          if (dimensions.year) {
-            const [yearRows] = await db.execute('SELECT year_id FROM lookup_years WHERE year_value = ? LIMIT 1', [dimensions.year]);
-            if (yearRows.length > 0) yearId = yearRows[0].year_id;
-          }
-        } catch (e) { /* Non-fatal */ }
+        // Use lookup values directly from dimensions (already resolved in Step 1)
+        const subjectId = dimensions.subject_id || null;
+        const paperId = dimensions.paper_id || null;
+        const languageId = dimensions.language_id || null;
+        const yearId = dimensions.year_id || req.body.year_id || null;
+        const gradeId = dimensions.grade_id || req.body.grade_id || null;
+        const assessmentTypeId = dimensions.assessment_type_id || req.body.assessment_type_id || null;
+        const assessmentBodyId = dimensions.assessment_body_id || req.body.assessment_body_id || null;
 
         const totalItems = parseResult.matched || 0;
         const totalMarks = parseResult.total_marks || 0;
         const greenCount = parseResult.green_count || 0;
-
-        // Lookup grade_id (all PDFs are Grade 12)
-        const [gradeRows] = await db.execute('SELECT grade_id FROM lookup_grades WHERE grade_value = ? LIMIT 1', [12]);
-        if (gradeRows.length > 0) gradeId = gradeRows[0].grade_id;
         
         await db.execute(
           `INSERT INTO parse_sessions (session_id, year_id, grade_id, subject_id, paper_id, language_id, assessment_type_id, assessment_body_id, file_name, file_hash, parser_version, total_items_found, total_marks_parser, total_marks_expected, total_marks_corrected, auto_corrected_count, manual_review_count, missing_count, status, error_message, completed_at, created_at, paper_code, is_memo)
@@ -349,7 +378,7 @@ router.post('/batch', async (req, res) => {
           status: 'success',
           headers_detected: Object.keys(headerMap).length,
           qp_duplicates_skipped: qpDuplicatesSkipped,
-          memo_duplicates_skipped: memoDuplicatesSkipped
+          memo_duplicates_skipped: memoDuplicatesSkipped,
         });
 
         // Auto-promote to production tables if enabled
@@ -361,13 +390,20 @@ router.post('/batch', async (req, res) => {
             console.error('Auto-promote error for', paperCode, promoteErr.message);
           }
         }
+        
+        // Update result with promote status
+        if (results.length > 0) {
+          const lastResult = results[results.length - 1];
+          lastResult.promote_status = promoteResult ? (promoteResult.error ? 'failed' : 'success') : 'skipped';
+          lastResult.promote_error = promoteResult?.error || null;
+        }
 
       } catch (e) {
         failures.push({ paper_code: paperCode, subject: dimensions.subject_name, language: language, qp: qp.name, memo: memo.name, error: e.message });
       }
     }
 
-    res.json({ success: true, summary: { total_pairs: pairs.length, successful: results.length, failed: failures.length, unmatched: unmatched.length }, results, failures, unmatched: unmatched.map(u => ({ file: u.qp?.name || u.memo?.name, reason: u.reason })) });
+    res.json({ success: true, summary: { total_pairs: pairs.length, successful: results.length, failed: failures.length, unmatched: unmatched.length }, results, failures, unmatched: unmatched.map(u => ({ file: u.qp || u.memo, reason: u.reason })) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -403,3 +439,4 @@ async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseRes
 
 
 module.exports = router;
+
