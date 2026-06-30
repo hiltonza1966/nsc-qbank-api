@@ -39,6 +39,27 @@ interface BatchRunResponse {
   unmatched: any[];
 }
 
+interface RenameItem {
+  original: string;
+  newName: string;
+  language: string;
+  type: string;
+}
+
+interface RenamePreviewResponse {
+  success: boolean;
+  renamed: RenameItem[];
+  skipped: { original: string; reason: string }[];
+  errors: { original: string; reason: string }[];
+}
+
+interface RenameApplyResponse {
+  success: boolean;
+  applied: RenameItem[];
+  failed: { original: string; newName: string; reason: string }[];
+  logPath: string;
+}
+
 const BatchParserDashboard: React.FC = () => {
   const [folderPath, setFolderPath] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -48,6 +69,12 @@ const BatchParserDashboard: React.FC = () => {
   const [sessionItems, setSessionItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Machine Rename state
+  const [renamePreview, setRenamePreview] = useState<RenamePreviewResponse | null>(null);
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [renameApplyResult, setRenameApplyResult] = useState<RenameApplyResponse | null>(null);
 
   useEffect(() => {
     fetchBatchStatus();
@@ -62,6 +89,64 @@ const BatchParserDashboard: React.FC = () => {
       }
     } catch (e) {
       console.error('Failed to fetch batch status:', e);
+    }
+  };
+
+  const fetchRenamePreview = async () => {
+    if (!folderPath.trim()) {
+      setError('Please enter a folder path');
+      return;
+    }
+    setError('');
+    setRenameLoading(true);
+    setRenamePreview(null);
+    setRenameApplyResult(null);
+
+    try {
+      const res = await fetch('/api/v3/parser/rename-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder_path: folderPath.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRenamePreview(data);
+        setShowRenameDialog(true);
+      } else {
+        setError(data.error || 'Rename preview failed');
+      }
+    } catch (e: any) {
+      setError('Network error: ' + e.message);
+    } finally {
+      setRenameLoading(false);
+    }
+  };
+
+  const applyRename = async () => {
+    if (!renamePreview || !renamePreview.renamed.length) return;
+    setRenameLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/v3/parser/rename-apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folder_path: folderPath.trim(),
+          renames: renamePreview.renamed
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRenameApplyResult(data);
+        setRenamePreview(null);
+      } else {
+        setError(data.error || 'Rename apply failed');
+      }
+    } catch (e: any) {
+      setError('Network error: ' + e.message);
+    } finally {
+      setRenameLoading(false);
     }
   };
 
@@ -96,14 +181,37 @@ const BatchParserDashboard: React.FC = () => {
 
   const fetchSessionItems = async (sessionId: string) => {
     setLoading(true);
+    setError('');
     try {
-      const res = await fetch(`/api/v2/parser/session/${sessionId}/items`);
+      // Try v3 endpoint first, fall back to direct table query
+      const res = await fetch(`/api/v3/parser/session/${sessionId}/items`);
+      if (!res.ok) {
+        // If v3 endpoint doesn't exist, fetch from parse_results table directly
+        const qpRes = await fetch(`/api/debug/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sql: 'SELECT * FROM parse_results WHERE session_id = ? UNION ALL SELECT * FROM parse_memos WHERE session_id = ?',
+            params: [sessionId, sessionId]
+          })
+        });
+        const qpData = await qpRes.json();
+        if (qpData.success) {
+          setSessionItems(qpData.data || []);
+        } else {
+          setError('Session detail view not available. V2 routes deleted.');
+          setSessionItems([]);
+        }
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setSessionItems(data.items || []);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to fetch session items:', e);
+      setError('Session detail view not available: ' + e.message);
+      setSessionItems([]);
     } finally {
       setLoading(false);
     }
@@ -176,6 +284,13 @@ const BatchParserDashboard: React.FC = () => {
             className={`px-6 py-2 rounded-md font-medium ${isRunning ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
           >
             {isRunning ? 'Running...' : 'Run Batch Parser'}
+          </button>
+          <button
+            onClick={fetchRenamePreview}
+            disabled={renameLoading || isRunning}
+            className={`px-6 py-2 rounded-md font-medium ${renameLoading || isRunning ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+          >
+            {renameLoading ? 'Scanning...' : 'Machine Rename'}
           </button>
         </div>
         {error && <div className="mt-3 p-3 bg-red-50 text-red-700 rounded-md text-sm">{error}</div>}
@@ -275,6 +390,86 @@ const BatchParserDashboard: React.FC = () => {
                   {sessionItems.length === 0 && <div className="text-center text-gray-500 py-8">No items found</div>}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Machine Rename Dialog */}
+      {showRenameDialog && renamePreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold">Machine Rename Preview</h3>
+                <p className="text-sm text-gray-600">
+                  {renamePreview.renamed.length} to rename | {renamePreview.skipped.length} skipped | {renamePreview.errors.length} errors
+                </p>
+              </div>
+              <button onClick={() => setShowRenameDialog(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              {renamePreview.renamed.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="font-semibold text-green-700 mb-2">Files to Rename ({renamePreview.renamed.length})</h4>
+                  <div className="space-y-1 max-h-64 overflow-auto border border-gray-200 rounded-md">
+                    {renamePreview.renamed.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-4 px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                        <div className="flex-1 truncate text-red-600" title={item.original}>{item.original}</div>
+                        <div className="text-gray-400">→</div>
+                        <div className="flex-1 truncate text-green-600 font-mono" title={item.newName}>{item.newName}</div>
+                        <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">{item.type}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {renamePreview.skipped.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="font-semibold text-gray-600 mb-2">Skipped ({renamePreview.skipped.length})</h4>
+                  <div className="space-y-1 max-h-32 overflow-auto border border-gray-200 rounded-md">
+                    {renamePreview.skipped.map((item, idx) => (
+                      <div key={idx} className="px-3 py-2 text-sm text-gray-500 border-b border-gray-100 last:border-0">
+                        {item.original} — <span className="italic">{item.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {renamePreview.errors.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="font-semibold text-red-600 mb-2">Errors ({renamePreview.errors.length})</h4>
+                  <div className="space-y-1 max-h-32 overflow-auto border border-red-200 rounded-md bg-red-50">
+                    {renamePreview.errors.map((item, idx) => (
+                      <div key={idx} className="px-3 py-2 text-sm text-red-700 border-b border-red-100 last:border-0">
+                        {item.original} — <span className="italic">{item.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {renameApplyResult && (
+                <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
+                  <h4 className="font-semibold text-green-700">Rename Complete</h4>
+                  <p className="text-sm text-green-600">Applied: {renameApplyResult.applied.length} | Failed: {renameApplyResult.failed.length}</p>
+                  {renameApplyResult.logPath && <p className="text-xs text-gray-500 mt-1">Log: {renameApplyResult.logPath}</p>}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => setShowRenameDialog(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={applyRename}
+                disabled={renameLoading || renamePreview.renamed.length === 0}
+                className={`px-4 py-2 rounded-md font-medium ${renameLoading || renamePreview.renamed.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+              >
+                {renameLoading ? 'Applying...' : `Confirm Rename (${renamePreview.renamed.length})`}
+              </button>
             </div>
           </div>
         </div>

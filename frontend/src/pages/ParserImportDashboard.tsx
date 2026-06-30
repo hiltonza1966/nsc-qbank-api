@@ -16,7 +16,7 @@ interface DashboardRow {
   paper_name: string;
   year_value: number;
   grade_number: number;
-  language: string;
+  language_name: string;
   parsed: {
     qp_items: number;
     memo_items: number;
@@ -234,15 +234,15 @@ const ParserImportDashboard: React.FC = () => {
         {summary && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', color: '#64748b' }}>QP Parsed → DB</div>
+              <div style={{ fontSize: '11px', color: '#64748b' }}>QP Parsed â†’ DB</div>
               <div style={{ fontSize: '18px', fontWeight: 700, color: '#334155' }}>
-                {summary.total_parsed_qp} → {summary.total_db_qp}
+                {summary.total_parsed_qp} â†’ {summary.total_db_qp}
               </div>
             </div>
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', color: '#64748b' }}>Memo Parsed → DB</div>
+              <div style={{ fontSize: '11px', color: '#64748b' }}>Memo Parsed â†’ DB</div>
               <div style={{ fontSize: '18px', fontWeight: 700, color: '#334155' }}>
-                {summary.total_parsed_memo} → {summary.total_db_memo}
+                {summary.total_parsed_memo} â†’ {summary.total_db_memo}
               </div>
             </div>
           </div>
@@ -290,7 +290,7 @@ const ParserImportDashboard: React.FC = () => {
                     </td>
                     <td style={{ padding: '10px 12px' }}>{row.year_value}</td>
                     <td style={{ padding: '10px 12px' }}>Grade {row.grade_number}</td>
-                    <td style={{ padding: '10px 12px' }}>{row.language}</td>
+                    <td style={{ padding: '10px 12px' }}>{row.language_name}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: '#3b82f6' }}>{row.parsed.qp_items}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: row.database.qp_items >= row.parsed.qp_items ? '#22c55e' : '#ef4444' }}>
                       {row.database.qp_items}

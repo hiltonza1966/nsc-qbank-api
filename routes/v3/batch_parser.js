@@ -438,5 +438,330 @@ async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseRes
 }
 
 
+
+
+// ============================================
+// MACHINE RENAME: Convert old-format filenames to machine format
+// ============================================
+
+/**
+ * Detect if a filename is old-format (human-readable) or machine-format
+ * Machine format: SUBJECT_P1_2025_NOV_ENG_QP.pdf
+ * Old format: "Mathematical Literacy P1 Nov 2025 Eng.pdf"
+ */
+function isMachineFormat(filename) {
+  const name = filename.replace('.pdf', '');
+  return name.includes('_P') && /_\d{4}_/.test(name) && /^[A-Z0-9_&-]+$/i.test(name) && !name.includes(' ');
+}
+
+/**
+ * Extract components from old-format filename
+ */
+function parseOldFormatFilename(filename) {
+  const base = filename.replace('.pdf', '');
+
+  // Detect type
+  let type = 'QP';
+  let typeSuffix = '';
+
+  if (/\bMG\b/i.test(base) || /\bMemorandum\b/i.test(base)) {
+    type = 'Memo';
+  } else if (/\bAddendum\b/i.test(base)) {
+    type = 'Addendum';
+  } else if (/\bTranscription\b/i.test(base)) {
+    type = 'QP';
+    typeSuffix = 'Transcription';
+  } else if (/\bAnswer Book\b/i.test(base)) {
+    type = 'AnswerBook';
+  }
+
+  // Extract paper number
+  const paperMatch = base.match(/\bP(\d+)\b/i);
+  const paperNo = paperMatch ? paperMatch[1] : '1';
+
+  // Extract year
+  const yearMatch = base.match(/\b(20\d{2})\b/);
+  const year = yearMatch ? yearMatch[1] : '2025';
+
+  // Extract session
+  let session = 'NOV';
+  if (/May-June|May\s*June/i.test(base)) session = 'MAY_JUNE';
+  else if (/Sept/i.test(base)) session = 'SEPT';
+  else if (/Nov/i.test(base)) session = 'NOV';
+  else if (/Feb/i.test(base)) session = 'FEB';
+  else if (/Mar/i.test(base)) session = 'MARCH';
+
+  // Extract languages
+  const languages = [];
+  if (/\bAfr\b/i.test(base) || /\bAfrikaans\b/i.test(base)) languages.push('AFR');
+  if (/\bEng\b/i.test(base) || /\bEnglish\b/i.test(base)) languages.push('ENG');
+  if (/\bIsiNdebele\b/i.test(base)) languages.push('ISINDEBELE');
+  if (/\bIsiXhosa\b/i.test(base)) languages.push('ISIXHOSA');
+  if (/\bIsiZulu\b/i.test(base)) languages.push('ISIZULU');
+  if (/\bSepedi\b/i.test(base)) languages.push('SEPEDI');
+  if (/\bSesotho\b/i.test(base)) languages.push('SESOTHO');
+  if (/\bSetswana\b/i.test(base)) languages.push('SETSWANA');
+  if (/\bSiSwati\b/i.test(base)) languages.push('SISWATI');
+  if (/\bTshivenda\b/i.test(base)) languages.push('TSHIVENDA');
+  if (/\bXitsonga\b/i.test(base)) languages.push('XITSONGA');
+  if (/\bSASL\b/i.test(base)) languages.push('SASL');
+
+  // Extract assessment type (FAL, HL, SAL)
+  let assessmentType = '';
+  const atMatch = base.match(/\b(FAL|HL|SAL)\b/i);
+  if (atMatch) assessmentType = atMatch[1].toUpperCase();
+
+  // Extract subject name - IMPROVED
+  // Step 1: Remove everything from the paper number onwards
+  let subjectName = base;
+  const paperIdx = subjectName.search(/\bP\d+\b/i);
+  if (paperIdx > 0) {
+    subjectName = subjectName.substring(0, paperIdx).trim();
+  }
+
+  // Step 2: Remove assessment type (but keep it as separate field)
+  subjectName = subjectName.replace(/\b(FAL|HL|SAL)\b/gi, '').trim();
+
+  // Step 3: Remove type markers (MG, Memorandum, Addendum, etc.)
+  subjectName = subjectName.replace(/\b(MG|Memorandum|Addendum|Transcription|Answer Book)\b/gi, '').trim();
+
+  // Step 4: Remove language names
+
+  // Step 5: Remove session names
+  subjectName = subjectName.replace(/\b(Nov|May-June|September|Feb|Mar)\b/gi, '').trim();
+
+  // Step 6: Remove year
+  subjectName = subjectName.replace(/\b\d{4}\b/, '').trim();
+
+  // Step 7: Clean up extra spaces (keep & as part of subject name)
+  subjectName = subjectName.replace(/\s+/g, ' ').trim();
+
+  return {
+    subjectName,
+    paperNo,
+    year,
+    session,
+    languages,
+    assessmentType,
+    type,
+    typeSuffix,
+    original: filename
+  };
+}
+
+/**
+ * Build machine-format filename from parsed components
+ */
+function buildMachineFilename(parsed, subjectCode, language, type, typeSuffix) {
+  let base = subjectCode;
+
+  if (parsed.assessmentType) {
+    base += '_' + parsed.assessmentType;
+  }
+
+  base += '_P' + parsed.paperNo + '_' + parsed.year + '_' + parsed.session;
+
+  if (type === 'Addendum') {
+    base += '_' + language + '_Addendum_' + language;
+  } else if (type === 'QP' && typeSuffix) {
+    base += '_' + language + '_QP_' + typeSuffix;
+  } else if (type === 'Memo') {
+    base += '_' + language + '_Memo_' + language;
+  } else if (type === 'QP') {
+    base += '_' + language + '_QP';
+  } else {
+    base += '_' + language;
+  }
+
+  return base + '.pdf';
+}
+
+/**
+ * Scan folder and build rename preview
+ */
+async function buildRenamePreview(folderPath, db) {
+  const files = fs.readdirSync(folderPath).filter(f => f.toLowerCase().endsWith('.pdf'));
+
+  const renamed = [];
+  const skipped = [];
+  const errors = [];
+
+  // Get all subjects from database for fuzzy matching
+  let subjectMap = {};
+  try {
+    const [subjectRows] = await db.execute('SELECT subject_name, parser_subject_code FROM lookup_subjects WHERE parser_subject_code IS NOT NULL');
+    for (const row of subjectRows) {
+      if (row.subject_name && row.parser_subject_code) {
+        subjectMap[row.subject_name.toLowerCase()] = row.parser_subject_code;
+      }
+    }
+  } catch (e) {
+    errors.push('Failed to load subject map: ' + e.message);
+  }
+
+  for (const file of files) {
+    if (isMachineFormat(file)) {
+      skipped.push({ original: file, reason: 'Already machine format' });
+      continue;
+    }
+
+    const parsed = parseOldFormatFilename(file);
+
+    if (parsed.type === 'AnswerBook') {
+      skipped.push({ original: file, reason: 'Answer book - skipped' });
+      continue;
+    }
+
+    const subjectKey = parsed.subjectName.toLowerCase();
+    let subjectCode = subjectMap[subjectKey];
+    // Hardcoded alias for SASL (South African Sign Language Home Language)
+    // SASL is always Home Language and the short name does not fuzzy-match the full name
+    if (!subjectCode && (subjectKey === 'sasl' || parsed.subjectName.toUpperCase() === 'SASL')) {
+      subjectCode = subjectMap['south african sign language home language'] || 'SOUTHAFRICANSIGNLANGUAGEHOMELANGUAGE';
+    }
+
+    // Try strict word-level fuzzy match if exact not found
+    if (!subjectCode && parsed.subjectName.length > 2) {
+      const subjectWords = parsed.subjectName.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      let bestMatch = null;
+      let bestScore = 0;
+
+      for (const [name, code] of Object.entries(subjectMap)) {
+        const nameWords = name.split(/\s+/).filter(w => w.length > 2);
+        // Count how many words match
+        let matchCount = 0;
+        for (const sw of subjectWords) {
+          for (const nw of nameWords) {
+            if (sw === nw || (sw.length > 3 && nw.includes(sw)) || (nw.length > 3 && sw.includes(nw))) {
+              matchCount++;
+              break;
+            }
+          }
+        }
+        const score = matchCount / Math.max(subjectWords.length, nameWords.length);
+        if (score > bestScore && score >= 0.1) { // At least 50% word match
+          bestScore = score;
+          bestMatch = code;
+        }
+      }
+      subjectCode = bestMatch;
+
+    // Fix: Ensure matched subject matches the assessment type (HL/FAL/SAL)
+    if (subjectCode && parsed.assessmentType) {
+      const expectedSuffix = parsed.assessmentType.toUpperCase();
+      const hasHLSuffix = /HOMELANGUAGE$/.test(subjectCode);
+      const hasFALSuffix = /FIRSTADDITIONALLANGUAGE$/.test(subjectCode);
+      const hasSALSuffix = /SECONDADDITIONALLANGUAGE$/.test(subjectCode);
+      
+      let needsFix = false;
+      if (expectedSuffix === 'HL' && !hasHLSuffix) needsFix = true;
+      if (expectedSuffix === 'FAL' && !hasFALSuffix) needsFix = true;
+      if (expectedSuffix === 'SAL' && !hasSALSuffix) needsFix = true;
+      
+      if (needsFix) {
+        let targetSuffix = '';
+        if (expectedSuffix === 'HL') targetSuffix = 'HOMELANGUAGE';
+        else if (expectedSuffix === 'FAL') targetSuffix = 'FIRSTADDITIONALLANGUAGE';
+        else if (expectedSuffix === 'SAL') targetSuffix = 'SECONDADDITIONALLANGUAGE';
+        
+        const baseName = subjectCode.replace(/(HOMELANGUAGE|FIRSTADDITIONALLANGUAGE|SECONDADDITIONALLANGUAGE)$/, '');
+        const correctedCode = baseName + targetSuffix;
+        
+        const codeExists = Object.values(subjectMap).includes(correctedCode);
+        if (codeExists) {
+          subjectCode = correctedCode;
+        }
+      }
+    }
+    }
+
+    if (!subjectCode) {
+      errors.push({ original: file, reason: 'Subject not found: ' + parsed.subjectName });
+      continue;
+    }
+
+    if (parsed.languages.length === 0) {
+      parsed.languages.push('ENG');
+    }
+
+    if (parsed.type === 'Memo' && parsed.languages.length > 1) {
+      for (const lang of parsed.languages) {
+        const newName = buildMachineFilename(parsed, subjectCode, lang, 'Memo', '');
+        renamed.push({ original: file, newName, language: lang, type: 'Memo' });
+      }
+    } else if (parsed.type === 'Addendum') {
+      for (const lang of parsed.languages) {
+        const newName = buildMachineFilename(parsed, subjectCode, lang, 'Addendum', '');
+        renamed.push({ original: file, newName, language: lang, type: 'Addendum' });
+      }
+    } else {
+      const lang = parsed.languages[0];
+      const newName = buildMachineFilename(parsed, subjectCode, lang, parsed.type, parsed.typeSuffix);
+      renamed.push({ original: file, newName, language: lang, type: parsed.type });
+    }
+  }
+
+  return { renamed, skipped, errors };
+}
+
+router.post('/rename-preview', async (req, res) => {
+  try {
+    const folderPath = req.body.folder_path || req.body.folderPath;
+    if (!folderPath || !fs.existsSync(folderPath)) {
+      return res.status(400).json({ success: false, error: 'Valid folder_path required' });
+    }
+    const db = req.db;
+    if (!db) return res.status(500).json({ success: false, error: 'Database not available' });
+
+    const preview = await buildRenamePreview(folderPath, db);
+    res.json({ success: true, ...preview });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/rename-apply', async (req, res) => {
+  try {
+    const folderPath = req.body.folder_path || req.body.folderPath;
+    const renames = req.body.renames || [];
+    if (!folderPath || !fs.existsSync(folderPath)) {
+      return res.status(400).json({ success: false, error: 'Valid folder_path required' });
+    }
+
+    const applied = [];
+    const failed = [];
+
+    for (const rename of renames) {
+      const oldPath = path.join(folderPath, rename.original);
+      const newPath = path.join(folderPath, rename.newName);
+
+      try {
+        if (fs.existsSync(newPath)) {
+          failed.push({ original: rename.original, newName: rename.newName, reason: 'Target file already exists' });
+          continue;
+        }
+        fs.renameSync(oldPath, newPath);
+        applied.push({ original: rename.original, newName: rename.newName });
+      } catch (e) {
+        failed.push({ original: rename.original, newName: rename.newName, reason: e.message });
+      }
+    }
+
+    const logPath = path.join(folderPath, 'rename_log_' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
+    try {
+      fs.writeFileSync(logPath, JSON.stringify({ applied, failed, timestamp: new Date().toISOString() }, null, 2));
+    } catch (e) {
+      console.error('Failed to write rename log:', e.message);
+    }
+
+    res.json({ success: true, applied, failed, logPath });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
 module.exports = router;
+
+
 
