@@ -1,225 +1,249 @@
-const crypto = require('crypto');
+﻿// ============================================================================
+// QBank Promote Session to Item Master - v3 Final
+// ============================================================================
 
-/**
- * Shared promotion function - promotes parsed items from parse_results/parse_memos to item_master/item_memos
- * Used by both Import Wizard and Batch Parser
- * 
- * @param {Object} db - Database connection (mysql2/promise)
- * @param {Number} sessionId - parse_sessions.session_id
- * @param {String} paperCode - Paper code (e.g., ACCOUNTING_P1_2025_NOV_ENG)
- * @param {Object} dimensions - Dimension values
- * @param {Number} createdBy - User ID who created the items (default: 1)
- * @returns {Object} - Promotion results { inserted, skipped, total, memo_inserted, memo_skipped }
- */
-async function promoteSessionToItemMaster(db, sessionId, paperCode, dimensions, createdBy = 1) {
+const fs = require('fs');
+const path = require('path');
+const db = require('../backend/db');
+
+const PARSER_OUTPUT_DIR = path.join(__dirname, '..', 'uploads', 'parser_output');
+const ITEM_MEDIA_DIR = path.join(__dirname, '..', 'uploads', 'item_media');
+
+if (!fs.existsSync(ITEM_MEDIA_DIR)) {
+  fs.mkdirSync(ITEM_MEDIA_DIR, { recursive: true });
+}
+
+function collectImages(paperCode, outputDir) {
+  const images = [];
+  const paperDir = path.join(outputDir || PARSER_OUTPUT_DIR, paperCode);
+  if (!fs.existsSync(paperDir)) return images;
+  const files = fs.readdirSync(paperDir);
+  for (const file of files) {
+    if (/\.(png|jpg|jpeg|gif)$/i.test(file)) {
+      images.push({
+        filename: file,
+        sourcePath: path.join(paperDir, file),
+        relativePath: path.join(paperCode, file).replace(/\\/g, '/')
+      });
+    }
+  }
+  return images;
+}
+
+function copyImagesToItemMedia(paperCode, images, targetDir) {
+  const targetPaperDir = path.join(targetDir || ITEM_MEDIA_DIR, paperCode);
+  if (!fs.existsSync(targetPaperDir)) {
+    fs.mkdirSync(targetPaperDir, { recursive: true });
+  }
+  const copiedImages = [];
+  for (const img of images) {
+    const targetPath = path.join(targetPaperDir, img.filename);
+    try {
+      fs.copyFileSync(img.sourcePath, targetPath);
+      copiedImages.push({ ...img, targetPath: targetPath.replace(/\\/g, '/') });
+    } catch (err) {
+      console.error('Failed to copy image ' + img.filename + ':', err.message);
+    }
+  }
+  return copiedImages;
+}
+
+async function promoteSessionToItemMaster(sessionId, outputDir) {
+  const connection = await db.getConnection();
   try {
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await connection.beginTransaction();
 
-    // 1. Look up subject info
-    let subjectId = null;
-    let subjectOfficialCode = null;
-    let subjectAlphaCode = null;
-
-    if (dimensions.subject_id) {
-      // Import Wizard - already have subject_id
-      const [subjectRows] = await db.execute(
-        'SELECT subject_id, subject_official_code, subject_alpha_code FROM lookup_subjects WHERE subject_id = ? LIMIT 1',
-        [dimensions.subject_id]
-      );
-      if (subjectRows.length > 0) {
-        subjectId = subjectRows[0].subject_id;
-        subjectOfficialCode = subjectRows[0].subject_official_code;
-        subjectAlphaCode = subjectRows[0].subject_alpha_code;
-      }
-    } else if (dimensions.subject_alpha || dimensions.subject_name) {
-      // Batch Parser - need to look up from parser_subject_code
-      const [subjectRows] = await db.execute(
-        'SELECT subject_id, subject_official_code, subject_alpha_code FROM lookup_subjects WHERE UPPER(parser_subject_code) = UPPER(?) OR UPPER(subject_alpha_code) = UPPER(?) OR UPPER(subject_name) = UPPER(?) LIMIT 1',
-        [dimensions.subject_alpha || '', dimensions.subject_alpha || '', dimensions.subject_name || '']
-      );
-      if (subjectRows.length > 0) {
-        subjectId = subjectRows[0].subject_id;
-        subjectOfficialCode = subjectRows[0].subject_official_code;
-        subjectAlphaCode = subjectRows[0].subject_alpha_code;
-      }
+    const [sessions] = await connection.execute(
+      'SELECT * FROM parse_sessions WHERE session_id = ?',
+      [sessionId]
+    );
+    if (sessions.length === 0) {
+      throw new Error('Session ' + sessionId + ' not found');
     }
+    const session = sessions[0];
+    const paperCode = session.paper_code;
 
-    // 2. Look up paper_id
-    let paperId = null;
-    if (dimensions.paper_id) {
-      paperId = dimensions.paper_id;
-    } else if (dimensions.paper_no) {
-      const [paperRows] = await db.execute(
-        'SELECT paper_id FROM lookup_papers WHERE paper_no = ? LIMIT 1',
-        [dimensions.paper_no]
-      );
-      if (paperRows.length > 0) paperId = paperRows[0].paper_id;
-    }
+    const [subjectRows] = await connection.execute(
+      'SELECT subject_official_code FROM lookup_subjects WHERE subject_id = ? LIMIT 1',
+      [session.subject_id]
+    );
+    const subjectOfficialCode = subjectRows.length > 0 ? subjectRows[0].subject_official_code : '';
 
-    // 3. Look up year_id
-    let yearId = null;
-    if (dimensions.year_id) {
-      yearId = dimensions.year_id;
-    } else if (dimensions.year) {
-      const [yearRows] = await db.execute(
-        'SELECT year_id FROM lookup_years WHERE year_value = ? LIMIT 1',
-        [dimensions.year]
-      );
-      if (yearRows.length > 0) yearId = yearRows[0].year_id;
-    }
+    const images = collectImages(paperCode, outputDir);
+    const copiedImages = copyImagesToItemMedia(paperCode, images, ITEM_MEDIA_DIR);
 
-    // 4. Determine language_id
-    let languageId = 1; // Default English
-    if (dimensions.language) {
-      const lang = dimensions.language.toUpperCase();
-      if (lang === 'AFR' || lang === 'AFRIKAANS') languageId = 2;
-      else if (lang === 'ENG' || lang === 'ENGLISH') languageId = 1;
-    }
-
-    // 5. Get grade_id (default to 3 for Grade 12)
-    const gradeId = dimensions.grade_id || 3;
-
-    // 6. Get assessment IDs (default to 1)
-    const assessmentTypeId = dimensions.assessment_type_id || 1;
-    const assessmentBodyId = dimensions.assessment_body_id || 1;
-
-    // 7. Get QP items from parse_results
-    const [qpItems] = await db.execute(
-      'SELECT result_id, session_id, paper_code, question_number, question_text, answer_text, parsed_type_id, parsed_section, parser_extracted_marks, expected_marks, auto_corrected_marks, correction_status, variance, is_red_flag, user_corrected_marks, reviewer_notes, created_at, updated_at, is_memo, is_header, parent_header_id FROM parse_results WHERE session_id = ? AND (is_memo = 0 OR is_memo IS NULL) ORDER BY question_number',
+    const [qpResults] = await connection.execute(
+      'SELECT * FROM parse_results WHERE session_id = ?',
       [sessionId]
     );
 
-    // 8. Get memo items from parse_memos
-    const [memoItems] = await db.execute(
-      'SELECT memo_id, session_id, paper_code, question_number, question_text, answer_text, parser_extracted_marks, expected_marks, auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes, variance, is_red_flag, created_at, updated_at, is_header, parent_header_id FROM parse_memos WHERE session_id = ? ORDER BY question_number',
+    const [memoResults] = await connection.execute(
+      'SELECT * FROM parse_memos WHERE session_id = ?',
       [sessionId]
     );
 
-    // 9. Create memo lookup by question_number
-    const memoLookup = {};
-    for (const m of memoItems) {
-      memoLookup[m.question_number] = m;
-    }
+    const promotedItems = [];
+    const promotedMemos = [];
 
-    // 10. Insert into item_master
-    let inserted = 0;
-    let skipped = 0;
+    for (const result of qpResults) {
+      const itemMediaFile = copiedImages.length > 0 ? copiedImages[0].relativePath : null;
 
-    for (const item of qpItems) {
-      const memo = memoLookup[item.question_number];
-      const itemHash = crypto.createHash('sha256').update(paperCode + ':' + item.question_number).digest('hex').substring(0, 32);
+      const marks = (result.expected_marks != null ? result.expected_marks : null) 
+                 || (result.parser_extracted_marks != null ? result.parser_extracted_marks : null) 
+                 || (result.auto_corrected_marks != null ? result.auto_corrected_marks : null) 
+                 || 0;
 
-      // Check if already exists
-      const [existing] = await db.execute(
-        'SELECT item_id FROM item_master WHERE source_paper_code = ? AND source_question_number = ? LIMIT 1',
-        [paperCode, item.question_number]
-      );
-      if (existing.length > 0) {
-        skipped++;
-        continue;
-      }
+      const questionText = result.question_text != null ? result.question_text : null;
+      const qpMarks = result.parser_extracted_marks != null ? result.parser_extracted_marks : marks;
+      const parserConfidence = result.correction_status === 'auto_corrected' ? 'green' : 'yellow';
 
-      const qpMarks = item.parser_extracted_marks || 0;
-      const memoMarks = memo ? (memo.auto_corrected_marks || memo.parser_extracted_marks || 0) : 0;
-      const finalMarks = item.auto_corrected_marks || item.expected_marks || qpMarks;
-      const expectedMarks = item.expected_marks || finalMarks;
+      const safePaperId = session.paper_id != null ? session.paper_id : 1;
+      const safeYearId = session.year_id != null ? session.year_id : 1;
+      const safeGradeId = session.grade_id != null ? session.grade_id : 1;
+      const safeSubjectId = session.subject_id != null ? session.subject_id : 1;
+      const safeAssessmentTypeId = session.assessment_type_id != null ? session.assessment_type_id : 1;
+      const safeAssessmentBodyId = session.assessment_body_id != null ? session.assessment_body_id : 1;
+      const safeLanguageId = session.language_id != null ? session.language_id : 1;
 
-      const sql = `INSERT INTO item_master (
-        item_hash, subject_official_code, subject_alpha_code, paper_no, year_id, grade_id,
-        subject_id, paper_id, assessment_type_id, assessment_body_id, item_code,
-        question_number, parent_question, is_sub_part, stimulus_text, stimulus_id,
-        question_text, question_text_afr, item_stem_latex, item_stem_html, item_stem_code,
-        item_media_svg, item_media_audio, item_media_file, item_rubric_json, item_answer_json,
-        tool_required, audit_log_id, item_type_id, cognitive_level_id, cognitive_level,
-        difficulty_id, caps_topic_id, difficulty, language_id, marking_scheme_id, marks,
-        marks_allocated, caps_subtopic_id, caps_reference, source_year, source_paper_code,
-        source_question_number, status, review_status, current_version, exposure_count,
-        last_used_date, facility_value, discrimination_index, is_retired, retired_reason,
-        retired_at, created_by, created_at, updated_at, qp_marks, memo_marks,
-        parser_confidence, published_at, published_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      const qNum = (result.question_number || '').substring(0, 20);
+      const safePaperCode = (paperCode || '').substring(0, 100);
+      const safeSubjCode = (subjectOfficialCode || '').substring(0, 20);
+      const now = new Date();
 
-      const values = [
-        itemHash, subjectOfficialCode || '', subjectAlphaCode || '', dimensions.paper_no || 0,
-        yearId || 0, gradeId, subjectId || 0, paperId || 0,
-        assessmentTypeId, assessmentBodyId, paperCode + '_' + item.question_number,
-        item.question_number, item.parent_header_id ? item.question_number.split('.')[0] : null,
-        item.parent_header_id ? 1 : 0,
-        null, null,
-        item.question_text || '', null, null, item.question_text || null,
-        null, null, null, null, null, null,
-        null, null, 1, 1, null, 1,
-        null, null, languageId, null, finalMarks, expectedMarks, null,
-        null, dimensions.year || '', paperCode, item.question_number, 'draft', 'draft',
-        1, 0, null, null, null,
-        0, null, null, createdBy, now, now,
-        qpMarks, memoMarks,
-        item.correction_status === 'auto_corrected' ? 'green' : 'yellow',
-        null, null
+      const itemSql = `INSERT INTO item_master 
+        (subject_official_code, subject_alpha_code, paper_no, year_id, grade_id, 
+         subject_id, paper_id, assessment_type_id, assessment_body_id, 
+         question_number, question_text, 
+         source_paper_code, source_question_number, item_media_file, 
+         item_type_id, cognitive_level_id, difficulty_id, language_id, 
+         marks, marks_allocated, 
+         caps_topic_id, caps_subtopic_id, status, review_status, 
+         created_by, created_at, updated_at, qp_marks, parser_confidence) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+      const itemBinds = [
+        safeSubjCode,
+        '',
+        safePaperId,
+        safeYearId,
+        safeGradeId,
+        safeSubjectId,
+        safePaperId,
+        safeAssessmentTypeId,
+        safeAssessmentBodyId,
+        qNum,
+        questionText,
+        safePaperCode,
+        qNum,
+        itemMediaFile,
+        1,
+        1,
+        1,
+        safeLanguageId,
+        marks,
+        marks,
+        null,
+        null,
+        'draft',
+        'draft',
+        1,
+        now,
+        now,
+        qpMarks,
+        parserConfidence
       ];
 
-      await db.execute(sql, values);
-      inserted++;
+      await connection.execute(itemSql, itemBinds);
+
+      const [newItemRows] = await connection.execute(
+        'SELECT item_id FROM item_master WHERE source_paper_code = ? AND source_question_number = ? ORDER BY created_at DESC LIMIT 1',
+        [safePaperCode, qNum]
+      );
+      const itemId = newItemRows.length > 0 ? newItemRows[0].item_id : null;
+
+      promotedItems.push({
+        itemId: itemId,
+        questionNumber: result.question_number,
+        mediaFile: itemMediaFile
+      });
     }
 
-    // 11. Insert into item_memos
-    let memoInserted = 0;
-    let memoSkipped = 0;
-
-    for (const item of qpItems) {
-      const memo = memoLookup[item.question_number];
-      if (!memo) {
-        memoSkipped++;
-        continue;
-      }
-
-      const [itemRows] = await db.execute(
-        'SELECT item_id FROM item_master WHERE source_paper_code = ? AND source_question_number = ? LIMIT 1',
-        [paperCode, item.question_number]
+    for (const memo of memoResults) {
+      const [itemRows] = await connection.execute(
+        'SELECT item_id FROM item_master WHERE source_paper_code = ? AND source_question_number = ? ORDER BY created_at DESC LIMIT 1',
+        [(paperCode || '').substring(0, 100), (memo.question_number || '').substring(0, 20)]
       );
-      if (itemRows.length === 0) {
-        memoSkipped++;
-        continue;
-      }
 
-      const itemId = itemRows[0].item_id;
+      const itemId = itemRows.length > 0 ? itemRows[0].item_id : null;
+      const memoMarks = (memo.expected_marks != null ? memo.expected_marks : null)
+                     || (memo.parser_extracted_marks != null ? memo.parser_extracted_marks : null)
+                     || (memo.auto_corrected_marks != null ? memo.auto_corrected_marks : null)
+                     || 0;
+      const memoAnswerText = memo.answer_text != null ? memo.answer_text : null;
 
-      const [existingMemo] = await db.execute(
-        'SELECT memo_id FROM item_memos WHERE item_id = ? LIMIT 1',
-        [itemId]
-      );
-      if (existingMemo.length > 0) {
-        memoSkipped++;
-        continue;
-      }
+      if (itemId) {
+        const now = new Date();
 
-      try {
-        await db.execute(
-          `INSERT INTO item_memos (item_id, question_number, answer_text, marks, marking_scheme_id, cognitive_level_id, has_sub_parts, version_number, is_current, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            itemId, item.question_number, memo.answer_text || null,
-            memo.auto_corrected_marks || memo.parser_extracted_marks || 0,
-            null, 1, item.parent_header_id ? 1 : 0, 1, 1, now, now
-          ]
+        const memoSql = `INSERT INTO item_memos 
+          (item_id, question_number, answer_text, marks, marking_guideline, is_current, created_at, updated_at) 
+          VALUES (?, ?, ?, ?, ?, 1, ?, ?)`;
+
+        const memoBinds = [
+          itemId,
+          (memo.question_number || '').substring(0, 20),
+          memoAnswerText,
+          memoMarks,
+          memoAnswerText,
+          now,
+          now
+        ];
+
+        await connection.execute(memoSql, memoBinds);
+
+        const [newMemoRows] = await connection.execute(
+          'SELECT memo_id FROM item_memos WHERE item_id = ? AND question_number = ? ORDER BY created_at DESC LIMIT 1',
+          [itemId, (memo.question_number || '').substring(0, 20)]
         );
-        memoInserted++;
-      } catch (memoErr) {
-        console.error('Memo insert error:', paperCode, item.question_number, memoErr.message);
-        memoSkipped++;
+        const memoId = newMemoRows.length > 0 ? newMemoRows[0].memo_id : null;
+
+        promotedMemos.push({
+          memoId: memoId,
+          questionNumber: memo.question_number,
+          itemId: itemId
+        });
       }
     }
+
+    await connection.execute(
+      "UPDATE parse_sessions SET status = 'imported' WHERE session_id = ?",
+      [sessionId]
+    );
+
+    await connection.commit();
 
     return {
-      inserted,
-      skipped,
-      total: qpItems.length,
-      memo_inserted: memoInserted,
-      memo_skipped: memoSkipped
+      success: true,
+      sessionId,
+      paperCode,
+      itemsPromoted: promotedItems.length,
+      memosPromoted: promotedMemos.length,
+      imagesCopied: copiedImages.length,
+      promotedItems,
+      promotedMemos
     };
-  } catch (e) {
-    console.error('Auto-promote error:', e.message);
-    return { error: e.message };
+
+  } catch (err) {
+    await connection.rollback();
+    console.error('Promotion error:', err);
+    throw err;
+  } finally {
+    connection.release();
   }
 }
 
-module.exports = { promoteSessionToItemMaster };
+module.exports = {
+  promoteSessionToItemMaster,
+  collectImages,
+  copyImagesToItemMedia
+};
+
