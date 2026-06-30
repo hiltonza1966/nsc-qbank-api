@@ -72,17 +72,40 @@ function extractDimensionsFromFilename(qpFilename) {
   const yearMatch = clean.match(/\b(20\d{2})\b/);
   const year = yearMatch ? parseInt(yearMatch[1]) : null;
   const paperMatch = clean.match(/\bP(\d+)\b/i);
-  const paperNo = paperMatch ? parseInt(paperMatch[1]) : null;
+  const paperNo = paperMatch ? parseInt(paperMatch[1]) : 1; // Default to Paper 1
+
+  // Extract session from filename
+  let sessionName = 'NOV';
+  const sessionPatterns = [
+    { pattern: /\bSept(?:ember)?\b/i, name: 'SEPT' },
+    { pattern: /\bMay[-\s]?June\b/i, name: 'MAY_JUNE' },
+    { pattern: /\bMay\b/i, name: 'MAY_JUNE' },
+    { pattern: /\bJune\b/i, name: 'MAY_JUNE' },
+    { pattern: /\bNov(?:ember)?\b/i, name: 'NOV' },
+    { pattern: /\bFeb(?:ruary)?\b/i, name: 'FEB' },
+    { pattern: /\bMar(?:ch)?\b/i, name: 'MARCH' },
+    { pattern: /\bAug(?:ust)?\b/i, name: 'AUG' },
+    { pattern: /\bOct(?:ober)?\b/i, name: 'OCT' },
+    { pattern: /\bDec(?:ember)?\b/i, name: 'DEC' },
+  ];
+  for (const sp of sessionPatterns) {
+    if (sp.pattern.test(clean)) {
+      sessionName = sp.name;
+      break;
+    }
+  }
+
   let subjectName = clean;
   if (paperMatch) {
     const idx = clean.search(/\bP\d+\b/i);
     if (idx > 0) subjectName = clean.substring(0, idx).trim();
   }
   if (yearMatch) subjectName = subjectName.replace(yearMatch[0], '').trim();
-  subjectName = subjectName.replace(/\b(Nov|Feb|Jun|Mar|May|Aug|Oct|Dec)\b/gi, '').trim();
+  // Remove ALL session names from subject
+  subjectName = subjectName.replace(/\b(Nov|November|Feb|February|Jun|June|Mar|March|May|Aug|August|Oct|October|Dec|December|September|Sept|May-June)\b/gi, '').trim();
   const subjectAlpha = subjectName.toUpperCase().replace(/\s+/g, '');
-  const paperCode = `${subjectAlpha}_P${paperNo || 1}_${year || 'XXXX'}_NOV_${language}`;
-  return { subject_name: subjectName, subject_alpha: subjectAlpha, paper_no: paperNo, year: year, paper_code: paperCode, session_name: 'Nov', base_name: clean, language: language };
+  const paperCode = `${subjectAlpha}_P${paperNo || 1}_${year || 'XXXX'}_${sessionName}_${language}`;
+  return { subject_name: subjectName, subject_alpha: subjectAlpha, paper_no: paperNo, year: year, paper_code: paperCode, session_name: sessionName, base_name: clean, language: language };
 }
 
 function pairFiles(folderPath) {
@@ -149,8 +172,8 @@ function pairFiles(folderPath) {
 router.post('/batch', async (req, res) => {
   try {
     const folderPath = req.body.folder_path || req.body.folderPath;
-    const yearId = req.body.year_id || null;
-    const gradeId = req.body.grade_id || null;
+    let yearId = req.body.year_id || null;
+    let gradeId = req.body.grade_id || null;
     const assessmentTypeId = req.body.assessment_type_id || null;
     const assessmentBodyId = req.body.assessment_body_id || null;
     const createProductionItems = req.body.create_production_items === true;
@@ -185,21 +208,38 @@ router.post('/batch', async (req, res) => {
 
         let subjectId = null;
         let paperId = null;
+        let languageId = null;
         try {
-          const [subjectRows] = await db.execute('SELECT subject_id FROM lookup_subjects WHERE UPPER(subject_alpha_code) = UPPER(?) OR UPPER(subject_name) = UPPER(?) LIMIT 1', [dimensions.subject_alpha, dimensions.subject_alpha, dimensions.subject_name]);
+          const [subjectRows] = await db.execute('SELECT subject_id FROM lookup_subjects WHERE UPPER(parser_subject_code) = UPPER(?) OR UPPER(subject_official_code) = UPPER(?) OR UPPER(subject_name) = UPPER(?) LIMIT 1', [dimensions.subject_alpha, dimensions.subject_alpha, dimensions.subject_name]);
           if (subjectRows.length > 0) subjectId = subjectRows[0].subject_id;
           const [paperRows] = await db.execute('SELECT paper_id FROM lookup_papers WHERE paper_no = ? LIMIT 1', [dimensions.paper_no]);
           if (paperRows.length > 0) paperId = paperRows[0].paper_id;
+
+          // Lookup language_id
+          // languageId already declared in outer scope
+          const langCode = dimensions.language === 'ENG' ? 'EN' : dimensions.language === 'AFR' ? 'AF' : dimensions.language;
+          const [langRows] = await db.execute('SELECT language_id FROM lookup_languages WHERE UPPER(language_code) = UPPER(?) LIMIT 1', [langCode]);
+          if (langRows.length > 0) languageId = langRows[0].language_id;
+          
+          // Lookup year_id from filename year
+          if (dimensions.year) {
+            const [yearRows] = await db.execute('SELECT year_id FROM lookup_years WHERE year_value = ? LIMIT 1', [dimensions.year]);
+            if (yearRows.length > 0) yearId = yearRows[0].year_id;
+          }
         } catch (e) { /* Non-fatal */ }
 
         const totalItems = parseResult.matched || 0;
         const totalMarks = parseResult.total_marks || 0;
         const greenCount = parseResult.green_count || 0;
 
+        // Lookup grade_id (all PDFs are Grade 12)
+        const [gradeRows] = await db.execute('SELECT grade_id FROM lookup_grades WHERE grade_value = ? LIMIT 1', [12]);
+        if (gradeRows.length > 0) gradeId = gradeRows[0].grade_id;
+        
         await db.execute(
-          `INSERT INTO parse_sessions (session_id, year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id, file_name, file_hash, parser_version, total_items_found, total_marks_parser, total_marks_expected, total_marks_corrected, auto_corrected_count, manual_review_count, missing_count, status, error_message, completed_at, created_at, paper_code, is_memo)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [sessionId, yearId, gradeId, subjectId, paperId, assessmentTypeId, assessmentBodyId, `${paperCode}_QP_Memo_${language}.pdf`, crypto.createHash('sha256').update(paperCode).digest('hex').substring(0, 64), 'v30-tweaked-batch', totalItems, totalMarks, 150, totalMarks, greenCount, 0, totalItems - greenCount, 'imported', null, now, now, paperCode, 0]
+          `INSERT INTO parse_sessions (session_id, year_id, grade_id, subject_id, paper_id, language_id, assessment_type_id, assessment_body_id, file_name, file_hash, parser_version, total_items_found, total_marks_parser, total_marks_expected, total_marks_corrected, auto_corrected_count, manual_review_count, missing_count, status, error_message, completed_at, created_at, paper_code, is_memo)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [sessionId, yearId, gradeId, subjectId, paperId, languageId, assessmentTypeId, assessmentBodyId, `${paperCode}_QP_Memo_${language}.pdf`, crypto.createHash('sha256').update(paperCode).digest('hex').substring(0, 64), 'v30-tweaked-batch', totalItems, totalMarks, 150, totalMarks, greenCount, 0, totalItems - greenCount, 'imported', null, now, now, paperCode, 0]
         );
 
         // === HEADER DETECTION: Build header ID map for parent_header_id linkage ===
@@ -284,13 +324,13 @@ router.post('/batch', async (req, res) => {
 
         // Update parent_header_id for sub-items that were inserted before their header
         for (const [headerQ, headerId] of Object.entries(headerDbIds)) {
-          await db.execute(
+        await db.execute(
             'UPDATE parse_results SET parent_header_id = ? WHERE paper_code = ? AND question_number LIKE ? AND question_number != ? AND parent_header_id IS NULL',
             [headerId, paperCode, headerQ + '.%', headerQ]
           );
         }
         for (const [headerQ, headerId] of Object.entries(headerMemoDbIds)) {
-          await db.execute(
+        await db.execute(
             'UPDATE parse_memos SET parent_header_id = ? WHERE paper_code = ? AND question_number LIKE ? AND question_number != ? AND parent_header_id IS NULL',
             [headerId, paperCode, headerQ + '.%', headerQ]
           );
@@ -352,7 +392,7 @@ router.get('/batch/status', async (req, res) => {
 // ============================================
 async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseResult, outputDir) {
   try {
-    const result = await promoteSessionToItemMaster(db, sessionId, paperCode, dimensions, 1);
+    const result = await promoteSessionToItemMaster(sessionId);
     console.log('Auto-promote result:', paperCode, result);
     return result;
   } catch (e) {

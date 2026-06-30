@@ -57,7 +57,7 @@ function safeRequire(routePath, mountPath) {
   try {
     const fullPath = path.join(__dirname, routePath);
     if (fs.existsSync(fullPath + '.js')) {
-      const route = require(routePath);
+      delete require.cache[require.resolve(routePath)]; const route = require(routePath);
       if (typeof route === 'function' || (route && route.use)) {
         app.use(mountPath, route);
         console.log(`Mounted: ${mountPath} -> ${routePath}`);
@@ -106,22 +106,18 @@ safeRequire('./routes/dashboard_parser_status', '/api/dashboard/parser');
 safeRequire('./routes/parser', '/api/parser');
 
 // === CORPORATE API VERSIONING ===
+// === CORPORATE API VERSIONING ===
 const { isEnabled } = require('./config/features');
 
-// v2 API: Wizard Parser (v30) - ISOLATED from CAPS
+// v3 API: Unified Import Wizard and Batch Parser
 if (isEnabled('wizard_parser_v30')) {
-  safeRequire('./routes/v2/parser', '/api/v2/parser');
-  safeRequire('./routes/v2/batch_parser', '/api/v2/parser');
-  safeRequire('./routes/v2/parser_review', '/api/v2/parser');
-  safeRequire('./routes/v2/review_workflow', '/api/v2/review');
-  safeRequire('./routes/v2/qp_memo_register', '/api/v2');
-  safeRequire('./routes/v2/caps_register', '/api/v2');
-
-// v3 API: Shared Promotion Function - Unified Import Wizard and Batch Parser
-safeRequire('./routes/v3/batch_parser', '/api/v3/parser');
-safeRequire('./routes/v3/parser_review', '/api/v3/review');
+  safeRequire('./routes/v3/batch_parser', '/api/v3/parser');
+  safeRequire('./routes/v3/parser_review', '/api/v3/review');
   safeRequire('./routes/v3/parser', '/api/v3/parser');
 }
+
+// QP & Memo Register (restored from v2 to v3, mounted at v2 for frontend compatibility)
+safeRequire('./routes/v3/qp_memo_register', '/api/v2');
 
 // v1 API: CAPS Parser (v9) - ISOLATED from Wizard
 if (isEnabled('caps_parser_v9')) {
@@ -248,4 +244,6 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
+
 
