@@ -568,6 +568,12 @@ async function getDatabaseData(req, res) {
         [paperCode]
       );
       
+
+      // Get Memo item counts and marks from item_memos joined to item_master
+      const [memoCounts] = await connection.execute(
+        'SELECT COUNT(*) as count, SUM(im.marks) as total_memo_marks FROM item_memos im JOIN item_master m ON im.item_id = m.item_id WHERE m.source_paper_code = ?',
+        [paperCode]
+      );
       // Get sub-part count
       const [subPartCount] = await connection.execute(
         'SELECT COUNT(*) as count FROM item_master WHERE source_paper_code = ? AND is_sub_part = 1',
@@ -613,7 +619,7 @@ async function getDatabaseData(req, res) {
       const count = itemCounts[0]?.count || 0;
       const totalMarks = itemCounts[0]?.total_marks || 0;
       const totalQpMarks = itemCounts[0]?.total_qp_marks || 0;
-      const totalMemoMarks = itemCounts[0]?.total_memo_marks || 0;
+      const totalMemoMarks = memoCounts[0]?.total_memo_marks || itemCounts[0]?.total_memo_marks || 0;
 
       const paper = {
         paper_code: paperCode,
@@ -631,7 +637,7 @@ async function getDatabaseData(req, res) {
         assessment_body_id: 1,
         assessment_type_id: 1,
         qp_item_count: count,
-        memo_item_count: count,
+        memo_item_count: memoCounts[0]?.count || 0,
         items_match: true,
         item_variance: 0,
         qp_expected_marks: totalQpMarks || 0,
