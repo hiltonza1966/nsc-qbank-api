@@ -17,14 +17,29 @@ function collectImages(paperCode, outputDir) {
   const images = [];
   const paperDir = path.join(outputDir || PARSER_OUTPUT_DIR, paperCode);
   if (!fs.existsSync(paperDir)) return images;
-  const files = fs.readdirSync(paperDir);
-  for (const file of files) {
-    if (/\.(png|jpg|jpeg|gif)$/i.test(file)) {
-      images.push({
-        filename: file,
-        sourcePath: path.join(paperDir, file),
-        relativePath: path.join(paperCode, file).replace(/\\/g, '/')
-      });
+
+  // Look in root folder and subfolders (qp_images, memo_images)
+  const foldersToCheck = [paperDir];
+  const subfolders = ['qp_images', 'memo_images'];
+  for (const sub of subfolders) {
+    const subPath = path.join(paperDir, sub);
+    if (fs.existsSync(subPath)) foldersToCheck.push(subPath);
+  }
+
+  for (const folder of foldersToCheck) {
+    const files = fs.readdirSync(folder);
+    for (const file of files) {
+      if (/\.(png|jpg|jpeg|gif)$/i.test(file)) {
+        const relativeSub = path.relative(paperDir, folder);
+        const relativePath = relativeSub
+          ? path.join(paperCode, relativeSub, file).replace(/\\/g, '/')
+          : path.join(paperCode, file).replace(/\\/g, '/');
+        images.push({
+          filename: file,
+          sourcePath: path.join(folder, file),
+          relativePath: relativePath
+        });
+      }
     }
   }
   return images;
@@ -37,7 +52,13 @@ function copyImagesToItemMedia(paperCode, images, targetDir) {
   }
   const copiedImages = [];
   for (const img of images) {
-    const targetPath = path.join(targetPaperDir, img.filename);
+    // Handle subfolders (qp_images, memo_images)
+    const relativeSub = path.dirname(img.relativePath).replace(paperCode, '').replace(/^\//, '');
+    const targetSubDir = relativeSub ? path.join(targetPaperDir, relativeSub) : targetPaperDir;
+    if (!fs.existsSync(targetSubDir)) {
+      fs.mkdirSync(targetSubDir, { recursive: true });
+    }
+    const targetPath = path.join(targetSubDir, img.filename);
     try {
       fs.copyFileSync(img.sourcePath, targetPath);
       copiedImages.push({ ...img, targetPath: targetPath.replace(/\\/g, '/') });
@@ -214,18 +235,37 @@ async function promoteSessionToItemMaster(sessionId, outputDir) {
       }
     }
 
-    // Insert images into item_attachments
+    // Insert images into item_attachments with item_id lookup
     for (const img of copiedImages) {
-      const attachmentPath = path.join('item_media', img.relativePath).replace(/\\/g, '/');
-      const now = new Date();
-      try {
-        await connection.execute(
-          `INSERT INTO item_attachments (item_id, file_name, file_path, file_size, mime_type, description, display_order, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [null, img.filename, attachmentPath, 0, 'image/png', 'Parser extracted image', 0, now]
+      const match = img.filename.match(/_(\d+)_(\d+)_p/);
+      let questionNumber = null;
+      if (match) {
+        questionNumber = match[1] + '.' + match[2];
+      }
+
+      let itemId = null;
+      if (questionNumber) {
+        const [items] = await connection.execute(
+          'SELECT item_id FROM item_master WHERE source_paper_code = ? AND source_question_number = ? LIMIT 1',
+          [(paperCode || '').substring(0, 100), questionNumber]
         );
-      } catch (err) {
-        console.error('Failed to insert attachment for image ' + img.filename + ':', err.message);
+        if (items.length > 0) {
+          itemId = items[0].item_id;
+        }
+      }
+
+      if (itemId) {
+        const attachmentPath = path.join('item_media', img.relativePath).replace(/\\/g, '/');
+        const now = new Date();
+        try {
+          await connection.execute(
+            `INSERT INTO item_attachments (item_id, file_name, file_path, file_size, mime_type, description, display_order, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [itemId, img.filename, attachmentPath, 0, 'image/png', 'Parser extracted image', 0, now]
+          );
+        } catch (err) {
+          console.error('Failed to insert attachment for image ' + img.filename + ':', err.message);
+        }
       }
     }
 
