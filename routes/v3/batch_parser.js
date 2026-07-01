@@ -266,9 +266,9 @@ router.post('/batch', async (req, res) => {
         const greenCount = parseResult.green_count || 0;
         
         await db.execute(
-          `INSERT INTO parse_sessions (session_id, year_id, grade_id, subject_id, paper_id, language_id, assessment_type_id, assessment_body_id, file_name, file_hash, parser_version, total_items_found, total_marks_parser, total_marks_expected, total_marks_corrected, auto_corrected_count, manual_review_count, missing_count, status, error_message, completed_at, created_at, paper_code, is_memo)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [sessionId, yearId, gradeId, subjectId, paperId, languageId, assessmentTypeId, assessmentBodyId, `${paperCode}_QP_Memo_${language}.pdf`, crypto.createHash('sha256').update(paperCode).digest('hex').substring(0, 64), 'v30-tweaked-batch', totalItems, totalMarks, 150, totalMarks, greenCount, 0, totalItems - greenCount, 'imported', null, now, now, paperCode, 0]
+          `INSERT INTO parse_sessions (session_id, year_id, grade_id, subject_id, paper_id, language_id, assessment_type_id, assessment_body_id, file_name, file_hash, output_folder_path, parser_version, total_items_found, total_marks_parser, total_marks_expected, total_marks_corrected, auto_corrected_count, manual_review_count, missing_count, status, error_message, completed_at, created_at, paper_code, is_memo)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [sessionId, yearId, gradeId, subjectId, paperId, languageId, assessmentTypeId, assessmentBodyId, `${paperCode}_QP_Memo_${language}.pdf`, crypto.createHash('sha256').update(paperCode).digest('hex').substring(0, 64), outputDir, 'v30-tweaked-batch', totalItems, totalMarks, 150, totalMarks, greenCount, 0, totalItems - greenCount, 'imported', null, now, now, paperCode, 0]
         );
 
         // === HEADER DETECTION: Build header ID map for parent_header_id linkage ===

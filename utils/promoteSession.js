@@ -214,6 +214,21 @@ async function promoteSessionToItemMaster(sessionId, outputDir) {
       }
     }
 
+    // Insert images into item_attachments
+    for (const img of copiedImages) {
+      const attachmentPath = path.join('item_media', img.relativePath).replace(/\\/g, '/');
+      const now = new Date();
+      try {
+        await connection.execute(
+          `INSERT INTO item_attachments (item_id, file_name, file_path, file_size, mime_type, description, display_order, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [null, img.filename, attachmentPath, 0, 'image/png', 'Parser extracted image', 0, now]
+        );
+      } catch (err) {
+        console.error('Failed to insert attachment for image ' + img.filename + ':', err.message);
+      }
+    }
+
     await connection.execute(
       "UPDATE parse_sessions SET status = 'imported' WHERE session_id = ?",
       [sessionId]

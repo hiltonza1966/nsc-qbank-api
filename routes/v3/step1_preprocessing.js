@@ -6,21 +6,21 @@
 const fs = require('fs');
 const path = require('path');
 
-// Language code mapping: filename language -> database language_code
+// Language code mapping: filename language -> parser_language_code
 const LANGUAGE_MAP = {
-  'AFR': 'AF',
-  'ENG': 'EN',
-  'AFRIKAANS': 'AF',
-  'ENGLISH': 'EN',
-  'ISINDEBELE': 'NDE',
-  'ISIXHOSA': 'XHO',
-  'ISIZULU': 'ZUL',
-  'SEPEDI': 'SEP',
-  'SESOTHO': 'SES',
-  'SETSWANA': 'SET',
-  'SISWATI': 'SWA',
-  'TSHIVENDA': 'VEN',
-  'XITSONGA': 'XIT',
+  'AFR': 'AFR',
+  'ENG': 'ENG',
+  'AFRIKAANS': 'AFR',
+  'ENGLISH': 'ENG',
+  'ISINDEBELE': 'ISINDEBELE',
+  'ISIXHOSA': 'ISIXHOSA',
+  'ISIZULU': 'ISIZULU',
+  'SEPEDI': 'SEPEDI',
+  'SESOTHO': 'SESOTHO',
+  'SETSWANA': 'SETSWANA',
+  'SISWATI': 'SISWATI',
+  'TSHIVENDA': 'TSHIVENDA',
+  'XITSONGA': 'XITSONGA',
   'SASL': 'SASL'
 };
 
@@ -173,7 +173,7 @@ async function lookupAllIds(db, parsed, defaultGradeId = 3, defaultAssessmentTyp
     let languageCode = LANGUAGE_MAP[parsed.language] || parsed.language;
 
     const [languageRows] = await db.execute(
-      'SELECT language_id FROM lookup_languages WHERE language_code = ?',
+      'SELECT language_id FROM lookup_languages WHERE parser_language_code = ?',
       [languageCode]
     );
     if (languageRows.length > 0) {

@@ -185,12 +185,12 @@ export default function QPMemoRegister() {
     if (!filteredData.length) return null;
     return {
       total_papers: filteredData.length,
-      total_qp_items: filteredData.reduce((sum, r) => sum + r.qp_item_count, 0),
-      total_memo_items: filteredData.reduce((sum, r) => sum + r.memo_item_count, 0),
-      total_expected_marks: filteredData.reduce((sum, r) => sum + r.qp_expected_marks, 0),
-      total_pdf_marks: filteredData.reduce((sum, r) => sum + (r.expected_pdf_marks || r.qp_expected_marks), 0),
-      total_qp_marks: filteredData.reduce((sum, r) => sum + r.qp_corrected_marks, 0),
-      total_memo_marks: filteredData.reduce((sum, r) => sum + r.memo_corrected_marks, 0),
+      total_qp_items: filteredData.reduce((sum, r) => sum + (Number(r.qp_item_count) || 0), 0),
+      total_memo_items: filteredData.reduce((sum, r) => sum + (Number(r.memo_item_count) || 0), 0),
+      total_expected_marks: filteredData.reduce((sum, r) => sum + (Number(r.qp_expected_marks) || 0), 0),
+      total_pdf_marks: filteredData.reduce((sum, r) => sum + (Number(r.expected_pdf_marks) || Number(r.qp_expected_marks) || 0), 0),
+      total_qp_marks: filteredData.reduce((sum, r) => sum + (Number(r.qp_corrected_marks) || 0), 0),
+      total_memo_marks: filteredData.reduce((sum, r) => sum + (Number(r.memo_corrected_marks) || 0), 0),
       matched_items: filteredData.filter(r => r.items_match).length,
       matched_marks: filteredData.filter(r => r.marks_match).length,
       matched_corrected_marks: filteredData.filter(r => r.corrected_marks_match).length,
@@ -198,7 +198,7 @@ export default function QPMemoRegister() {
       missing_memos: diagnostics?.missing_memos?.length || 0,
       orphaned_memos: diagnostics?.orphaned_memos?.length || 0,
       null_paper_codes: diagnostics?.null_fields?.length || 0,
-      duplicate_items: filteredData.reduce((sum, r) => sum + r.duplicate_count, 0)
+      duplicate_items: filteredData.reduce((sum, r) => sum + (Number(r.duplicate_count) || 0), 0)
     };
   }, [filteredData, diagnostics]);
 
