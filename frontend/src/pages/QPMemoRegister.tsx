@@ -132,6 +132,17 @@ export default function QPMemoRegister() {
 
   const fetchData = async () => { setLoading(true); setError(''); setActionMessage(''); try { const params = new URLSearchParams(); params.append('data_source', dataSource); if (viewMode === 'errors') params.append('show_errors_only', 'true'); const res = await fetch(`${API_BASE}?${params.toString()}`); const result = await res.json(); if (result.success) { setData(result.data); setFilteredData(result.data); setFilters(result.filters); setSummary(result.summary); setDiagnostics(result.diagnostics); } else { setError(result.message || result.error || 'Unknown error'); } } catch (err: any) { setError(err.message); } finally { setLoading(false); } };
 
+  const recalculatePaper = async (paper_code: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/recalculate/${encodeURIComponent(paper_code)}`, { method: 'POST' });
+      const result = await res.json();
+      if (result.success) {
+        setActionMessage(`Paper totals recalculated: QP ${result.qp_total_marks} / Memo ${result.memo_total_marks}`);
+        fetchData(); // Refresh the register
+      }
+    } catch (err: any) { /* ignore */ }
+  };
+
   const applyFilters = () => { let filtered = [...data]; if (selectedBody) { const bodyId = parseInt(selectedBody); if (!isNaN(bodyId)) { filtered = filtered.filter(r => r.assessment_body_id === bodyId); } else { filtered = filtered.filter(r => r.paper_code.includes(selectedBody)); } } if (selectedType) { const typeId = parseInt(selectedType); if (!isNaN(typeId)) { filtered = filtered.filter(r => r.assessment_type_id === typeId); } else { filtered = filtered.filter(r => r.paper_code.includes(selectedType)); } } if (selectedSession) filtered = filtered.filter(r => r.session === selectedSession); if (selectedGrade) filtered = filtered.filter(r => String(r.grade) === selectedGrade || r.paper_code.includes(selectedGrade)); if (selectedLanguage) filtered = filtered.filter(r => r.language === selectedLanguage); if (selectedYear) filtered = filtered.filter(r => String(r.year) === selectedYear); if (selectedPaperNo) filtered = filtered.filter(r => String(r.paper_no) === selectedPaperNo); if (selectedSubject) filtered = filtered.filter(r => (r.subject_official_code && String(r.subject_official_code).toLowerCase() === selectedSubject.toLowerCase()) || (r.subject_code && r.subject_code.toLowerCase() === selectedSubject.toLowerCase()) || (r.subject_alpha_code && r.subject_alpha_code.toLowerCase() === selectedSubject.toLowerCase())); if (searchTerm) { const term = searchTerm.toLowerCase(); filtered = filtered.filter(r => (r.display_paper_code || r.paper_code).toLowerCase().includes(term) || r.subject_code.toLowerCase().includes(term) || (r.subject_name && r.subject_name.toLowerCase().includes(term))); } setFilteredData(filtered); };
 
   const clearFilters = () => { setSelectedBody(''); setSelectedType(''); setSelectedSession(''); setSelectedGrade(''); setSelectedLanguage(''); setSelectedYear(''); setSelectedSubject(''); setSelectedPaperNo(''); setSearchTerm(''); };
@@ -156,7 +167,7 @@ export default function QPMemoRegister() {
       const res = await fetch(`${API_BASE}/qp/${crudItem.result_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
       if (!res.ok) { const errorText = await res.text(); setCrudMessage(`Save failed (HTTP ${res.status}): ${errorText.substring(0, 200)}`); return; }
       const result = await res.json();
-      if (result.success) { setCrudMessage('QP saved successfully'); setItemListItems(prev => prev.map(item => item.result_id === crudItem.result_id ? { ...item, question_text: crudForm.qp_question_text, expected_marks: crudForm.qp_expected_marks, auto_corrected_marks: crudForm.qp_auto_corrected_marks, question_number: crudForm.qp_question_number } : item)); setTimeout(() => setCrudMessage(''), 3000); }
+      if (result.success) { setCrudMessage('QP saved successfully'); setItemListItems(prev => prev.map(item => item.result_id === crudItem.result_id ? { ...item, question_text: crudForm.qp_question_text, expected_marks: crudForm.qp_expected_marks, auto_corrected_marks: crudForm.qp_auto_corrected_marks, question_number: crudForm.qp_question_number, variance: (crudForm.qp_expected_marks - (item.memo_expected_marks || 0)), is_red_flag: (crudForm.qp_expected_marks !== (item.memo_expected_marks || 0)) } : item)); recalculatePaper(crudPaperCode); setTimeout(() => setCrudMessage(''), 3000); }
       else { setCrudMessage(result.message || result.error || result.details || 'Save failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } finally { setSavingQp(false); }
   };
@@ -170,7 +181,7 @@ export default function QPMemoRegister() {
       const res = await fetch(`${API_BASE}/memo/${crudItem.memo_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
       if (!res.ok) { const errorText = await res.text(); setCrudMessage(`Save failed (HTTP ${res.status}): ${errorText.substring(0, 200)}`); return; }
       const result = await res.json();
-      if (result.success) { setCrudMessage('Memo saved successfully'); setItemListItems(prev => prev.map(item => item.memo_id === crudItem.memo_id ? { ...item, answer_text: crudForm.memo_answer_text, memo_expected_marks: crudForm.memo_expected_marks, memo_auto_corrected_marks: crudForm.memo_auto_corrected_marks } : item)); setTimeout(() => setCrudMessage(''), 3000); }
+      if (result.success) { setCrudMessage('Memo saved successfully'); setItemListItems(prev => prev.map(item => item.memo_id === crudItem.memo_id ? { ...item, answer_text: crudForm.memo_answer_text, memo_expected_marks: crudForm.memo_expected_marks, memo_auto_corrected_marks: crudForm.memo_auto_corrected_marks, variance: ((item.expected_marks || 0) - (crudForm.memo_expected_marks || 0)), is_red_flag: ((item.expected_marks || 0) !== (crudForm.memo_expected_marks || 0)) } : item)); recalculatePaper(crudPaperCode); setTimeout(() => setCrudMessage(''), 3000); }
       else { setCrudMessage(result.message || result.error || result.details || 'Save failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } finally { setSavingMemo(false); }
   };
@@ -209,7 +220,35 @@ export default function QPMemoRegister() {
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
   };
 
-  const createMemoItem = async () => { const qn = prompt('Question number:'); if (!qn || !qn.trim()) return; const marks = prompt('Expected marks:', '0'); if (marks === null) return; const text = prompt('Answer text (optional):', ''); try { const res = await fetch(`${API_BASE}/memo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paper_code: crudPaperCode, question_number: qn.trim(), expected_marks: parseInt(marks || '0'), answer_text: text || '' }) }); const result = await res.json(); if (result.success) { setCrudMessage('Memo created successfully'); openItemList(crudPaperCode); } else { setCrudMessage(result.message || result.error || result.details || 'Create failed'); } } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } };
+  const createMemoItem = async () => {
+    const qn = crudItem?.question_number || '';
+    const marks = crudItem?.expected_marks != null ? String(crudItem.expected_marks) : '0';
+    if (!qn) { setCrudMessage('No question number available'); return; }
+    setCrudMessage(`Creating memo for ${qn}...`);
+    try {
+      let sessionId = null;
+      try {
+        const sessionRes = await fetch(`${API_BASE}/session-id/${encodeURIComponent(crudPaperCode)}`);
+        if (sessionRes.ok) { const sessionData = await sessionRes.json(); sessionId = sessionData.session_id; }
+      } catch (e) { /* ignore */ }
+      const res = await fetch(`${API_BASE}/memo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paper_code: crudPaperCode, question_number: qn.trim(), expected_marks: parseInt(marks || '0'), answer_text: '', session_id: sessionId })
+      });
+      const result = await res.json();
+      if (result.success) {
+        setCrudMessage('Memo created successfully');
+        await openItemList(crudPaperCode);
+        const newRes = await fetch(`${API_BASE}/items/${encodeURIComponent(crudPaperCode)}`);
+        const newData = await newRes.json();
+        if (newData.success) {
+          const newItem = newData.items.find((i: ItemPair) => i.question_number === qn.trim());
+          if (newItem) { openCrudPanel(newItem, crudPaperCode); }
+        }
+      } else { setCrudMessage(result.message || result.error || result.details || 'Create failed'); }
+    } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
+  };
 
   // NO DIALOGS - direct mark/unmark
   const markAsHeader = async (item: ItemPair, paper_code: string) => {
@@ -339,7 +378,7 @@ export default function QPMemoRegister() {
                   <td style={{ padding: '12px', textAlign: 'center' }}><div style={{ fontWeight: 'bold' }}>{row.qp_corrected_marks} / {row.memo_corrected_marks}</div><VarianceBadge value={row.corrected_marks_variance} /></td>
                   <td style={{ padding: '12px', textAlign: 'center' }}><IssueBadge count={row.error_count} /></td>
                   <td style={{ padding: '12px', textAlign: 'center' }}>
-                    <button onClick={() => openItemList(row.paper_code)} style={{ padding: '6px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Edit Items</button>
+                    <button onClick={() => openItemList(row.paper_code)} style={{ padding: '6px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Edit Items</button><button onClick={() => recalculatePaper(row.paper_code)} style={{ padding: '6px 12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', marginLeft: '4px' }}>Recalc</button>
                     {row.duplicate_count > 0 && (<button onClick={() => deleteDuplicates(row.paper_code)} disabled={fixing} style={{ padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold', marginLeft: '4px' }}>Del Dups ({row.duplicate_count})</button>)}
                     {row.error_count > 0 && (<div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px', maxWidth: '250px', lineHeight: '1.4', textAlign: 'left' }}>{row.data_quality_issues.slice(0, 3).map((issue, i) => (<div key={i} style={{ marginBottom: '2px' }}>• {issue}</div>))}{row.data_quality_issues.length > 3 && <div>...and {row.data_quality_issues.length - 3} more</div>}</div>)}
                   </td>

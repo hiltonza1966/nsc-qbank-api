@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // QP & MEMO REGISTER - BACKEND FIX v39
 // Date: 2026-07-02
 // Changes:
@@ -101,8 +101,8 @@ router.get('/items/:paperCode', async (req, res) => {
         memo_auto_corrected_marks: memo?.auto_corrected_marks || null,
         correction_status: qp.correction_status || 'unknown',
         memo_correction_status: memo?.correction_status || null,
-        variance: qp.variance || (qp.expected_marks - (memo?.expected_marks || 0)),
-        is_red_flag: !!qp.is_red_flag || (qp.expected_marks !== (memo?.expected_marks || 0)),
+        variance: ((qp.expected_marks || 0) - (memo?.expected_marks || 0)),
+        is_red_flag: !!qp.is_red_flag || ((qp.expected_marks || 0) !== (memo?.expected_marks || 0)),
         memo_is_red_flag: !!memo?.is_red_flag,
         has_errors: hasErrors,
         error_details: errorDetails,
@@ -372,4 +372,55 @@ async function getDatabaseData(req, res) {
   finally { conn.release(); }
 }
 
+
+// NEW: Recalculate paper totals from actual items and update parse_sessions
+router.post('/recalculate/:paperCode', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const paperCode = req.params.paperCode;
+
+    // Get QP items totals
+    const [qpItems] = await conn.execute(
+      'SELECT COUNT(*) as count, SUM(expected_marks) as total_marks FROM parse_results WHERE paper_code = ? AND is_memo = 0',
+      [paperCode]
+    );
+
+    // Get Memo items totals  
+    const [memoItems] = await conn.execute(
+      'SELECT COUNT(*) as count, SUM(expected_marks) as total_marks FROM parse_memos WHERE paper_code = ?',
+      [paperCode]
+    );
+
+    const qpCount = qpItems[0]?.count || 0;
+    const qpTotalMarks = qpItems[0]?.total_marks || 0;
+    const memoCount = memoItems[0]?.count || 0;
+    const memoTotalMarks = memoItems[0]?.total_marks || 0;
+
+    // Update parse_sessions with correct totals
+    await conn.execute(
+      'UPDATE parse_sessions SET total_marks_parser = ?, total_marks_corrected = ?, total_items_found = ? WHERE paper_code = ? AND is_memo = 0',
+      [qpTotalMarks, qpTotalMarks, qpCount, paperCode]
+    );
+
+    await conn.execute(
+      'UPDATE parse_sessions SET total_marks_parser = ?, total_marks_corrected = ?, total_items_found = ? WHERE paper_code = ? AND is_memo = 1',
+      [memoTotalMarks, memoTotalMarks, memoCount, paperCode]
+    );
+
+    res.json({
+      success: true,
+      message: 'Paper totals recalculated',
+      qp_count: qpCount,
+      qp_total_marks: qpTotalMarks,
+      memo_count: memoCount,
+      memo_total_marks: memoTotalMarks
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
 module.exports = router;
+
