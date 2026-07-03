@@ -44,7 +44,20 @@ interface ItemPair {
   memo_auto_corrected_marks: number | null; correction_status: string;
   memo_correction_status: string | null; variance: number | null;
   is_red_flag: boolean; memo_is_red_flag: boolean | null; has_errors: boolean;
-  error_details: string[]; is_header?: boolean; parent_header_id?: number | null; _indent?: boolean;
+  error_details: string[]; is_header?: boolean; header_level?: 1 | 2 | null; parent_header_id?: number | null; _indent?: number;
+}
+
+interface HierarchyTotals {
+  headerQn: string;
+  headerMarks: number;
+  subHeaders: Array<{
+    subHeaderQn: string;
+    subHeaderMarks: number;
+    subItems: Array<{ qn: string; marks: number }>;
+    subTotal: number;
+  }>;
+  directItems: Array<{ qn: string; marks: number }>;
+  total: number;
 }
 
 interface CrudFormState {
@@ -93,8 +106,29 @@ export default function QPMemoRegister() {
   const dragOffset = useRef({ x: 0, y: 0 });
   const [savingQp, setSavingQp] = useState(false);
   const [savingMemo, setSavingMemo] = useState(false);
+  const [showHierarchyView, setShowHierarchyView] = useState(false);
+  const [hierarchyTotals, setHierarchyTotals] = useState<HierarchyTotals[]>([]);
+  const [selectedParentHeader, setSelectedParentHeader] = useState<number | ''>('');
+  const [selectedParentSubHeader, setSelectedParentSubHeader] = useState<number | ''>('');
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [bulkAssignMode, setBulkAssignMode] = useState(false);
+  const [bulkAssignTarget, setBulkAssignTarget] = useState<number | ''>('');
 
   useEffect(() => { fetchData(); }, [dataSource, viewMode]);
+
+  // Fetch items for the paper when CRUD panel opens (needed for hierarchy dropdowns)
+  useEffect(() => {
+    if (crudPanelOpen && crudPaperCode && itemListItems.length === 0) {
+      fetch(`${API_BASE}/items/${encodeURIComponent(crudPaperCode)}`)
+        .then(res => res.json())
+        .then(result => {
+          if (result.success) {
+            setItemListItems(result.items || []);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [crudPanelOpen, crudPaperCode]);
   useEffect(() => { applyFilters(); }, [data, selectedBody, selectedType, selectedSession, selectedGrade, selectedLanguage, selectedYear, selectedSubject, selectedPaperNo, searchTerm]);
 
   const derivedFilters = useMemo(() => {
@@ -132,17 +166,6 @@ export default function QPMemoRegister() {
 
   const fetchData = async () => { setLoading(true); setError(''); setActionMessage(''); try { const params = new URLSearchParams(); params.append('data_source', dataSource); if (viewMode === 'errors') params.append('show_errors_only', 'true'); const res = await fetch(`${API_BASE}?${params.toString()}`); const result = await res.json(); if (result.success) { setData(result.data); setFilteredData(result.data); setFilters(result.filters); setSummary(result.summary); setDiagnostics(result.diagnostics); } else { setError(result.message || result.error || 'Unknown error'); } } catch (err: any) { setError(err.message); } finally { setLoading(false); } };
 
-  const recalculatePaper = async (paper_code: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/recalculate/${encodeURIComponent(paper_code)}`, { method: 'POST' });
-      const result = await res.json();
-      if (result.success) {
-        setActionMessage(`Paper totals recalculated: QP ${result.qp_total_marks} / Memo ${result.memo_total_marks}`);
-        fetchData(); // Refresh the register
-      }
-    } catch (err: any) { /* ignore */ }
-  };
-
   const applyFilters = () => { let filtered = [...data]; if (selectedBody) { const bodyId = parseInt(selectedBody); if (!isNaN(bodyId)) { filtered = filtered.filter(r => r.assessment_body_id === bodyId); } else { filtered = filtered.filter(r => r.paper_code.includes(selectedBody)); } } if (selectedType) { const typeId = parseInt(selectedType); if (!isNaN(typeId)) { filtered = filtered.filter(r => r.assessment_type_id === typeId); } else { filtered = filtered.filter(r => r.paper_code.includes(selectedType)); } } if (selectedSession) filtered = filtered.filter(r => r.session === selectedSession); if (selectedGrade) filtered = filtered.filter(r => String(r.grade) === selectedGrade || r.paper_code.includes(selectedGrade)); if (selectedLanguage) filtered = filtered.filter(r => r.language === selectedLanguage); if (selectedYear) filtered = filtered.filter(r => String(r.year) === selectedYear); if (selectedPaperNo) filtered = filtered.filter(r => String(r.paper_no) === selectedPaperNo); if (selectedSubject) filtered = filtered.filter(r => (r.subject_official_code && String(r.subject_official_code).toLowerCase() === selectedSubject.toLowerCase()) || (r.subject_code && r.subject_code.toLowerCase() === selectedSubject.toLowerCase()) || (r.subject_alpha_code && r.subject_alpha_code.toLowerCase() === selectedSubject.toLowerCase())); if (searchTerm) { const term = searchTerm.toLowerCase(); filtered = filtered.filter(r => (r.display_paper_code || r.paper_code).toLowerCase().includes(term) || r.subject_code.toLowerCase().includes(term) || (r.subject_name && r.subject_name.toLowerCase().includes(term))); } setFilteredData(filtered); };
 
   const clearFilters = () => { setSelectedBody(''); setSelectedType(''); setSelectedSession(''); setSelectedGrade(''); setSelectedLanguage(''); setSelectedYear(''); setSelectedSubject(''); setSelectedPaperNo(''); setSearchTerm(''); };
@@ -152,7 +175,7 @@ export default function QPMemoRegister() {
   const corporateFix = async () => { setFixing(true); setActionMessage(''); try { const res = await fetch(`${API_BASE}/corporate-fix`, { method: 'POST', headers: { 'Content-Type': 'application/json' } }); const result = await res.json(); if (result.success) { setActionMessage(result.results.map((r: any) => `${r.step}: ${r.status}`).join(', ')); fetchData(); } else { setError(result.message || result.error); } } catch (err: any) { setError(err.message); } finally { setFixing(false); } };
   const deleteDuplicates = async (paper_code: string) => { setFixing(true); setActionMessage(''); try { const res = await fetch(`${API_BASE}/delete-duplicates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paper_code }) }); const result = await res.json(); if (result.success) { setActionMessage(result.message); fetchData(); if (itemListOpen) openItemList(paper_code); } else { setError(result.message || result.error); } } catch (err: any) { setError(err.message); } finally { setFixing(false); } };
 
-  const openItemList = async (paper_code: string) => { setItemListPaperCode(paper_code); setItemListOpen(true); setItemListLoading(true); setItemListFilter(''); setItemListShowErrorsOnly(false); try { const res = await fetch(`${API_BASE}/items/${encodeURIComponent(paper_code)}`); const result = await res.json(); if (result.success) { setItemListItems(result.items); } else { setError(result.message || result.error); setItemListItems([]); } } catch (err: any) { setError(err.message); setItemListItems([]); } finally { setItemListLoading(false); } };
+  const openItemList = async (paper_code: string) => { setItemListPaperCode(paper_code); setItemListOpen(true); setItemListLoading(true); setItemListFilter(''); setItemListShowErrorsOnly(false); setShowHierarchyView(false); setHierarchyTotals([]); try { const res = await fetch(`${API_BASE}/items/${encodeURIComponent(paper_code)}`); const result = await res.json(); if (result.success) { const items = result.items || []; setItemListItems(items); setHierarchyTotals(calculateHierarchyTotals(items)); } else { setError(result.message || result.error); setItemListItems([]); } } catch (err: any) { setError(err.message); setItemListItems([]); } finally { setItemListLoading(false); } };
   const openCrudPanel = (item: ItemPair, paper_code: string) => { setCrudItem(item); setCrudForm({ qp_question_text: item.question_text || '', qp_expected_marks: item.expected_marks || 0, qp_auto_corrected_marks: item.auto_corrected_marks || null, qp_question_number: item.question_number || '', memo_answer_text: item.answer_text || '', memo_expected_marks: item.memo_expected_marks || null, memo_auto_corrected_marks: item.memo_auto_corrected_marks || null, }); setCrudPaperCode(paper_code); setCrudPanelOpen(true); setCrudMessage(''); setCrudPanelPosition({ x: 100, y: 50 }); };
   const handleMouseDown = (e: React.MouseEvent) => { setIsDragging(true); dragOffset.current = { x: e.clientX - crudPanelPosition.x, y: e.clientY - crudPanelPosition.y }; };
   const handleMouseMove = (e: React.MouseEvent) => { if (!isDragging) return; setCrudPanelPosition({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y }); };
@@ -167,7 +190,7 @@ export default function QPMemoRegister() {
       const res = await fetch(`${API_BASE}/qp/${crudItem.result_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
       if (!res.ok) { const errorText = await res.text(); setCrudMessage(`Save failed (HTTP ${res.status}): ${errorText.substring(0, 200)}`); return; }
       const result = await res.json();
-      if (result.success) { setCrudMessage('QP saved successfully'); setItemListItems(prev => prev.map(item => item.result_id === crudItem.result_id ? { ...item, question_text: crudForm.qp_question_text, expected_marks: crudForm.qp_expected_marks, auto_corrected_marks: crudForm.qp_auto_corrected_marks, question_number: crudForm.qp_question_number, variance: (crudForm.qp_expected_marks - (item.memo_expected_marks || 0)), is_red_flag: (crudForm.qp_expected_marks !== (item.memo_expected_marks || 0)) } : item)); recalculatePaper(crudPaperCode); setTimeout(() => setCrudMessage(''), 3000); }
+      if (result.success) { setCrudMessage('QP saved successfully'); setItemListItems(prev => prev.map(item => item.result_id === crudItem.result_id ? { ...item, question_text: crudForm.qp_question_text, expected_marks: crudForm.qp_expected_marks, auto_corrected_marks: crudForm.qp_auto_corrected_marks, question_number: crudForm.qp_question_number } : item)); setTimeout(() => setCrudMessage(''), 3000); }
       else { setCrudMessage(result.message || result.error || result.details || 'Save failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } finally { setSavingQp(false); }
   };
@@ -181,7 +204,7 @@ export default function QPMemoRegister() {
       const res = await fetch(`${API_BASE}/memo/${crudItem.memo_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
       if (!res.ok) { const errorText = await res.text(); setCrudMessage(`Save failed (HTTP ${res.status}): ${errorText.substring(0, 200)}`); return; }
       const result = await res.json();
-      if (result.success) { setCrudMessage('Memo saved successfully'); setItemListItems(prev => prev.map(item => item.memo_id === crudItem.memo_id ? { ...item, answer_text: crudForm.memo_answer_text, memo_expected_marks: crudForm.memo_expected_marks, memo_auto_corrected_marks: crudForm.memo_auto_corrected_marks, variance: ((item.expected_marks || 0) - (crudForm.memo_expected_marks || 0)), is_red_flag: ((item.expected_marks || 0) !== (crudForm.memo_expected_marks || 0)) } : item)); recalculatePaper(crudPaperCode); setTimeout(() => setCrudMessage(''), 3000); }
+      if (result.success) { setCrudMessage('Memo saved successfully'); setItemListItems(prev => prev.map(item => item.memo_id === crudItem.memo_id ? { ...item, answer_text: crudForm.memo_answer_text, memo_expected_marks: crudForm.memo_expected_marks, memo_auto_corrected_marks: crudForm.memo_auto_corrected_marks } : item)); setTimeout(() => setCrudMessage(''), 3000); }
       else { setCrudMessage(result.message || result.error || result.details || 'Save failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } finally { setSavingMemo(false); }
   };
@@ -273,26 +296,165 @@ export default function QPMemoRegister() {
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
   };
 
-  // FIXED: sortItemsWithHeaders only claims DIRECT sub-items (one level down)
+  const markAsSubHeader = async (item: ItemPair, paper_code: string, parentHeaderId: number) => {
+    setCrudMessage(`Marking ${item.question_number} as Sub-header...`);
+    try {
+      const res = await fetch(`${API_BASE}/mark-sub-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId, paper_code, question_number: item.question_number }) });
+      const result = await res.json();
+      if (result.success) { setCrudMessage(`Marked as Sub-header. Updated ${result.sub_items_updated || 0} sub-items.`); await openItemList(paper_code); }
+      else { setCrudMessage(result.message || result.error || 'Mark sub-header failed'); }
+    } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
+  };
+
+  const assignToParent = async (item: ItemPair, paper_code: string, parentHeaderId: number) => {
+    setCrudMessage(`Assigning ${item.question_number} to parent...`);
+    try {
+      const res = await fetch(`${API_BASE}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId }) });
+      const result = await res.json();
+      if (result.success) { setCrudMessage(`Assigned to parent`); await openItemList(paper_code); }
+      else { setCrudMessage(result.message || result.error || 'Assign failed'); }
+    } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
+  };
+
+  const calculateHierarchyTotals = (items: ItemPair[]): HierarchyTotals[] => {
+    const headers = items.filter(i => i.is_header && i.header_level === 1);
+    const totals: HierarchyTotals[] = [];
+    for (const header of headers) {
+      const subHeaders = items.filter(i => i.is_header && i.header_level === 2 && i.parent_header_id === header.result_id);
+      const directItems = items.filter(i => !i.is_header && i.parent_header_id === header.result_id && !subHeaders.some(sh => sh.result_id === i.parent_header_id));
+      const subHeaderData = subHeaders.map(sh => {
+        const subItems = items.filter(i => !i.is_header && i.parent_header_id === sh.result_id);
+        return { subHeaderQn: sh.question_number, subHeaderMarks: sh.expected_marks || 0, subItems: subItems.map(si => ({ qn: si.question_number, marks: si.expected_marks || 0 })), subTotal: subItems.reduce((sum, si) => sum + (si.expected_marks || 0), 0) };
+      });
+      const directTotal = directItems.reduce((sum, di) => sum + (di.expected_marks || 0), 0);
+      const subHeadersTotal = subHeaderData.reduce((sum, sh) => sum + sh.subTotal, 0);
+      totals.push({ headerQn: header.question_number, headerMarks: header.expected_marks || 0, subHeaders: subHeaderData, directItems: directItems.map(di => ({ qn: di.question_number, marks: di.expected_marks || 0 })), total: directTotal + subHeadersTotal });
+    }
+    return totals;
+  };
+
+  const getAvailableHeaders = (items: ItemPair[]) => items.filter(i => i.is_header && i.header_level === 1);
+  const getAvailableSubHeaders = (items: ItemPair[]) => items.filter(i => i.is_header && i.header_level === 2);
+
+  // Auto-detect sub-headers based on question number patterns
+  const autoDetectSubHeaders = async (paper_code: string) => {
+    setCrudMessage('Auto-detecting sub-headers...');
+    try {
+      const res = await fetch(`${API_BASE}/auto-detect-headers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paper_code }) });
+      const result = await res.json();
+      if (result.success) {
+        setCrudMessage(`Auto-detected ${result.headers_marked || 0} sub-headers. Updated ${result.sub_items_reassigned || 0} sub-items.`);
+        await openItemList(paper_code);
+      } else { setCrudMessage(result.message || result.error || 'Auto-detect failed'); }
+    } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
+  };
+
+  // Bulk mark selected items as Sub-headers under a parent Header
+  const bulkMarkAsSubHeaders = async (paper_code: string, parentHeaderId: number) => {
+    if (selectedItems.size === 0) { setCrudMessage('No items selected'); return; }
+    setCrudMessage(`Marking ${selectedItems.size} items as Sub-headers...`);
+    try {
+      const promises = Array.from(selectedItems).map(async (resultId) => {
+        const item = itemListItems.find(i => i.result_id === resultId);
+        if (!item) return;
+        await fetch(`${API_BASE}/mark-sub-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId, paper_code, question_number: item.question_number }) });
+      });
+      await Promise.all(promises);
+      setCrudMessage(`Marked ${selectedItems.size} items as Sub-headers`);
+      setSelectedItems(new Set());
+      await openItemList(paper_code);
+    } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
+  };
+
+  // Bulk assign selected items to a parent
+  const bulkAssignToParent = async (paper_code: string, parentId: number) => {
+    if (selectedItems.size === 0) { setCrudMessage('No items selected'); return; }
+    setCrudMessage(`Bulk assigning ${selectedItems.size} items...`);
+    try {
+      const promises = Array.from(selectedItems).map(async (resultId) => {
+        const item = itemListItems.find(i => i.result_id === resultId);
+        if (!item) return;
+        await fetch(`${API_BASE}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentId }) });
+      });
+      await Promise.all(promises);
+      setCrudMessage(`Assigned ${selectedItems.size} items to parent`);
+      setSelectedItems(new Set());
+      setBulkAssignMode(false);
+      await openItemList(paper_code);
+    } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
+  };
+
+  // Toggle item selection for bulk mode
+  const toggleItemSelection = (resultId: number) => {
+    setSelectedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(resultId)) newSet.delete(resultId);
+      else newSet.add(resultId);
+      return newSet;
+    });
+  };
+
+  // 3-LEVEL: sortItemsWithHeaders handles Header -> Sub-header -> Sub-item
   function sortItemsWithHeaders(items: ItemPair[]) {
     if (!items || items.length === 0) return [];
     const sortedByQn = [...items].sort((a, b) => compareQuestionNumbers(a.question_number, b.question_number));
     const result: ItemPair[] = [];
     const processed = new Set<string>();
+
     for (const item of sortedByQn) {
       if (processed.has(item.question_number)) continue;
-      if (item.is_header) {
-        result.push(item);
+
+      if (item.is_header && (item.header_level === 1 || item.header_level === null)) {
+        // LEVEL 1 HEADER
+        result.push({ ...item, _indent: 0 });
         processed.add(item.question_number);
         const headerParts = item.question_number.split('.');
-        const subItems = sortedByQn.filter(sub => {
+
+        // Find sub-headers (level 2) under this header
+        const subHeaders = sortedByQn.filter(sub => {
+          if (!sub.is_header || sub.header_level !== 2) return false;
+          if (processed.has(sub.question_number)) return false;
+          // Sub-header must be direct child: e.g., 3.1 under 3, NOT 3.1.1 under 3
+          const subParts = sub.question_number.split('.');
+          return subParts.length === headerParts.length + 1 && 
+                 sub.question_number.startsWith(item.question_number + '.');
+        });
+        subHeaders.sort((a, b) => compareQuestionNumbers(a.question_number, b.question_number));
+
+        for (const subHeader of subHeaders) {
+          result.push({ ...subHeader, _indent: 1 });
+          processed.add(subHeader.question_number);
+
+          // Find sub-items under this sub-header
+          const subItems = sortedByQn.filter(sub => {
+            if (sub.is_header || processed.has(sub.question_number)) return false;
+            const subParts = sub.question_number.split('.');
+            const subHParts = subHeader.question_number.split('.');
+            return subParts.length === subHParts.length + 1 && 
+                   sub.question_number.startsWith(subHeader.question_number + '.');
+          });
+          subItems.sort((a, b) => compareQuestionNumbers(a.question_number, b.question_number));
+          for (const subItem of subItems) {
+            result.push({ ...subItem, _indent: 2 });
+            processed.add(subItem.question_number);
+          }
+        }
+
+        // Find direct sub-items under this header (not under any sub-header)
+        const directItems = sortedByQn.filter(sub => {
           if (sub.is_header || processed.has(sub.question_number)) return false;
           const subParts = sub.question_number.split('.');
-          return subParts.length === headerParts.length + 1 && sub.question_number.startsWith(item.question_number + '.');
+          // Must be direct child of header (e.g., 3.2 under 3, not 3.1.1)
+          return subParts.length === headerParts.length + 1 && 
+                 sub.question_number.startsWith(item.question_number + '.');
         });
-        subItems.sort((a, b) => compareQuestionNumbers(a.question_number, b.question_number));
-        for (const sub of subItems) { result.push({ ...sub, _indent: true }); processed.add(sub.question_number); }
-      } else if (!processed.has(item.question_number)) {
+        directItems.sort((a, b) => compareQuestionNumbers(a.question_number, b.question_number));
+        for (const direct of directItems) {
+          result.push({ ...direct, _indent: 1 });
+          processed.add(direct.question_number);
+        }
+      } else if (!item.is_header && !processed.has(item.question_number)) {
+        // STANDALONE ITEM (not under any header)
         result.push(item);
         processed.add(item.question_number);
       }
@@ -378,7 +540,7 @@ export default function QPMemoRegister() {
                   <td style={{ padding: '12px', textAlign: 'center' }}><div style={{ fontWeight: 'bold' }}>{row.qp_corrected_marks} / {row.memo_corrected_marks}</div><VarianceBadge value={row.corrected_marks_variance} /></td>
                   <td style={{ padding: '12px', textAlign: 'center' }}><IssueBadge count={row.error_count} /></td>
                   <td style={{ padding: '12px', textAlign: 'center' }}>
-                    <button onClick={() => openItemList(row.paper_code)} style={{ padding: '6px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Edit Items</button><button onClick={() => recalculatePaper(row.paper_code)} style={{ padding: '6px 12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', marginLeft: '4px' }}>Recalc</button>
+                    <button onClick={() => openItemList(row.paper_code)} style={{ padding: '6px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Edit Items</button>
                     {row.duplicate_count > 0 && (<button onClick={() => deleteDuplicates(row.paper_code)} disabled={fixing} style={{ padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold', marginLeft: '4px' }}>Del Dups ({row.duplicate_count})</button>)}
                     {row.error_count > 0 && (<div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px', maxWidth: '250px', lineHeight: '1.4', textAlign: 'left' }}>{row.data_quality_issues.slice(0, 3).map((issue, i) => (<div key={i} style={{ marginBottom: '2px' }}>• {issue}</div>))}{row.data_quality_issues.length > 3 && <div>...and {row.data_quality_issues.length - 3} more</div>}</div>)}
                   </td>
@@ -401,20 +563,74 @@ export default function QPMemoRegister() {
 
       {itemListOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '95%', maxWidth: '1400px', maxHeight: '90vh', overflow: 'auto', padding: '24px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', width: '95%', maxWidth: '1400px', maxHeight: '90vh', overflow: 'auto', resize: 'both', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Items: {itemListPaperCode}</h2>
+              <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Items: {itemListPaperCode} <span style={{ fontSize: '12px', color: '#10b981', marginLeft: '8px', padding: '2px 8px', background: '#d1fae5', borderRadius: '4px' }}>v3-HIERARCHY</span></h2>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button onClick={() => setShowHierarchyView(!showHierarchyView)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #3b82f6', background: showHierarchyView ? '#3b82f6' : 'white', color: showHierarchyView ? 'white' : '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>{showHierarchyView ? 'List View' : 'Hierarchy View'}</button>
+                <button onClick={() => autoDetectSubHeaders(itemListPaperCode)} disabled={fixing} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #10b981', background: 'white', color: '#10b981', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Auto-Detect</button>
+                <button onClick={() => setBulkAssignMode(!bulkAssignMode)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #8b5cf6', background: bulkAssignMode ? '#8b5cf6' : 'white', color: bulkAssignMode ? 'white' : '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>{bulkAssignMode ? 'Cancel Bulk' : 'Bulk Assign'}</button>
                 <input type="text" value={itemListFilter} onChange={(e) => setItemListFilter(e.target.value)} placeholder="Filter by Q#..." style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px' }} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}><input type="checkbox" checked={itemListShowErrorsOnly} onChange={(e) => setItemListShowErrorsOnly(e.target.checked)} /> Errors only</label>
                 <button onClick={() => deleteDuplicates(itemListPaperCode)} disabled={fixing} style={{ padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>{fixing ? 'Working...' : 'Delete Duplicates'}</button>
                 <button onClick={() => setItemListOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>×</button>
               </div>
             </div>
+            {bulkAssignMode && (
+              <div style={{ background: '#f0f9ff', borderRadius: '8px', padding: '12px', marginBottom: '16px', border: '1px solid #bae6fd' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#0369a1' }}>{selectedItems.size} items selected</span>
+
+                  {/* Assign as Sub-items under a Header or Sub-header */}
+                  <select value={bulkAssignTarget} onChange={e => setBulkAssignTarget(e.target.value ? parseInt(e.target.value) : '')} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', minWidth: '200px' }}>
+                    <option value="">Assign as Sub-item under...</option>
+                    <optgroup label="Headers (Level 1)">
+                      {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Header)</option>)}
+                    </optgroup>
+                    <optgroup label="Sub-headers (Level 2)">
+                      {itemListItems.filter(i => i.is_header && i.header_level === 2).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Sub-header)</option>)}
+                    </optgroup>
+                    <optgroup label="Other Items (will become Sub-header)">
+                      {itemListItems.filter(i => !i.is_header && i.result_id > 0).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Item)</option>)}
+                    </optgroup>
+                  </select>
+                  <button onClick={() => { if (bulkAssignTarget) bulkAssignToParent(itemListPaperCode, bulkAssignTarget as number); }} disabled={!bulkAssignTarget || selectedItems.size === 0} style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: bulkAssignTarget && selectedItems.size > 0 ? '#8b5cf6' : '#d1d5db', color: 'white', cursor: bulkAssignTarget && selectedItems.size > 0 ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 'bold' }}>Assign as Sub-items</button>
+
+                  {/* Mark selected as Sub-headers under a Header */}
+                  <select onChange={e => { const parentId = parseInt(e.target.value); if (parentId) { bulkMarkAsSubHeaders(itemListPaperCode, parentId); e.target.value = ''; } }} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #10b981', fontSize: '13px', minWidth: '200px' }}>
+                    <option value="">Mark as Sub-headers under...</option>
+                    {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Header)</option>)}
+                  </select>
+
+                  <button onClick={() => { setSelectedItems(new Set()); setBulkAssignMode(false); }} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #6b7280', background: 'white', color: '#6b7280', cursor: 'pointer', fontSize: '12px' }}>Clear</button>
+                </div>
+              </div>
+            )}
+            {showHierarchyView && hierarchyTotals.length > 0 && (
+              <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px', marginBottom: '16px', border: '1px solid #e5e7eb' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px' }}>Mark Validation (Header → Sub-header → Sub-item)</h4>
+                {hierarchyTotals.map((ht, idx) => (
+                  <div key={idx} style={{ marginBottom: '12px', padding: '8px', background: 'white', borderRadius: '6px', borderLeft: '3px solid #3b82f6' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+                      Header {ht.headerQn}: {ht.headerMarks} marks
+                      {ht.headerMarks !== ht.total && <span style={{ color: '#ef4444', fontSize: '11px', marginLeft: '8px' }}>⚠ Computed: {ht.total}</span>}
+                      {ht.headerMarks === ht.total && ht.total > 0 && <span style={{ color: '#10b981', fontSize: '11px', marginLeft: '8px' }}>✓ Valid</span>}
+                    </div>
+                    {ht.subHeaders.map((sh, shIdx) => (
+                      <div key={shIdx} style={{ marginLeft: '16px', marginTop: '4px', fontSize: '12px' }}>
+                        └ Sub-header {sh.subHeaderQn}: {sh.subHeaderMarks} marks (computed: {sh.subTotal})
+                        {sh.subItems.map(si => <div key={si.qn} style={{ marginLeft: '16px', color: '#6b7280' }}>└ {si.qn}: {si.marks} marks</div>)}
+                      </div>
+                    ))}
+                    {ht.directItems.length > 0 && <div style={{ marginLeft: '16px', marginTop: '4px', fontSize: '12px', color: '#6b7280' }}>Direct items: {ht.directItems.map(di => `${di.qn}(${di.marks})`).join(', ')}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
             {itemListLoading ? (<div>Loading items...</div>) : (
               <div>
-                <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 100px 100px 100px 80px 180px', gap: '8px', padding: '8px 12px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', fontWeight: 'bold', fontSize: '12px', color: '#374151' }}>
-                  <div>Q#</div><div>Question Text</div><div>Answer Text</div><div style={{ textAlign: 'center' }}>QP Marks</div><div style={{ textAlign: 'center' }}>Memo Marks</div><div style={{ textAlign: 'center' }}>Variance</div><div style={{ textAlign: 'center' }}>Status</div><div style={{ textAlign: 'center' }}>Action</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '40px 80px 1fr 1fr 100px 100px 100px 80px 180px', gap: '8px', padding: '8px 12px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', fontWeight: 'bold', fontSize: '12px', color: '#374151' }}>
+                  <div></div><div>Q#</div><div>Question Text</div><div>Answer Text</div><div style={{ textAlign: 'center' }}>QP Marks</div><div style={{ textAlign: 'center' }}>Memo Marks</div><div style={{ textAlign: 'center' }}>Variance</div><div style={{ textAlign: 'center' }}>Status</div><div style={{ textAlign: 'center' }}>Action</div>
                 </div>
                 <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
                   {sortItemsWithHeaders((itemListItems || []).filter(item => {
@@ -422,10 +638,17 @@ export default function QPMemoRegister() {
                     if (itemListShowErrorsOnly && !item.has_errors) return false;
                     return true;
                   })).map((item, idx) => (
-                    <div key={`${item.question_number}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 100px 100px 100px 80px 180px', gap: '8px', padding: '12px', paddingLeft: item._indent ? '32px' : '12px', borderBottom: '1px solid #f3f4f6', background: item.is_header ? '#fef3c7' : item._indent ? '#f0f9ff' : item.has_errors ? '#fffbeb' : idx % 2 === 0 ? 'white' : '#fafafa', borderLeft: item.is_header ? '4px solid #f59e0b' : item._indent ? '4px solid #3b82f6' : 'none', alignItems: 'start' }}>
-                      <div style={{ fontWeight: 'bold', color: item.is_header ? '#f59e0b' : item._indent ? '#3b82f6' : '#1f2937' }}>
-                        {item.is_header && <span style={{ marginRight: '4px', padding: '2px 6px', background: '#f59e0b', color: 'white', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>HEADER</span>}
-                        {item._indent && <span style={{ marginRight: '4px', color: '#3b82f6' }}>└─</span>}
+                    <div key={`${item.question_number}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '40px 80px 1fr 1fr 100px 100px 100px 80px 180px', gap: '8px', padding: '12px', paddingLeft: `${(item._indent || 0) * 24 + 12}px`, borderBottom: '1px solid #f3f4f6', background: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '#fef3c7' : '#f0fdf4') : item._indent ? '#f0f9ff' : item.has_errors ? '#fffbeb' : idx % 2 === 0 ? 'white' : '#fafafa', borderLeft: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '4px solid #f59e0b' : '4px solid #10b981') : item._indent ? '4px solid #3b82f6' : 'none', alignItems: 'start' }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {bulkAssignMode && (
+                          <input type="checkbox" checked={selectedItems.has(item.result_id)} onChange={() => toggleItemSelection(item.result_id)} style={{ marginRight: '8px', cursor: 'pointer' }} />
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 'bold', color: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '#f59e0b' : '#10b981') : item._indent ? '#3b82f6' : '#1f2937' }}>
+                        {(item.is_header && (item.header_level === 1 || item.header_level === null)) && <span style={{ marginRight: '4px', padding: '2px 6px', background: '#f59e0b', color: 'white', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>HEADER</span>}
+                        {item.is_header && item.header_level === 2 && <span style={{ marginRight: '4px', padding: '2px 6px', background: '#10b981', color: 'white', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>SUB-H</span>}
+                        {item._indent === 1 && <span style={{ marginRight: '4px', color: '#3b82f6' }}>└─</span>}
+                        {item._indent === 2 && <span style={{ marginRight: '4px', color: '#6b7280' }}>  └─</span>}
                         {item.question_number}
                       </div>
                       <div style={{ fontSize: '12px', color: '#374151', maxHeight: '80px', overflow: 'auto' }}>{item.question_text || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No question text</span>}</div>
@@ -439,10 +662,45 @@ export default function QPMemoRegister() {
                         {!item.is_header && (
                           <button onClick={() => markAsHeader(item, itemListPaperCode)} style={{ padding: '4px 10px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', marginLeft: '4px' }}>Mark Header</button>
                         )}
-                        {item.is_header && (
+                        {!item.is_header && (
+                          <select 
+                            onChange={(e) => { const parentId = parseInt(e.target.value); if (parentId) { markAsSubHeader(item, itemListPaperCode, parentId); e.target.value = ''; } }}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #10b981', fontSize: '11px', marginLeft: '4px', minWidth: '80px', cursor: getAvailableHeaders(itemListItems).length > 0 ? 'pointer' : 'not-allowed', opacity: getAvailableHeaders(itemListItems).length > 0 ? 1 : 0.5 }}
+                            defaultValue=""
+                            disabled={getAvailableHeaders(itemListItems).length === 0}
+                          >
+                            <option value="">→Sub-H</option>
+                            {getAvailableHeaders(itemListItems).map(h => (
+                              <option key={h.result_id} value={h.result_id}>under {h.question_number}</option>
+                            ))}
+                          </select>
+                        )}
+                        {item.is_header && item.header_level === 1 && (
                           <button onClick={() => unmarkAsHeader(item, itemListPaperCode)} style={{ padding: '4px 10px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', marginLeft: '4px' }}>Unmark</button>
                         )}
-                        {item._indent && <span style={{ marginLeft: '4px', padding: '4px 8px', background: '#3b82f6', color: 'white', borderRadius: '4px', fontSize: '11px' }}>Sub-item</span>}
+                        {item.is_header && item.header_level === 2 && (
+                          <button onClick={() => unmarkAsHeader(item, itemListPaperCode)} style={{ padding: '4px 10px', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', marginLeft: '4px' }}>Unmark</button>
+                        )}
+                        {item._indent === 2 && <span style={{ marginLeft: '4px', padding: '4px 8px', background: '#6b7280', color: 'white', borderRadius: '4px', fontSize: '11px' }}>Sub-item</span>}
+                        {item._indent === 1 && !item.is_header && <span style={{ marginLeft: '4px', padding: '4px 8px', background: '#3b82f6', color: 'white', borderRadius: '4px', fontSize: '11px' }}>Direct</span>}
+                        {!item.is_header && (
+                          <select 
+                            onChange={(e) => { const parentId = parseInt(e.target.value); if (parentId) { assignToParent(item, itemListPaperCode, parentId); e.target.value = ''; } }}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #8b5cf6', fontSize: '11px', marginLeft: '4px', minWidth: '80px', cursor: 'pointer' }}
+                            defaultValue=""
+                          >
+                            <option value="">→Sub-item</option>
+                            <optgroup label="Headers">
+                              {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number}</option>)}
+                            </optgroup>
+                            <optgroup label="Sub-headers">
+                              {itemListItems.filter(i => i.is_header && i.header_level === 2).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number}</option>)}
+                            </optgroup>
+                            <optgroup label="Other Items">
+                              {itemListItems.filter(i => !i.is_header && i.result_id > 0 && i.result_id !== item.result_id).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number}</option>)}
+                            </optgroup>
+                          </select>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -455,7 +713,7 @@ export default function QPMemoRegister() {
 
       {crudPanelOpen && crudItem && crudForm && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1001 }} onClick={() => setCrudPanelOpen(false)}>
-          <div style={{ position: 'absolute', left: crudPanelPosition.x, top: crudPanelPosition.y, background: 'white', borderRadius: '12px', width: '900px', maxHeight: '85vh', overflow: 'auto', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', cursor: isDragging ? 'grabbing' : 'default' }} onClick={(e) => e.stopPropagation()} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+          <div style={{ position: 'absolute', left: crudPanelPosition.x, top: crudPanelPosition.y, background: 'white', borderRadius: '12px', width: '900px', maxHeight: '85vh', overflow: 'auto', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', cursor: isDragging ? 'grabbing' : 'default', resize: 'both' }} onClick={(e) => e.stopPropagation()} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #e5e7eb', cursor: 'grab' }} onMouseDown={handleMouseDown}>
               <div>
                 <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>Edit Item {crudItem.question_number}</h2>
@@ -543,6 +801,74 @@ export default function QPMemoRegister() {
                 )}
               </div>
             </div>
+            {/* HIERARCHY MANAGEMENT SECTION */}
+            <div style={{ marginTop: '24px', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}>
+              <h4 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px' }}>Hierarchy Management (Header → Sub-header → Sub-item)</h4>
+              <div style={{ marginBottom: '16px', padding: '8px', background: '#f9fafb', borderRadius: '6px' }}>
+                <div style={{ fontSize: '13px' }}>
+                  <strong>Current Status:</strong>{' '}
+                  {crudItem.is_header && crudItem.header_level === 1 && 'This is a HEADER (Level 1)'}
+                  {crudItem.is_header && crudItem.header_level === 2 && 'This is a SUB-HEADER (Level 2)'}
+                  {!crudItem.is_header && crudItem.parent_header_id && 'This is a SUB-ITEM'}
+                  {!crudItem.is_header && !crudItem.parent_header_id && 'This is a STANDALONE item (not in hierarchy)'}
+                </div>
+              </div>
+              {!crudItem.is_header && (
+                <div style={{ marginBottom: '12px' }}>
+                  <button onClick={() => markAsHeader(crudItem, crudPaperCode)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #3b82f6', background: 'white', color: '#3b82f6', cursor: 'pointer', marginRight: '8px' }}>Mark as Header (Level 1)</button>
+                  <span style={{ fontSize: '11px', color: '#6b7280' }}>Converts this item to a top-level header. Sub-items will be auto-detected.</span>
+                </div>
+              )}
+              {/* Convert sub-item to Sub-header */}
+              {!crudItem.is_header && crudItem.parent_header_id && (
+                <div style={{ marginBottom: '12px', padding: '8px', background: '#f0fdf4', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                  <div style={{ fontSize: '12px', color: '#166534', marginBottom: '8px' }}>
+                    <strong>This item is currently a sub-item.</strong> You can convert it to a Sub-header (Level 2) to group sub-items under it.
+                  </div>
+                  <button onClick={() => { 
+                    // First unmark as sub-item, then mark as sub-header
+                    unmarkAsHeader(crudItem, crudPaperCode).then(() => {
+                      setTimeout(() => {
+                        markAsSubHeader(crudItem, crudPaperCode, crudItem.parent_header_id!);
+                      }, 500);
+                    });
+                  }} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #10b981', background: 'white', color: '#10b981', cursor: 'pointer' }}>Convert to Sub-header (Level 2)</button>
+                </div>
+              )}
+              {!crudItem.is_header && (
+                <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <select value={selectedParentHeader} onChange={e => setSelectedParentHeader(e.target.value ? parseInt(e.target.value) : '')} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '200px' }}>
+                    <option value="">Select Parent Header...</option>
+                    {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Header)</option>)}
+                  </select>
+                  <button onClick={() => { if (selectedParentHeader) { markAsSubHeader(crudItem, crudPaperCode, selectedParentHeader as number); } }} disabled={!selectedParentHeader} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #10b981', background: selectedParentHeader ? 'white' : '#f3f4f6', color: selectedParentHeader ? '#10b981' : '#9ca3af', cursor: selectedParentHeader ? 'pointer' : 'not-allowed' }}>Mark as Sub-header (Level 2)</button>
+                </div>
+              )}
+              {!crudItem.is_header && (
+                <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <select value={selectedParentSubHeader} onChange={e => setSelectedParentSubHeader(e.target.value ? parseInt(e.target.value) : '')} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '200px' }}>
+                    <option value="">Select Parent Sub-header...</option>
+                    {itemListItems.filter(i => i.is_header && i.header_level === 2).map(sh => <option key={sh.result_id} value={sh.result_id}>{sh.question_number} (Sub-header)</option>)}
+                  </select>
+                  <button onClick={() => { if (selectedParentSubHeader) { assignToParent(crudItem, crudPaperCode, selectedParentSubHeader as number); } }} disabled={!selectedParentSubHeader} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #8b5cf6', background: selectedParentSubHeader ? 'white' : '#f3f4f6', color: selectedParentSubHeader ? '#8b5cf6' : '#9ca3af', cursor: selectedParentSubHeader ? 'pointer' : 'not-allowed' }}>Assign as Sub-item</button>
+                </div>
+              )}
+              {crudItem.is_header && (
+                <div style={{ marginBottom: '12px' }}>
+                  <button onClick={() => unmarkAsHeader(crudItem, crudPaperCode)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ef4444', background: 'white', color: '#ef4444', cursor: 'pointer' }}>Unmark as Header/Sub-header</button>
+                  <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '8px' }}>Removes hierarchy status. Child items become standalone.</span>
+                </div>
+              )}
+              <div style={{ marginTop: '16px', padding: '12px', background: '#eff6ff', borderRadius: '6px', fontSize: '12px', color: '#1e40af' }}>
+                <strong>Hierarchy Rules:</strong><br/>
+                • Header (Level 1) = Sum of all Sub-headers + Direct sub-items<br/>
+                • Sub-header (Level 2) = Sum of all its Sub-items<br/>
+                • Sub-item = Individual question with its own marks<br/>
+                • Header + Sub-headers + Sub-items = Complete ITEM<br/>
+                • All Header totals = Question Paper Total
+              </div>
+            </div>
+
             <div style={{ marginTop: '16px', display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <button onClick={createQpItem} style={{ padding: '8px 16px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>+ Add QP Item</button>
               <button onClick={createMemoItem} style={{ padding: '8px 16px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>+ Add Memo Item</button>
