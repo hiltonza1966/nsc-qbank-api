@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 const { promoteSessionToItemMaster } = require('../../utils/promoteSession');
 const { parseMachineFilename, lookupAllIds } = require('./step1_preprocessing');
 
@@ -424,16 +425,146 @@ router.get('/batch/status', async (req, res) => {
 // AUTO-PROMOTE: Move parsed items to item_master + item_memos
 // Called after batch insert when createProductionItems=true
 // ============================================
-// AUTO-PROMOTE: Uses shared promotion function
-// ============================================
 async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseResult, outputDir) {
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
   try {
-    const result = await promoteSessionToItemMaster(sessionId);
-    console.log('Auto-promote result:', paperCode, result);
-    return result;
+    // 1. Get all QP items from parse_results for this session
+    const [qpItems] = await db.execute(
+      `SELECT result_id, question_number, question_text, expected_marks, auto_corrected_marks,
+              is_header, header_level, parent_header_id, parsed_type_id
+       FROM parse_results WHERE session_id = ? AND is_memo = 0 ORDER BY result_id`,
+      [sessionId]
+    );
+
+    // 2. Get all memo items from parse_memos for this session
+    const [memoItems] = await db.execute(
+      `SELECT memo_id, question_number, answer_text, expected_marks, auto_corrected_marks,
+              is_header, header_level, parent_header_id
+       FROM parse_memos WHERE session_id = ? ORDER BY memo_id`,
+      [sessionId]
+    );
+
+    if (qpItems.length === 0) {
+      return { error: 'No QP items found for session ' + sessionId };
+    }
+
+    // 3. Build memo map by question_number
+    const memoMap = new Map();
+    for (const memo of memoItems) {
+      memoMap.set(memo.question_number, memo);
+    }
+
+    // 4. Get subject_alpha_code from database
+    let subjectAlphaCode = dimensions.subject_official_code || '';
+    if (dimensions.subject_id) {
+      const [subjRows] = await db.execute(
+        'SELECT subject_alpha_code FROM lookup_subjects WHERE subject_id = ? LIMIT 1',
+        [dimensions.subject_id]
+      );
+      if (subjRows.length > 0 && subjRows[0].subject_alpha_code) {
+        subjectAlphaCode = subjRows[0].subject_alpha_code;
+      }
+    }
+
+    // 5. First pass: Insert ALL QP items into item_master
+    const resultIdToItemId = new Map(); // parse_results.result_id -> item_master.item_id
+    const qnToItemId = new Map();         // question_number -> item_master.item_id
+
+    for (const qp of qpItems) {
+      const itemId = uuidv4();
+      const memo = memoMap.get(qp.question_number);
+
+      // Derive parent_question and is_sub_part from question_number dots
+      const qnParts = String(qp.question_number).split('.');
+      const parentQuestion = qnParts.length > 1 ? qnParts.slice(0, -1).join('.') : null;
+      const isSubPart = qnParts.length > 1 ? 1 : 0;
+
+      // Marks: expected_marks is the authoritative value
+      const qpMarks = qp.expected_marks || 0;
+      const memoMarks = memo ? (memo.expected_marks || 0) : null;
+
+      await db.execute(
+        `INSERT INTO item_master (
+          item_id, item_code, subject_official_code, subject_alpha_code, paper_no,
+          year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id,
+          language_id, question_number, parent_question, is_sub_part, question_text,
+          marks, marks_allocated, qp_marks, memo_marks, item_type_id, cognitive_level_id,
+          difficulty_id, status, review_status, source_year, source_paper_code,
+          source_question_number, created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          itemId,
+          paperCode + '_' + String(qp.question_number).replace(/\./g, '_'),
+          dimensions.subject_official_code || null,
+          subjectAlphaCode || null,
+          dimensions.paper_no || null,
+          dimensions.year_id || null,
+          dimensions.grade_id || null,
+          dimensions.subject_id || null,
+          dimensions.paper_id || null,
+          dimensions.assessment_type_id || null,
+          dimensions.assessment_body_id || null,
+          dimensions.language_id || null,
+          qp.question_number,
+          parentQuestion,
+          isSubPart,
+          qp.question_text || null,
+          qpMarks,
+          qpMarks,
+          qpMarks,
+          memoMarks,
+          qp.parsed_type_id || 1,
+          1, // cognitive_level_id default
+          1, // difficulty_id default
+          'draft',
+          'draft',
+          dimensions.year || null,
+          paperCode,
+          qp.question_number,
+          1, // created_by
+          now,
+          now
+        ]
+      );
+
+      resultIdToItemId.set(qp.result_id, itemId);
+      qnToItemId.set(qp.question_number, itemId);
+
+      // 6. Insert memo if a matching memo exists
+      if (memo) {
+        const memoId = uuidv4();
+        await db.execute(
+          `INSERT INTO item_memos (memo_id, item_id, question_number, answer_text, marks, is_current, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+          [memoId, itemId, memo.question_number, memo.answer_text || null, memo.expected_marks || 0, now, now]
+        );
+      }
+    }
+
+    // 7. Second pass: Link parent_item_id for sub-items based on parent_header_id
+    for (const qp of qpItems) {
+      if (qp.parent_header_id) {
+        const parentItemId = resultIdToItemId.get(qp.parent_header_id);
+        const childItemId = resultIdToItemId.get(qp.result_id);
+        if (parentItemId && childItemId) {
+          await db.execute(
+            'UPDATE item_master SET parent_item_id = ? WHERE item_id = ?',
+            [parentItemId, childItemId]
+          );
+        }
+      }
+    }
+
+    return {
+      success: true,
+      itemsInserted: qpItems.length,
+      memosInserted: memoItems.length,
+      paperCode
+    };
   } catch (e) {
-    console.error('Auto-promote error:', e.message);
-    return { error: e.message };
+    console.error('Auto-promote error for', paperCode, e.message);
+    return { error: e.message, paperCode };
   }
 }
 

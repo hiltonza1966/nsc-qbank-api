@@ -38,13 +38,13 @@ interface SummaryData {
 }
 
 interface ItemPair {
-  result_id: number; memo_id: number | null; question_number: string;
-  question_text: string; answer_text: string; expected_marks: number;
+  result_id?: number; memo_id?: number | null; item_id?: string; memo_db_id?: string | null;
+  question_number: string; question_text: string; answer_text: string; expected_marks: number;
   memo_expected_marks: number | null; auto_corrected_marks: number | null;
   memo_auto_corrected_marks: number | null; correction_status: string;
   memo_correction_status: string | null; variance: number | null;
   is_red_flag: boolean; memo_is_red_flag: boolean | null; has_errors: boolean;
-  error_details: string[]; is_header?: boolean; header_level?: 1 | 2 | null; parent_header_id?: number | null; _indent?: number;
+  error_details: string[]; is_header?: boolean; header_level?: 1 | 2 | null; parent_header_id?: number | string | null; _indent?: number;
 }
 
 interface HierarchyTotals {
@@ -67,6 +67,7 @@ interface CrudFormState {
 }
 
 const API_BASE = 'http://localhost:4000/api/v2';
+const QBANK_API = 'http://localhost:4000/api/qbank';
 
 export default function QPMemoRegister() {
   const [data, setData] = useState<QPMemoRecord[]>([]);
@@ -108,11 +109,14 @@ export default function QPMemoRegister() {
   const [savingMemo, setSavingMemo] = useState(false);
   const [showHierarchyView, setShowHierarchyView] = useState(false);
   const [hierarchyTotals, setHierarchyTotals] = useState<HierarchyTotals[]>([]);
-  const [selectedParentHeader, setSelectedParentHeader] = useState<number | ''>('');
-  const [selectedParentSubHeader, setSelectedParentSubHeader] = useState<number | ''>('');
-  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [selectedParentHeader, setSelectedParentHeader] = useState<number | string | ''>('');
+  const [selectedParentSubHeader, setSelectedParentSubHeader] = useState<number | string | ''>('');
+  const [selectedItems, setSelectedItems] = useState<Set<number | string>>(new Set());
   const [bulkAssignMode, setBulkAssignMode] = useState(false);
   const [bulkAssignTarget, setBulkAssignTarget] = useState<number | ''>('');
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [addItemForm, setAddItemForm] = useState({ question_number: '', question_text: '', expected_marks: 0, answer_text: '', memo_marks: 0, parent_item_id: '' });
+  const [addItemLoading, setAddItemLoading] = useState(false);
 
   useEffect(() => { fetchData(); }, [dataSource, viewMode]);
 
@@ -175,45 +179,103 @@ export default function QPMemoRegister() {
   const corporateFix = async () => { setFixing(true); setActionMessage(''); try { const res = await fetch(`${API_BASE}/corporate-fix`, { method: 'POST', headers: { 'Content-Type': 'application/json' } }); const result = await res.json(); if (result.success) { setActionMessage(result.results.map((r: any) => `${r.step}: ${r.status}`).join(', ')); fetchData(); } else { setError(result.message || result.error); } } catch (err: any) { setError(err.message); } finally { setFixing(false); } };
   const deleteDuplicates = async (paper_code: string) => { setFixing(true); setActionMessage(''); try { const res = await fetch(`${API_BASE}/delete-duplicates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paper_code }) }); const result = await res.json(); if (result.success) { setActionMessage(result.message); fetchData(); if (itemListOpen) openItemList(paper_code); } else { setError(result.message || result.error); } } catch (err: any) { setError(err.message); } finally { setFixing(false); } };
 
-  const openItemList = async (paper_code: string) => { setItemListPaperCode(paper_code); setItemListOpen(true); setItemListLoading(true); setItemListFilter(''); setItemListShowErrorsOnly(false); setShowHierarchyView(false); setHierarchyTotals([]); try { const res = await fetch(`${API_BASE}/items/${encodeURIComponent(paper_code)}`); const result = await res.json(); if (result.success) { const items = result.items || []; setItemListItems(items); setHierarchyTotals(calculateHierarchyTotals(items)); } else { setError(result.message || result.error); setItemListItems([]); } } catch (err: any) { setError(err.message); setItemListItems([]); } finally { setItemListLoading(false); } };
+  const openItemList = async (paper_code: string) => { setItemListPaperCode(paper_code); setItemListOpen(true); setItemListLoading(true); setItemListFilter(''); setItemListShowErrorsOnly(false); setShowHierarchyView(false); setHierarchyTotals([]); try { const endpoint = dataSource === 'database' ? `${QBANK_API}/items/paper/${encodeURIComponent(paper_code)}` : `${API_BASE}/items/${encodeURIComponent(paper_code)}`; const res = await fetch(endpoint); const result = await res.json(); if (result.success) { const items = result.items || []; setItemListItems(items); setHierarchyTotals(calculateHierarchyTotals(items)); } else { setError(result.message || result.error); setItemListItems([]); } } catch (err: any) { setError(err.message); setItemListItems([]); } finally { setItemListLoading(false); } };
   const openCrudPanel = (item: ItemPair, paper_code: string) => { setCrudItem(item); setCrudForm({ qp_question_text: item.question_text || '', qp_expected_marks: item.expected_marks || 0, qp_auto_corrected_marks: item.auto_corrected_marks || null, qp_question_number: item.question_number || '', memo_answer_text: item.answer_text || '', memo_expected_marks: item.memo_expected_marks || null, memo_auto_corrected_marks: item.memo_auto_corrected_marks || null, }); setCrudPaperCode(paper_code); setCrudPanelOpen(true); setCrudMessage(''); setCrudPanelPosition({ x: 100, y: 50 }); };
   const handleMouseDown = (e: React.MouseEvent) => { setIsDragging(true); dragOffset.current = { x: e.clientX - crudPanelPosition.x, y: e.clientY - crudPanelPosition.y }; };
   const handleMouseMove = (e: React.MouseEvent) => { if (!isDragging) return; setCrudPanelPosition({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y }); };
   const handleMouseUp = () => { setIsDragging(false); };
 
   const saveQpFields = async () => {
-    if (!crudItem || !crudItem.result_id || crudItem.result_id <= 0) { setCrudMessage('Cannot save: No QP item exists (orphaned memo). Create a QP item first.'); return; }
+    if (dataSource === 'database') {
+      if (!crudItem || !crudItem.item_id) { setCrudMessage('Cannot save: No item selected.'); return; }
+    } else {
+      if (!crudItem || (crudItem.result_id || 0) <= 0) { setCrudMessage('Cannot save: No QP item exists (orphaned memo). Create a QP item first.'); return; }
+    }
     if (!crudForm) return;
     setSavingQp(true); setCrudMessage('');
     try {
-      const updates = { question_text: crudForm.qp_question_text, expected_marks: crudForm.qp_expected_marks, auto_corrected_marks: crudForm.qp_auto_corrected_marks, question_number: crudForm.qp_question_number };
-      const res = await fetch(`${API_BASE}/qp/${crudItem.result_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+      let res, result;
+      if (dataSource === 'database' && crudItem.item_id) {
+        const updates = { question_text: crudForm.qp_question_text, marks: crudForm.qp_expected_marks, qp_marks: crudForm.qp_expected_marks, question_number: crudForm.qp_question_number };
+        res = await fetch(`${QBANK_API}/items/${crudItem.item_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+      } else {
+        const updates = { question_text: crudForm.qp_question_text, expected_marks: crudForm.qp_expected_marks, auto_corrected_marks: crudForm.qp_auto_corrected_marks, question_number: crudForm.qp_question_number };
+        res = await fetch(`${API_BASE}/qp/${crudItem.result_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+      }
       if (!res.ok) { const errorText = await res.text(); setCrudMessage(`Save failed (HTTP ${res.status}): ${errorText.substring(0, 200)}`); return; }
-      const result = await res.json();
-      if (result.success) { setCrudMessage('QP saved successfully'); setItemListItems(prev => prev.map(item => item.result_id === crudItem.result_id ? { ...item, question_text: crudForm.qp_question_text, expected_marks: crudForm.qp_expected_marks, auto_corrected_marks: crudForm.qp_auto_corrected_marks, question_number: crudForm.qp_question_number } : item)); setTimeout(() => setCrudMessage(''), 3000); }
+      result = await res.json();
+      if (result.success) { setCrudMessage('QP saved successfully'); setItemListItems(prev => prev.map(item => {
+          const isTarget = dataSource === 'database' ? (item.item_id === crudItem.item_id) : (item.result_id === crudItem.result_id);
+          if (isTarget) {
+            const newExpectedMarks = crudForm.qp_expected_marks;
+            const memoMarks = item.memo_expected_marks || 0;
+            const newVariance = newExpectedMarks - memoMarks;
+            const newIsRedFlag = newVariance !== 0 || !crudForm.qp_question_text;
+            return {
+              ...item,
+              question_text: crudForm.qp_question_text,
+              expected_marks: newExpectedMarks,
+              auto_corrected_marks: crudForm.qp_auto_corrected_marks,
+              question_number: crudForm.qp_question_number,
+              variance: newVariance,
+              is_red_flag: newIsRedFlag,
+              has_errors: newIsRedFlag || item.memo_is_red_flag || false
+            };
+          }
+          return item;
+        })); fetchData(); setTimeout(() => setCrudMessage(''), 3000); }
       else { setCrudMessage(result.message || result.error || result.details || 'Save failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } finally { setSavingQp(false); }
   };
 
   const saveMemoFields = async () => {
-    if (!crudItem || !crudItem.memo_id) { setCrudMessage('Cannot save: No memo item exists. Create a memo item first.'); return; }
+    if (dataSource === 'database') {
+      if (!crudItem || !crudItem.item_id) { setCrudMessage('Cannot save: No item selected.'); return; }
+    } else {
+      if (!crudItem || !crudItem.memo_id) { setCrudMessage('Cannot save: No memo item exists. Create a memo item first.'); return; }
+    }
     if (!crudForm) return;
     setSavingMemo(true); setCrudMessage('');
     try {
-      const updates = { answer_text: crudForm.memo_answer_text, expected_marks: crudForm.memo_expected_marks, auto_corrected_marks: crudForm.memo_auto_corrected_marks };
-      const res = await fetch(`${API_BASE}/memo/${crudItem.memo_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+      let res, result;
+      if (dataSource === 'database' && crudItem.item_id) {
+        const updates = { answer_text: crudForm.memo_answer_text, marks: crudForm.memo_expected_marks, question_number: crudItem.question_number };
+        res = await fetch(`${QBANK_API}/items/${crudItem.item_id}/memo`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+      } else {
+        const updates = { answer_text: crudForm.memo_answer_text, expected_marks: crudForm.memo_expected_marks, auto_corrected_marks: crudForm.memo_auto_corrected_marks };
+        res = await fetch(`${API_BASE}/memo/${crudItem.memo_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+      }
       if (!res.ok) { const errorText = await res.text(); setCrudMessage(`Save failed (HTTP ${res.status}): ${errorText.substring(0, 200)}`); return; }
-      const result = await res.json();
-      if (result.success) { setCrudMessage('Memo saved successfully'); setItemListItems(prev => prev.map(item => item.memo_id === crudItem.memo_id ? { ...item, answer_text: crudForm.memo_answer_text, memo_expected_marks: crudForm.memo_expected_marks, memo_auto_corrected_marks: crudForm.memo_auto_corrected_marks } : item)); setTimeout(() => setCrudMessage(''), 3000); }
+      result = await res.json();
+      if (result.success) { setCrudMessage('Memo saved successfully'); setItemListItems(prev => prev.map(item => {
+          const isTarget = dataSource === 'database' ? (item.item_id === crudItem.item_id) : (item.memo_id === crudItem.memo_id);
+          if (isTarget) {
+            const qpMarks = item.expected_marks || 0;
+            const newMemoMarks = crudForm.memo_expected_marks || 0;
+            const newVariance = qpMarks - newMemoMarks;
+            const newMemoIsRedFlag = newVariance !== 0 || !crudForm.memo_answer_text;
+            return {
+              ...item,
+              answer_text: crudForm.memo_answer_text,
+              memo_expected_marks: newMemoMarks,
+              memo_auto_corrected_marks: crudForm.memo_auto_corrected_marks,
+              variance: newVariance,
+              memo_is_red_flag: newMemoIsRedFlag,
+              has_errors: item.is_red_flag || newMemoIsRedFlag || false
+            };
+          }
+          return item;
+        })); fetchData(); setTimeout(() => setCrudMessage(''), 3000); }
       else { setCrudMessage(result.message || result.error || result.details || 'Save failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } finally { setSavingMemo(false); }
   };
 
-  const deleteQpItem = async (result_id: number) => { setCrudMessage('Deleting QP...'); try { const res = await fetch(`${API_BASE}/qp/${result_id}`, { method: 'DELETE' }); const result = await res.json(); if (result.success) { setCrudMessage('QP deleted'); setCrudItem(prev => prev ? { ...prev, result_id: 0, has_errors: true, error_details: [...prev.error_details, 'QP deleted'] } : null); openItemList(crudPaperCode); setCrudPanelOpen(false); } else { setCrudMessage(result.message || result.error || 'Delete failed'); } } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } };
-  const deleteMemoItem = async (memo_id: number) => { setCrudMessage('Deleting memo...'); try { const res = await fetch(`${API_BASE}/memo/${memo_id}`, { method: 'DELETE' }); const result = await res.json(); if (result.success) { setCrudMessage('Memo deleted'); setCrudItem(prev => prev ? { ...prev, memo_id: null, has_errors: true, error_details: [...prev.error_details, 'Memo deleted'] } : null); openItemList(crudPaperCode); setCrudPanelOpen(false); } else { setCrudMessage(result.message || result.error || 'Delete failed'); } } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } };
+  const deleteQpItem = async (result_id: number) => { setCrudMessage('Deleting QP...'); try { let res, result; if (dataSource === 'database' && crudItem?.item_id) { res = await fetch(`${QBANK_API}/items/${crudItem.item_id}`, { method: 'DELETE' }); } else { res = await fetch(`${API_BASE}/qp/${result_id}`, { method: 'DELETE' }); } result = await res.json(); if (result.success) { setCrudMessage('QP deleted'); setCrudItem(prev => prev ? { ...prev, result_id: 0, has_errors: true, error_details: [...prev.error_details, 'QP deleted'] } : null); openItemList(crudPaperCode); setCrudPanelOpen(false); } else { setCrudMessage(result.message || result.error || 'Delete failed'); } } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } };
+  const deleteMemoItem = async (memo_id: number) => { setCrudMessage('Deleting memo...'); try { let res, result; if (dataSource === 'database' && crudItem?.item_id) { res = await fetch(`${QBANK_API}/items/${crudItem.item_id}/memo`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer_text: null, marks: null }) }); } else { res = await fetch(`${API_BASE}/memo/${memo_id}`, { method: 'DELETE' }); } result = await res.json(); if (result.success) { setCrudMessage('Memo deleted'); setCrudItem(prev => prev ? { ...prev, memo_id: null, has_errors: true, error_details: [...prev.error_details, 'Memo deleted'] } : null); openItemList(crudPaperCode); setCrudPanelOpen(false); } else { setCrudMessage(result.message || result.error || 'Delete failed'); } } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); } };
 
   // NO DIALOGS - direct creation with current item values
   const createQpItem = async () => {
+    if (dataSource === 'database') { setCrudMessage('Create new items in database mode via the main Item Bank'); return; }
     const qn = crudItem?.question_number || '';
     const marks = crudItem?.memo_expected_marks != null ? String(crudItem.memo_expected_marks) : '0';
     if (!qn) { setCrudMessage('No question number available'); return; }
@@ -243,7 +305,74 @@ export default function QPMemoRegister() {
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
   };
 
+  const addNewItem = async () => {
+    if (!addItemForm.question_number) { setCrudMessage('Question number is required'); return; }
+    setAddItemLoading(true); setCrudMessage('');
+    try {
+      const payload = {
+        source_paper_code: itemListPaperCode,
+        question_number: addItemForm.question_number,
+        question_text: addItemForm.question_text,
+        marks: addItemForm.expected_marks,
+        answer_text: addItemForm.answer_text,
+        memo_marks: addItemForm.memo_marks,
+        parent_item_id: addItemForm.parent_item_id || null,
+        parent_question: addItemForm.parent_item_id ? itemListItems.find(i => i.item_id === addItemForm.parent_item_id)?.question_number : null
+      };
+      const res = await fetch(`${QBANK_API}/items/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+      if (result.success) {
+        setCrudMessage('Item created successfully');
+        setAddItemForm({ question_number: '', question_text: '', expected_marks: 0, answer_text: '', memo_marks: 0, parent_item_id: '' });
+        setAddItemOpen(false);
+        await openItemList(itemListPaperCode);
+      } else {
+        setCrudMessage(result.message || result.error || 'Create failed');
+      }
+    } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
+    finally { setAddItemLoading(false); }
+  };
+
   const createMemoItem = async () => {
+    if (dataSource === 'database' && crudItem?.item_id) {
+      setCrudMessage('Creating memo in database mode...');
+      try {
+        const res = await fetch(`${QBANK_API}/items/${crudItem.item_id}/memo`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answer_text: '', marks: crudItem.expected_marks || 0, question_number: crudItem.question_number })
+        });
+        const result = await res.json();
+        if (result.success) {
+          setCrudMessage('Memo created successfully');
+          await openItemList(crudPaperCode);
+          // Refresh crudItem to show new memo
+          const refreshRes = await fetch(`${QBANK_API}/items/paper/${encodeURIComponent(crudPaperCode)}`);
+          const refreshData = await refreshRes.json();
+          if (refreshData.success) {
+            const updatedItem = refreshData.items.find((i: ItemPair) => i.item_id === crudItem.item_id);
+            if (updatedItem) {
+              setCrudItem(updatedItem);
+              setCrudForm({
+                qp_question_number: updatedItem.question_number || '',
+                qp_question_text: updatedItem.question_text || '',
+                qp_expected_marks: updatedItem.expected_marks || 0,
+                qp_auto_corrected_marks: updatedItem.auto_corrected_marks || 0,
+                memo_answer_text: updatedItem.answer_text || '',
+                memo_expected_marks: updatedItem.memo_expected_marks || 0,
+                memo_auto_corrected_marks: updatedItem.memo_auto_corrected_marks || 0,
+              });
+            }
+          }
+        }
+        else { setCrudMessage(result.message || result.error || 'Create failed'); }
+      } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
+      return;
+    }
     const qn = crudItem?.question_number || '';
     const marks = crudItem?.expected_marks != null ? String(crudItem.expected_marks) : '0';
     if (!qn) { setCrudMessage('No question number available'); return; }
@@ -277,8 +406,13 @@ export default function QPMemoRegister() {
   const markAsHeader = async (item: ItemPair, paper_code: string) => {
     setCrudMessage(`Marking ${item.question_number} as header...`);
     try {
-      const res = await fetch(`${API_BASE}/mark-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, paper_code, question_number: item.question_number }) });
-      const result = await res.json();
+      let res, result;
+      if (dataSource === 'database' && item.item_id) {
+        res = await fetch(`${QBANK_API}/items/${item.item_id}/mark-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      } else {
+        res = await fetch(`${API_BASE}/mark-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, paper_code, question_number: item.question_number }) });
+      }
+      result = await res.json();
       if (result.success) {
         setCrudMessage(`Marked as header. Updated ${result.sub_items_updated || 0} sub-items.`);
         await openItemList(paper_code);
@@ -289,28 +423,43 @@ export default function QPMemoRegister() {
   const unmarkAsHeader = async (item: ItemPair, paper_code: string) => {
     setCrudMessage(`Unmarking ${item.question_number}...`);
     try {
-      const res = await fetch(`${API_BASE}/unmark-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id }) });
-      const result = await res.json();
+      let res, result;
+      if (dataSource === 'database' && item.item_id) {
+        res = await fetch(`${QBANK_API}/items/${item.item_id}/unmark-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      } else {
+        res = await fetch(`${API_BASE}/unmark-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id }) });
+      }
+      result = await res.json();
       if (result.success) { setCrudMessage('Unmarked as header'); await openItemList(paper_code); }
       else { setCrudMessage(result.message || result.error || 'Unmark failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
   };
 
-  const markAsSubHeader = async (item: ItemPair, paper_code: string, parentHeaderId: number) => {
+  const markAsSubHeader = async (item: ItemPair, paper_code: string, parentHeaderId: number | string) => {
     setCrudMessage(`Marking ${item.question_number} as Sub-header...`);
     try {
-      const res = await fetch(`${API_BASE}/mark-sub-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId, paper_code, question_number: item.question_number }) });
-      const result = await res.json();
+      let res, result;
+      if (dataSource === 'database' && item.item_id) {
+        res = await fetch(`${QBANK_API}/items/${item.item_id}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent_item_id: parentHeaderId }) });
+      } else {
+        res = await fetch(`${API_BASE}/mark-sub-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId, paper_code, question_number: item.question_number }) });
+      }
+      result = await res.json();
       if (result.success) { setCrudMessage(`Marked as Sub-header. Updated ${result.sub_items_updated || 0} sub-items.`); await openItemList(paper_code); }
       else { setCrudMessage(result.message || result.error || 'Mark sub-header failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
   };
 
-  const assignToParent = async (item: ItemPair, paper_code: string, parentHeaderId: number) => {
+  const assignToParent = async (item: ItemPair, paper_code: string, parentHeaderId: number | string) => {
     setCrudMessage(`Assigning ${item.question_number} to parent...`);
     try {
-      const res = await fetch(`${API_BASE}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId }) });
-      const result = await res.json();
+      let res, result;
+      if (dataSource === 'database' && item.item_id) {
+        res = await fetch(`${QBANK_API}/items/${item.item_id}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent_item_id: parentHeaderId }) });
+      } else {
+        res = await fetch(`${API_BASE}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId }) });
+      }
+      result = await res.json();
       if (result.success) { setCrudMessage(`Assigned to parent`); await openItemList(paper_code); }
       else { setCrudMessage(result.message || result.error || 'Assign failed'); }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
@@ -350,14 +499,18 @@ export default function QPMemoRegister() {
   };
 
   // Bulk mark selected items as Sub-headers under a parent Header
-  const bulkMarkAsSubHeaders = async (paper_code: string, parentHeaderId: number) => {
+  const bulkMarkAsSubHeaders = async (paper_code: string, parentHeaderId: number | string) => {
     if (selectedItems.size === 0) { setCrudMessage('No items selected'); return; }
     setCrudMessage(`Marking ${selectedItems.size} items as Sub-headers...`);
     try {
       const promises = Array.from(selectedItems).map(async (resultId) => {
-        const item = itemListItems.find(i => i.result_id === resultId);
+        const item = itemListItems.find(i => (dataSource === 'database' ? i.item_id === resultId : i.result_id === resultId));
         if (!item) return;
-        await fetch(`${API_BASE}/mark-sub-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId, paper_code, question_number: item.question_number }) });
+        if (dataSource === 'database' && item.item_id) {
+          await fetch(`${QBANK_API}/items/${item.item_id}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent_item_id: parentHeaderId }) });
+        } else {
+          await fetch(`${API_BASE}/mark-sub-header`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentHeaderId, paper_code, question_number: item.question_number }) });
+        }
       });
       await Promise.all(promises);
       setCrudMessage(`Marked ${selectedItems.size} items as Sub-headers`);
@@ -367,14 +520,18 @@ export default function QPMemoRegister() {
   };
 
   // Bulk assign selected items to a parent
-  const bulkAssignToParent = async (paper_code: string, parentId: number) => {
+  const bulkAssignToParent = async (paper_code: string, parentId: number | string) => {
     if (selectedItems.size === 0) { setCrudMessage('No items selected'); return; }
     setCrudMessage(`Bulk assigning ${selectedItems.size} items...`);
     try {
       const promises = Array.from(selectedItems).map(async (resultId) => {
-        const item = itemListItems.find(i => i.result_id === resultId);
+        const item = itemListItems.find(i => (dataSource === 'database' ? i.item_id === resultId : i.result_id === resultId));
         if (!item) return;
-        await fetch(`${API_BASE}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentId }) });
+        if (dataSource === 'database' && item.item_id) {
+          await fetch(`${QBANK_API}/items/${item.item_id}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent_item_id: parentId }) });
+        } else {
+          await fetch(`${API_BASE}/assign-parent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result_id: item.result_id, memo_id: item.memo_id, parent_header_id: parentId }) });
+        }
       });
       await Promise.all(promises);
       setCrudMessage(`Assigned ${selectedItems.size} items to parent`);
@@ -385,7 +542,7 @@ export default function QPMemoRegister() {
   };
 
   // Toggle item selection for bulk mode
-  const toggleItemSelection = (resultId: number) => {
+  const toggleItemSelection = (resultId: number | string) => {
     setSelectedItems(prev => {
       const newSet = new Set(prev);
       if (newSet.has(resultId)) newSet.delete(resultId);
@@ -563,7 +720,7 @@ export default function QPMemoRegister() {
 
       {itemListOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '95%', maxWidth: '1400px', maxHeight: '90vh', overflow: 'auto', resize: 'both', padding: '24px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', width: '95%', maxWidth: '95%', maxHeight: '90vh', overflow: 'auto', resize: 'both', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Items: {itemListPaperCode} <span style={{ fontSize: '12px', color: '#10b981', marginLeft: '8px', padding: '2px 8px', background: '#d1fae5', borderRadius: '4px' }}>v3-HIERARCHY</span></h2>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -573,6 +730,7 @@ export default function QPMemoRegister() {
                 <input type="text" value={itemListFilter} onChange={(e) => setItemListFilter(e.target.value)} placeholder="Filter by Q#..." style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px' }} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}><input type="checkbox" checked={itemListShowErrorsOnly} onChange={(e) => setItemListShowErrorsOnly(e.target.checked)} /> Errors only</label>
                 <button onClick={() => deleteDuplicates(itemListPaperCode)} disabled={fixing} style={{ padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>{fixing ? 'Working...' : 'Delete Duplicates'}</button>
+                <button onClick={() => setAddItemOpen(true)} style={{ padding: '6px 12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>+ Add New Item</button>
                 <button onClick={() => setItemListOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>×</button>
               </div>
             </div>
@@ -582,24 +740,24 @@ export default function QPMemoRegister() {
                   <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#0369a1' }}>{selectedItems.size} items selected</span>
 
                   {/* Assign as Sub-items under a Header or Sub-header */}
-                  <select value={bulkAssignTarget} onChange={e => setBulkAssignTarget(e.target.value ? parseInt(e.target.value) : '')} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', minWidth: '200px' }}>
+                  <select value={bulkAssignTarget} onChange={e => setBulkAssignTarget(e.target.value ? (dataSource === 'database' ? e.target.value : parseInt(e.target.value)) as any : '')} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', minWidth: '200px' }}>
                     <option value="">Assign as Sub-item under...</option>
                     <optgroup label="Headers (Level 1)">
-                      {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Header)</option>)}
+                      {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number} (Header)</option>)}
                     </optgroup>
                     <optgroup label="Sub-headers (Level 2)">
-                      {itemListItems.filter(i => i.is_header && i.header_level === 2).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Sub-header)</option>)}
+                      {itemListItems.filter(i => i.is_header && i.header_level === 2).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number} (Sub-header)</option>)}
                     </optgroup>
                     <optgroup label="Other Items (will become Sub-header)">
-                      {itemListItems.filter(i => !i.is_header && i.result_id > 0).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Item)</option>)}
+                      {itemListItems.filter(i => !i.is_header && (dataSource === 'database' ? i.item_id : i.result_id)).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number} (Item)</option>)}
                     </optgroup>
                   </select>
                   <button onClick={() => { if (bulkAssignTarget) bulkAssignToParent(itemListPaperCode, bulkAssignTarget as number); }} disabled={!bulkAssignTarget || selectedItems.size === 0} style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: bulkAssignTarget && selectedItems.size > 0 ? '#8b5cf6' : '#d1d5db', color: 'white', cursor: bulkAssignTarget && selectedItems.size > 0 ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 'bold' }}>Assign as Sub-items</button>
 
                   {/* Mark selected as Sub-headers under a Header */}
-                  <select onChange={e => { const parentId = parseInt(e.target.value); if (parentId) { bulkMarkAsSubHeaders(itemListPaperCode, parentId); e.target.value = ''; } }} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #10b981', fontSize: '13px', minWidth: '200px' }}>
+                  <select onChange={e => { const rawVal = e.target.value; if (!rawVal) return; const parentId = dataSource === 'database' ? rawVal : parseInt(rawVal); if (parentId) { bulkMarkAsSubHeaders(itemListPaperCode, parentId); e.target.value = ''; } }} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #10b981', fontSize: '13px', minWidth: '200px' }}>
                     <option value="">Mark as Sub-headers under...</option>
-                    {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Header)</option>)}
+                    {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number} (Header)</option>)}
                   </select>
 
                   <button onClick={() => { setSelectedItems(new Set()); setBulkAssignMode(false); }} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #6b7280', background: 'white', color: '#6b7280', cursor: 'pointer', fontSize: '12px' }}>Clear</button>
@@ -629,7 +787,7 @@ export default function QPMemoRegister() {
             )}
             {itemListLoading ? (<div>Loading items...</div>) : (
               <div>
-                <div style={{ display: 'grid', gridTemplateColumns: '40px 80px 1fr 1fr 100px 100px 100px 80px 180px', gap: '8px', padding: '8px 12px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', fontWeight: 'bold', fontSize: '12px', color: '#374151' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '40px 80px minmax(300px, 2fr) minmax(300px, 2fr) 100px 100px 100px 80px 180px', gap: '8px', padding: '8px 12px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', fontWeight: 'bold', fontSize: '12px', color: '#374151' }}>
                   <div></div><div>Q#</div><div>Question Text</div><div>Answer Text</div><div style={{ textAlign: 'center' }}>QP Marks</div><div style={{ textAlign: 'center' }}>Memo Marks</div><div style={{ textAlign: 'center' }}>Variance</div><div style={{ textAlign: 'center' }}>Status</div><div style={{ textAlign: 'center' }}>Action</div>
                 </div>
                 <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
@@ -638,10 +796,10 @@ export default function QPMemoRegister() {
                     if (itemListShowErrorsOnly && !item.has_errors) return false;
                     return true;
                   })).map((item, idx) => (
-                    <div key={`${item.question_number}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '40px 80px 1fr 1fr 100px 100px 100px 80px 180px', gap: '8px', padding: '12px', paddingLeft: `${(item._indent || 0) * 24 + 12}px`, borderBottom: '1px solid #f3f4f6', background: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '#fef3c7' : '#f0fdf4') : item._indent ? '#f0f9ff' : item.has_errors ? '#fffbeb' : idx % 2 === 0 ? 'white' : '#fafafa', borderLeft: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '4px solid #f59e0b' : '4px solid #10b981') : item._indent ? '4px solid #3b82f6' : 'none', alignItems: 'start' }}>
+                    <div key={`${item.question_number}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '40px 80px minmax(300px, 2fr) minmax(300px, 2fr) 100px 100px 100px 80px 180px', gap: '8px', padding: '12px', paddingLeft: `${(item._indent || 0) * 24 + 12}px`, borderBottom: '1px solid #f3f4f6', background: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '#fef3c7' : '#f0fdf4') : item._indent ? '#f0f9ff' : item.has_errors ? '#fffbeb' : idx % 2 === 0 ? 'white' : '#fafafa', borderLeft: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '4px solid #f59e0b' : '4px solid #10b981') : item._indent ? '4px solid #3b82f6' : 'none', alignItems: 'start' }}>
                       <div style={{ display: 'flex', alignItems: 'center' }}>
                         {bulkAssignMode && (
-                          <input type="checkbox" checked={selectedItems.has(item.result_id)} onChange={() => toggleItemSelection(item.result_id)} style={{ marginRight: '8px', cursor: 'pointer' }} />
+                          <input type="checkbox" checked={selectedItems.has(dataSource === 'database' ? item.item_id! : item.result_id!)} onChange={() => toggleItemSelection(dataSource === 'database' ? item.item_id! : item.result_id!)} style={{ marginRight: '8px', cursor: 'pointer' }} />
                         )}
                       </div>
                       <div style={{ fontWeight: 'bold', color: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '#f59e0b' : '#10b981') : item._indent ? '#3b82f6' : '#1f2937' }}>
@@ -664,14 +822,14 @@ export default function QPMemoRegister() {
                         )}
                         {!item.is_header && (
                           <select 
-                            onChange={(e) => { const parentId = parseInt(e.target.value); if (parentId) { markAsSubHeader(item, itemListPaperCode, parentId); e.target.value = ''; } }}
+                            onChange={(e) => { const rawVal = e.target.value; if (!rawVal) return; const parentId = dataSource === 'database' ? rawVal : parseInt(rawVal); if (parentId) { markAsSubHeader(item, itemListPaperCode, parentId); e.target.value = ''; } }}
                             style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #10b981', fontSize: '11px', marginLeft: '4px', minWidth: '80px', cursor: getAvailableHeaders(itemListItems).length > 0 ? 'pointer' : 'not-allowed', opacity: getAvailableHeaders(itemListItems).length > 0 ? 1 : 0.5 }}
                             defaultValue=""
                             disabled={getAvailableHeaders(itemListItems).length === 0}
                           >
                             <option value="">→Sub-H</option>
                             {getAvailableHeaders(itemListItems).map(h => (
-                              <option key={h.result_id} value={h.result_id}>under {h.question_number}</option>
+                              <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>under {h.question_number}</option>
                             ))}
                           </select>
                         )}
@@ -685,19 +843,19 @@ export default function QPMemoRegister() {
                         {item._indent === 1 && !item.is_header && <span style={{ marginLeft: '4px', padding: '4px 8px', background: '#3b82f6', color: 'white', borderRadius: '4px', fontSize: '11px' }}>Direct</span>}
                         {!item.is_header && (
                           <select 
-                            onChange={(e) => { const parentId = parseInt(e.target.value); if (parentId) { assignToParent(item, itemListPaperCode, parentId); e.target.value = ''; } }}
+                            onChange={(e) => { const rawVal = e.target.value; if (!rawVal) return; const parentId = dataSource === 'database' ? rawVal : parseInt(rawVal); if (parentId) { assignToParent(item, itemListPaperCode, parentId); e.target.value = ''; } }}
                             style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #8b5cf6', fontSize: '11px', marginLeft: '4px', minWidth: '80px', cursor: 'pointer' }}
                             defaultValue=""
                           >
                             <option value="">→Sub-item</option>
                             <optgroup label="Headers">
-                              {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number}</option>)}
+                              {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number}</option>)}
                             </optgroup>
                             <optgroup label="Sub-headers">
-                              {itemListItems.filter(i => i.is_header && i.header_level === 2).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number}</option>)}
+                              {itemListItems.filter(i => i.is_header && i.header_level === 2).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number}</option>)}
                             </optgroup>
                             <optgroup label="Other Items">
-                              {itemListItems.filter(i => !i.is_header && i.result_id > 0 && i.result_id !== item.result_id).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number}</option>)}
+                              {itemListItems.filter(i => !i.is_header && (dataSource === 'database' ? i.item_id : i.result_id) && (dataSource === 'database' ? i.item_id : i.result_id) !== (dataSource === 'database' ? item.item_id : item.result_id)).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number}</option>)}
                             </optgroup>
                           </select>
                         )}
@@ -711,13 +869,59 @@ export default function QPMemoRegister() {
         </div>
       )}
 
+      {/* Add New Item Modal */}
+      {addItemOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', width: '500px', maxHeight: '80vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0 }}>Add New Item</h3>
+              <button onClick={() => setAddItemOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280' }}>Question Number *</label>
+                <input type="text" value={addItemForm.question_number} onChange={(e) => setAddItemForm({...addItemForm, question_number: e.target.value})} placeholder="e.g., 3.1.2" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', marginTop: '4px' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280' }}>Question Text</label>
+                <textarea value={addItemForm.question_text} onChange={(e) => setAddItemForm({...addItemForm, question_text: e.target.value})} placeholder="Enter question text..." rows={3} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', marginTop: '4px' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280' }}>Expected Marks</label>
+                <input type="number" value={addItemForm.expected_marks} onChange={(e) => setAddItemForm({...addItemForm, expected_marks: parseInt(e.target.value) || 0})} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', marginTop: '4px' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280' }}>Answer Text</label>
+                <textarea value={addItemForm.answer_text} onChange={(e) => setAddItemForm({...addItemForm, answer_text: e.target.value})} placeholder="Enter answer text..." rows={3} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', marginTop: '4px' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280' }}>Memo Marks</label>
+                <input type="number" value={addItemForm.memo_marks} onChange={(e) => setAddItemForm({...addItemForm, memo_marks: parseInt(e.target.value) || 0})} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', marginTop: '4px' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280' }}>Parent Header (optional)</label>
+                <select value={addItemForm.parent_item_id} onChange={(e) => setAddItemForm({...addItemForm, parent_item_id: e.target.value})} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', marginTop: '4px' }}>
+                  <option value="">None (standalone item)</option>
+                  {itemListItems.filter(i => i.is_header).map(h => (
+                    <option key={h.item_id} value={h.item_id}>{h.question_number} (Header)</option>
+                  ))}
+                </select>
+              </div>
+              <button onClick={addNewItem} disabled={addItemLoading} style={{ padding: '10px', background: addItemLoading ? '#d1d5db' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: addItemLoading ? 'not-allowed' : 'pointer', fontSize: '14px', fontWeight: 'bold', marginTop: '8px' }}>
+                {addItemLoading ? 'Creating...' : 'Create Item'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {crudPanelOpen && crudItem && crudForm && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1001 }} onClick={() => setCrudPanelOpen(false)}>
-          <div style={{ position: 'absolute', left: crudPanelPosition.x, top: crudPanelPosition.y, background: 'white', borderRadius: '12px', width: '900px', maxHeight: '85vh', overflow: 'auto', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', cursor: isDragging ? 'grabbing' : 'default', resize: 'both' }} onClick={(e) => e.stopPropagation()} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+          <div style={{ position: 'absolute', left: crudPanelPosition.x, top: crudPanelPosition.y, background: 'white', borderRadius: '12px', width: '900px', minWidth: '600px', maxHeight: '85vh', overflow: 'auto', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', cursor: isDragging ? 'grabbing' : 'default', resize: 'both' }} onClick={(e) => e.stopPropagation()} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #e5e7eb', cursor: 'grab' }} onMouseDown={handleMouseDown}>
               <div>
                 <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>Edit Item {crudItem.question_number}</h2>
-                <div style={{ fontSize: '12px', color: '#6b7280' }}>{crudPaperCode} | result_id: {crudItem.result_id} | memo_id: {crudItem.memo_id ?? 'none'}</div>
+                <div style={{ fontSize: '12px', color: '#6b7280' }}>{dataSource === 'database' ? `DB | item: ${crudItem.item_id?.substring(0,8)}...` : `${crudPaperCode} | result_id: ${crudItem.result_id} | memo_id: ${crudItem.memo_id ?? 'none'}`}</div>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 {crudMessage && (
@@ -734,7 +938,7 @@ export default function QPMemoRegister() {
               </div>
             )}
 
-            {crudItem.result_id <= 0 && (
+            {dataSource === 'parsed' && (crudItem.result_id || 0) <= 0 && (
               <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#92400e' }}>⚠ Orphaned Memo</div>
                 <div style={{ fontSize: '12px', color: '#92400e' }}>This item has no QP (result_id = 0). Click "+ Add QP Item" below to create a matching QP for question {crudItem.question_number}.</div>
@@ -745,38 +949,38 @@ export default function QPMemoRegister() {
               <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#3b82f6', margin: 0 }}>Question Item</h3>
-                  <button onClick={() => deleteQpItem(crudItem.result_id)} disabled={crudItem.result_id <= 0} style={{ padding: '4px 8px', background: crudItem.result_id <= 0 ? '#d1d5db' : '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: crudItem.result_id <= 0 ? 'not-allowed' : 'pointer', fontSize: '11px' }}>Del QP</button>
+                  <button onClick={() => deleteQpItem(crudItem.result_id || 0)} disabled={dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0} style={{ padding: '4px 8px', background: dataSource === 'database' ? (!crudItem.item_id ? '#d1d5db' : '#ef4444') : ((crudItem.result_id || 0) <= 0 ? '#d1d5db' : '#ef4444'), color: 'white', border: 'none', borderRadius: '4px', cursor: dataSource === 'database' ? (!crudItem.item_id ? 'not-allowed' : 'pointer') : ((crudItem.result_id || 0) <= 0 ? 'not-allowed' : 'pointer'), fontSize: '11px' }}>Del QP</button>
                 </div>
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: 'bold' }}>Question Number</label>
-                  <input type="text" value={crudForm.qp_question_number} onChange={(e) => setCrudForm({...crudForm, qp_question_number: e.target.value})} disabled={!crudItem.result_id || crudItem.result_id <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '13px', background: !crudItem.result_id || crudItem.result_id <= 0 ? '#f3f4f6' : 'white' }} />
+                  <input type="text" value={crudForm.qp_question_number} onChange={(e) => setCrudForm({...crudForm, qp_question_number: e.target.value})} disabled={dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '13px', background: (crudItem.result_id || 0) <= 0 ? '#f3f4f6' : 'white' }} />
                 </div>
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: 'bold' }}>Expected Marks</label>
-                  <input type="number" value={crudForm.qp_expected_marks} onChange={(e) => setCrudForm({...crudForm, qp_expected_marks: parseInt(e.target.value) || 0})} disabled={!crudItem.result_id || crudItem.result_id <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: crudForm.qp_expected_marks !== (crudForm.memo_expected_marks || 0) ? '2px solid #ef4444' : '1px solid #d1d5db', fontSize: '13px', background: !crudItem.result_id || crudItem.result_id <= 0 ? '#f3f4f6' : crudForm.qp_expected_marks !== (crudForm.memo_expected_marks || 0) ? '#fef2f2' : 'white' }} />
+                  <input type="number" value={crudForm.qp_expected_marks} onChange={(e) => setCrudForm({...crudForm, qp_expected_marks: parseInt(e.target.value) || 0})} disabled={dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: crudForm.qp_expected_marks !== (crudForm.memo_expected_marks || 0) ? '2px solid #ef4444' : '1px solid #d1d5db', fontSize: '13px', background: (crudItem.result_id || 0) <= 0 ? '#f3f4f6' : crudForm.qp_expected_marks !== (crudForm.memo_expected_marks || 0) ? '#fef2f2' : 'white' }} />
                 </div>
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: 'bold' }}>Auto Corrected Marks</label>
-                  <input type="number" value={crudForm.qp_auto_corrected_marks ?? ''} onChange={(e) => setCrudForm({...crudForm, qp_auto_corrected_marks: e.target.value ? parseInt(e.target.value) : null})} disabled={!crudItem.result_id || crudItem.result_id <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '13px', background: !crudItem.result_id || crudItem.result_id <= 0 ? '#f3f4f6' : 'white' }} />
+                  <input type="number" value={crudForm.qp_auto_corrected_marks ?? ''} onChange={(e) => setCrudForm({...crudForm, qp_auto_corrected_marks: e.target.value ? parseInt(e.target.value) : null})} disabled={dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '13px', background: (crudItem.result_id || 0) <= 0 ? '#f3f4f6' : 'white' }} />
                 </div>
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: 'bold' }}>Question Text</label>
-                  <textarea value={crudForm.qp_question_text} onChange={(e) => setCrudForm({...crudForm, qp_question_text: e.target.value})} disabled={!crudItem.result_id || crudItem.result_id <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: !crudForm.qp_question_text ? '2px solid #ef4444' : '1px solid #d1d5db', fontSize: '13px', minHeight: '120px', resize: 'vertical', background: !crudItem.result_id || crudItem.result_id <= 0 ? '#f3f4f6' : !crudForm.qp_question_text ? '#fef2f2' : 'white' }} placeholder="Enter question text..." />
+                  <textarea value={crudForm.qp_question_text} onChange={(e) => setCrudForm({...crudForm, qp_question_text: e.target.value})} disabled={dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: !crudForm.qp_question_text ? '2px solid #ef4444' : '1px solid #d1d5db', fontSize: '13px', minHeight: '120px', resize: 'vertical', background: (crudItem.result_id || 0) <= 0 ? '#f3f4f6' : !crudForm.qp_question_text ? '#fef2f2' : 'white' }} placeholder="Enter question text..." />
                 </div>
-                <button onClick={saveQpFields} disabled={savingQp || !crudItem.result_id || crudItem.result_id <= 0} style={{ width: '100%', padding: '8px', background: savingQp ? '#93c5fd' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: savingQp || !crudItem.result_id || crudItem.result_id <= 0 ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 'bold' }}>{savingQp ? 'Saving...' : '💾 Save QP Changes'}</button>
+                <button onClick={saveQpFields} disabled={savingQp || (dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0)} style={{ width: '100%', padding: '8px', background: savingQp ? '#93c5fd' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: savingQp || (dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0) ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 'bold' }}>{savingQp ? 'Saving...' : '💾 Save QP Changes'}</button>
                 <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '8px' }}>Status: {crudItem.correction_status}</div>
               </div>
 
               <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#8b5cf6', margin: 0 }}>Memo</h3>
-                  {crudItem.memo_id ? (
-                    <button onClick={() => deleteMemoItem(crudItem.memo_id!)} style={{ padding: '4px 8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del Memo</button>
+                  {(crudItem.memo_id || crudItem.memo_db_id) ? (
+                    <button onClick={() => deleteMemoItem((crudItem.memo_id || crudItem.memo_db_id) as any)} style={{ padding: '4px 8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del Memo</button>
                   ) : (
                     <span style={{ fontSize: '11px', color: '#9ca3af' }}>No memo</span>
                   )}
                 </div>
-                {crudItem.memo_id ? (
+                {(crudItem.memo_id || crudItem.memo_db_id) ? (
                   <>
                     <div style={{ marginBottom: '12px' }}>
                       <label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: 'bold' }}>Expected Marks</label>
@@ -837,18 +1041,18 @@ export default function QPMemoRegister() {
               )}
               {!crudItem.is_header && (
                 <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <select value={selectedParentHeader} onChange={e => setSelectedParentHeader(e.target.value ? parseInt(e.target.value) : '')} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '200px' }}>
+                  <select value={selectedParentHeader} onChange={e => setSelectedParentHeader(e.target.value ? (dataSource === 'database' ? e.target.value : parseInt(e.target.value)) : '')} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '200px' }}>
                     <option value="">Select Parent Header...</option>
-                    {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={h.result_id} value={h.result_id}>{h.question_number} (Header)</option>)}
+                    {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number} (Header)</option>)}
                   </select>
                   <button onClick={() => { if (selectedParentHeader) { markAsSubHeader(crudItem, crudPaperCode, selectedParentHeader as number); } }} disabled={!selectedParentHeader} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #10b981', background: selectedParentHeader ? 'white' : '#f3f4f6', color: selectedParentHeader ? '#10b981' : '#9ca3af', cursor: selectedParentHeader ? 'pointer' : 'not-allowed' }}>Mark as Sub-header (Level 2)</button>
                 </div>
               )}
               {!crudItem.is_header && (
                 <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <select value={selectedParentSubHeader} onChange={e => setSelectedParentSubHeader(e.target.value ? parseInt(e.target.value) : '')} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '200px' }}>
+                  <select value={selectedParentSubHeader} onChange={e => setSelectedParentSubHeader(e.target.value ? (dataSource === 'database' ? e.target.value : parseInt(e.target.value)) : '')} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '200px' }}>
                     <option value="">Select Parent Sub-header...</option>
-                    {itemListItems.filter(i => i.is_header && i.header_level === 2).map(sh => <option key={sh.result_id} value={sh.result_id}>{sh.question_number} (Sub-header)</option>)}
+                    {itemListItems.filter(i => i.is_header && i.header_level === 2).map(sh => <option key={dataSource === 'database' ? sh.item_id : sh.result_id} value={dataSource === 'database' ? sh.item_id : sh.result_id}>{sh.question_number} (Sub-header)</option>)}
                   </select>
                   <button onClick={() => { if (selectedParentSubHeader) { assignToParent(crudItem, crudPaperCode, selectedParentSubHeader as number); } }} disabled={!selectedParentSubHeader} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #8b5cf6', background: selectedParentSubHeader ? 'white' : '#f3f4f6', color: selectedParentSubHeader ? '#8b5cf6' : '#9ca3af', cursor: selectedParentSubHeader ? 'pointer' : 'not-allowed' }}>Assign as Sub-item</button>
                 </div>

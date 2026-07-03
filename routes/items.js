@@ -74,6 +74,124 @@ router.get('/', async (req, res) => {
   }
 });
 
+
+// GET /api/qbank/items/paper/:paperCode — Get all items for a paper (Register-compatible)
+router.get('/paper/:paperCode', async (req, res) => {
+  const db = req.db;
+  try {
+    const paperCode = req.params.paperCode;
+
+    // Get all items for this paper
+    const [items] = await db.execute(
+      `SELECT item_id, question_number, question_text, marks, marks_allocated, qp_marks, memo_marks,
+              parent_item_id, parent_question, is_sub_part, item_type_id, cognitive_level_id,
+              difficulty_id, status, source_paper_code, source_question_number, created_at, updated_at
+       FROM item_master WHERE source_paper_code = ? ORDER BY question_number`,
+      [paperCode]
+    );
+
+    // Get all memos for these items
+    const itemIds = items.map(i => i.item_id);
+    let memoMap = new Map();
+    if (itemIds.length > 0) {
+      const placeholders = itemIds.map(() => '?').join(',');
+      const [memos] = await db.execute(
+        `SELECT memo_id, item_id, question_number, answer_text, marks, is_current
+         FROM item_memos WHERE item_id IN (${placeholders}) AND is_current = 1`,
+        itemIds
+      );
+      for (const memo of memos) {
+        memoMap.set(memo.item_id, memo);
+      }
+    }
+
+    // Build question_number -> item_id map for hierarchy detection
+    const qnToItemId = new Map();
+    for (const item of items) {
+      qnToItemId.set(item.question_number, item.item_id);
+    }
+
+    // Determine which items have children (for computed is_header / header_level)
+    // First check parent_item_id, then fall back to question_number pattern matching
+    const childrenCount = new Map();
+    for (const item of items) {
+      if (item.parent_item_id) {
+        childrenCount.set(item.parent_item_id, (childrenCount.get(item.parent_item_id) || 0) + 1);
+      }
+    }
+    // Fallback: detect children by question_number prefix (e.g., "1" has child "1.1")
+    for (const item of items) {
+      const qn = String(item.question_number);
+      for (const other of items) {
+        const otherQn = String(other.question_number);
+        if (otherQn !== qn && otherQn.startsWith(qn + '.')) {
+          childrenCount.set(item.item_id, (childrenCount.get(item.item_id) || 0) + 1);
+        }
+      }
+    }
+
+    // Determine parent relationships by question_number pattern
+    const parentMap = new Map(); // item_id -> parent_item_id
+    for (const item of items) {
+      const qn = String(item.question_number);
+      const parts = qn.split('.');
+      if (parts.length > 1) {
+        // Try each possible parent by removing last dot segment
+        for (let i = parts.length - 1; i >= 1; i--) {
+          const parentQn = parts.slice(0, i).join('.');
+          const parentId = qnToItemId.get(parentQn);
+          if (parentId) {
+            parentMap.set(item.item_id, parentId);
+            break;
+          }
+        }
+      }
+    }
+
+    // Build response in ItemPair format (compatible with Register frontend)
+    const pairs = items.map(item => {
+      const memo = memoMap.get(item.item_id);
+      const hasChildren = (childrenCount.get(item.item_id) || 0) > 0;
+      const isHeader = hasChildren ? 1 : 0;
+      const effectiveParentId = item.parent_item_id || parentMap.get(item.item_id) || null;
+      const headerLevel = effectiveParentId
+        ? (hasChildren ? 2 : null)
+        : (hasChildren ? 1 : null);
+      const qpMarks = item.qp_marks !== null ? item.qp_marks : (item.marks || 0);
+      const memoMarks = memo ? (memo.marks || 0) : 0;
+
+      return {
+        item_id: item.item_id,
+        memo_db_id: memo ? memo.memo_id : null,
+        question_number: item.question_number,
+        question_text: item.question_text || '',
+        answer_text: memo ? (memo.answer_text || '') : '',
+        expected_marks: qpMarks,
+        memo_expected_marks: memo ? memo.marks : null,
+        auto_corrected_marks: qpMarks,
+        memo_auto_corrected_marks: memo ? memo.marks : null,
+        variance: qpMarks - memoMarks,
+        is_red_flag: qpMarks !== memoMarks || !item.question_text,
+        has_errors: qpMarks !== memoMarks || !item.question_text,
+        is_header: isHeader,
+        header_level: headerLevel,
+        parent_header_id: effectiveParentId,
+        // Compatibility fields for parsed mode
+        result_id: 0,
+        memo_id: null,
+        correction_status: item.status || 'draft',
+        memo_correction_status: memo ? 'imported' : null,
+        error_details: []
+      };
+    });
+
+    res.json({ success: true, items: pairs });
+  } catch (e) {
+    console.error('GET /api/qbank/items/paper/:paperCode error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // GET /api/qbank/items/:id — Get single item with all JOINs for display names
 router.get('/:id', async (req, res) => {
   const db = req.db;
@@ -207,15 +325,21 @@ router.put('/:id', auditLog, async (req, res) => {
       status, source_year, source_paper_code, source_question_number,
       item_stem_latex, item_stem_html, item_stem_code,
       item_media_svg, item_media_audio, item_media_file,
-      item_rubric_json, item_answer_json
+      item_rubric_json, item_answer_json,
+      question_number, qp_marks
     } = req.body;
+
+    // Convert undefined to null for MySQL2 compatibility
+    const toNull = (v) => v === undefined ? null : v;
 
     await conn.execute(
       `UPDATE item_master SET
         question_text = COALESCE(?, question_text),
         question_text_afr = COALESCE(?, question_text_afr),
+        question_number = COALESCE(?, question_number),
         marks = COALESCE(?, marks),
         marks_allocated = COALESCE(?, marks_allocated),
+        qp_marks = COALESCE(?, qp_marks),
         cognitive_level = COALESCE(?, cognitive_level),
         difficulty = COALESCE(?, difficulty),
         cognitive_level_id = COALESCE(?, cognitive_level_id),
@@ -237,11 +361,11 @@ router.put('/:id', auditLog, async (req, res) => {
         current_version = current_version + 1,
         updated_at = NOW()
        WHERE item_id = ?`,
-      [question_text, question_text_afr, marks, marks, cognitive_level, difficulty,
-       cognitive_level_id, difficulty_id, caps_subtopic_id, caps_reference,
-       status, source_year, source_paper_code, source_question_number,
-       item_stem_latex, item_stem_html, item_stem_code,
-       item_media_svg, item_media_audio, item_media_file,
+      [toNull(question_text), toNull(question_text_afr), toNull(question_number), toNull(marks), toNull(marks), toNull(qp_marks), toNull(cognitive_level), toNull(difficulty),
+       toNull(cognitive_level_id), toNull(difficulty_id), toNull(caps_subtopic_id), toNull(caps_reference),
+       toNull(status), toNull(source_year), toNull(source_paper_code), toNull(source_question_number),
+       toNull(item_stem_latex), toNull(item_stem_html), toNull(item_stem_code),
+       toNull(item_media_svg), toNull(item_media_audio), toNull(item_media_file),
        item_rubric_json ? JSON.stringify(item_rubric_json) : null,
        item_answer_json ? JSON.stringify(item_answer_json) : null,
        req.params.id]
@@ -255,6 +379,177 @@ router.put('/:id', auditLog, async (req, res) => {
     res.status(500).json({ success: false, error: e.message });
   } finally {
     conn.release();
+  }
+});
+
+
+// GET /api/qbank/items/paper/:paperCode — Get all items for a paper (Register-compatible)
+router.get('/paper/:paperCode', async (req, res) => {
+  const db = req.db;
+  try {
+    const paperCode = req.params.paperCode;
+
+    // Get all items for this paper
+    const [items] = await db.execute(
+      `SELECT item_id, question_number, question_text, marks, marks_allocated, qp_marks, memo_marks,
+              parent_item_id, parent_question, is_sub_part, item_type_id, cognitive_level_id,
+              difficulty_id, status, source_paper_code, source_question_number, created_at, updated_at
+       FROM item_master WHERE source_paper_code = ? ORDER BY question_number`,
+      [paperCode]
+    );
+
+    // Get all memos for these items
+    const itemIds = items.map(i => i.item_id);
+    let memoMap = new Map();
+    if (itemIds.length > 0) {
+      const placeholders = itemIds.map(() => '?').join(',');
+      const [memos] = await db.execute(
+        `SELECT memo_id, item_id, question_number, answer_text, marks, is_current
+         FROM item_memos WHERE item_id IN (${placeholders}) AND is_current = 1`,
+        itemIds
+      );
+      for (const memo of memos) {
+        memoMap.set(memo.item_id, memo);
+      }
+    }
+
+    // Build question_number -> item_id map for hierarchy detection
+    const qnToItemId = new Map();
+    for (const item of items) {
+      qnToItemId.set(item.question_number, item.item_id);
+    }
+
+    // Determine which items have children (for computed is_header / header_level)
+    // First check parent_item_id, then fall back to question_number pattern matching
+    const childrenCount = new Map();
+    for (const item of items) {
+      if (item.parent_item_id) {
+        childrenCount.set(item.parent_item_id, (childrenCount.get(item.parent_item_id) || 0) + 1);
+      }
+    }
+    // Fallback: detect children by question_number prefix (e.g., "1" has child "1.1")
+    for (const item of items) {
+      const qn = String(item.question_number);
+      for (const other of items) {
+        const otherQn = String(other.question_number);
+        if (otherQn !== qn && otherQn.startsWith(qn + '.')) {
+          childrenCount.set(item.item_id, (childrenCount.get(item.item_id) || 0) + 1);
+        }
+      }
+    }
+
+    // Determine parent relationships by question_number pattern
+    const parentMap = new Map(); // item_id -> parent_item_id
+    for (const item of items) {
+      const qn = String(item.question_number);
+      const parts = qn.split('.');
+      if (parts.length > 1) {
+        // Try each possible parent by removing last dot segment
+        for (let i = parts.length - 1; i >= 1; i--) {
+          const parentQn = parts.slice(0, i).join('.');
+          const parentId = qnToItemId.get(parentQn);
+          if (parentId) {
+            parentMap.set(item.item_id, parentId);
+            break;
+          }
+        }
+      }
+    }
+
+    // Build response in ItemPair format (compatible with Register frontend)
+    const pairs = items.map(item => {
+      const memo = memoMap.get(item.item_id);
+      const hasChildren = (childrenCount.get(item.item_id) || 0) > 0;
+      const isHeader = hasChildren ? 1 : 0;
+      const effectiveParentId = item.parent_item_id || parentMap.get(item.item_id) || null;
+      const headerLevel = effectiveParentId
+        ? (hasChildren ? 2 : null)
+        : (hasChildren ? 1 : null);
+      const qpMarks = item.qp_marks !== null ? item.qp_marks : (item.marks || 0);
+      const memoMarks = memo ? (memo.marks || 0) : 0;
+
+      return {
+        item_id: item.item_id,
+        memo_db_id: memo ? memo.memo_id : null,
+        question_number: item.question_number,
+        question_text: item.question_text || '',
+        answer_text: memo ? (memo.answer_text || '') : '',
+        expected_marks: qpMarks,
+        memo_expected_marks: memo ? memo.marks : null,
+        auto_corrected_marks: qpMarks,
+        memo_auto_corrected_marks: memo ? memo.marks : null,
+        variance: qpMarks - memoMarks,
+        is_red_flag: qpMarks !== memoMarks || !item.question_text,
+        has_errors: qpMarks !== memoMarks || !item.question_text,
+        is_header: isHeader,
+        header_level: headerLevel,
+        parent_header_id: effectiveParentId,
+        // Compatibility fields for parsed mode
+        result_id: 0,
+        memo_id: null,
+        correction_status: item.status || 'draft',
+        memo_correction_status: memo ? 'imported' : null,
+        error_details: []
+      };
+    });
+
+    res.json({ success: true, items: pairs });
+  } catch (e) {
+    console.error('GET /api/qbank/items/paper/:paperCode error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// PUT /api/qbank/items/:id/memo — Update or create memo for an item
+router.put('/:id/memo', auditLog, async (req, res) => {
+  const db = req.db;
+  const { answer_text, marks, question_number } = req.body;
+
+  try {
+    // Check if item exists
+    const [items] = await db.execute('SELECT item_id FROM item_master WHERE item_id = ?', [req.params.id]);
+    if (items.length === 0) return res.status(404).json({ success: false, error: 'Item not found' });
+
+    // Check if memo already exists
+    const [memos] = await db.execute(
+      'SELECT memo_id FROM item_memos WHERE item_id = ? AND is_current = 1',
+      [req.params.id]
+    );
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    if (memos.length > 0) {
+      // Update existing memo
+      await db.execute(
+        `UPDATE item_memos SET
+          answer_text = COALESCE(?, answer_text),
+          marks = COALESCE(?, marks),
+          question_number = COALESCE(?, question_number),
+          updated_at = NOW()
+         WHERE memo_id = ?`,
+        [answer_text, marks, question_number, memos[0].memo_id]
+      );
+    } else {
+      // Create new memo
+      const memoId = uuidv4();
+      await db.execute(
+        `INSERT INTO item_memos (memo_id, item_id, question_number, answer_text, marks, is_current, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+        [memoId, req.params.id, question_number || '1.1', answer_text || null, marks || 0, now, now]
+      );
+    }
+
+    // Update item_master.memo_marks to stay in sync
+    await db.execute(
+      'UPDATE item_master SET memo_marks = ?, updated_at = NOW() WHERE item_id = ?',
+      [marks, req.params.id]
+    );
+
+    res.json({ success: true, message: 'Memo updated' });
+  } catch (e) {
+    console.error('PUT /api/qbank/items/:id/memo error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -289,6 +584,163 @@ router.post('/:id/audit', async (req, res) => {
     );
     res.json({ success: true });
   } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
+// POST /api/qbank/items/:id/mark-header — Mark item as header (clear parent)
+router.post('/:id/mark-header', auditLog, async (req, res) => {
+  const db = req.db;
+  try {
+    await db.execute(
+      'UPDATE item_master SET parent_item_id = NULL, updated_at = NOW() WHERE item_id = ?',
+      [req.params.id]
+    );
+    res.json({ success: true, message: 'Marked as header' });
+  } catch (e) {
+    console.error('POST /api/qbank/items/:id/mark-header error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/qbank/items/:id/unmark-header — Remove header status
+router.post('/:id/unmark-header', auditLog, async (req, res) => {
+  const db = req.db;
+  try {
+    await db.execute(
+      'UPDATE item_master SET parent_item_id = NULL, updated_at = NOW() WHERE item_id = ?',
+      [req.params.id]
+    );
+    // Also clear children references
+    await db.execute(
+      'UPDATE item_master SET parent_item_id = NULL WHERE parent_item_id = ?',
+      [req.params.id]
+    );
+    res.json({ success: true, message: 'Unmarked as header' });
+  } catch (e) {
+    console.error('POST /api/qbank/items/:id/unmark-header error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/qbank/items/:id/assign-parent — Assign parent item
+router.post('/:id/assign-parent', auditLog, async (req, res) => {
+  const db = req.db;
+  const { parent_item_id } = req.body;
+  try {
+    await db.execute(
+      'UPDATE item_master SET parent_item_id = ?, updated_at = NOW() WHERE item_id = ?',
+      [parent_item_id || null, req.params.id]
+    );
+    res.json({ success: true, message: 'Parent assigned' });
+  } catch (e) {
+    console.error('POST /api/qbank/items/:id/assign-parent error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// DELETE /api/qbank/items/:id — Delete item and its memos
+router.delete('/:id', auditLog, async (req, res) => {
+  const db = req.db;
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Delete memos first (FK constraint)
+    await conn.execute('DELETE FROM item_memos WHERE item_id = ?', [req.params.id]);
+
+    // Delete item
+    await conn.execute('DELETE FROM item_master WHERE item_id = ?', [req.params.id]);
+
+    await conn.commit();
+    res.json({ success: true, message: 'Item deleted' });
+  } catch (e) {
+    await conn.rollback();
+    console.error('DELETE /api/qbank/items/:id error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  } finally {
+    conn.release();
+  }
+});
+
+
+// POST /api/qbank/items/create — Create a new item + memo for a paper (Register use)
+router.post('/create', auditLog, async (req, res) => {
+  const db = req.db;
+  const { v4: uuidv4 } = require('uuid');
+  const {
+    source_paper_code, question_number, question_text, marks,
+    answer_text, memo_marks, parent_item_id, parent_question
+  } = req.body;
+
+  try {
+    // Get existing paper dimensions from first item
+    const [existing] = await db.execute(
+      'SELECT subject_official_code, subject_alpha_code, paper_no, year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id, language_id FROM item_master WHERE source_paper_code = ? LIMIT 1',
+      [source_paper_code]
+    );
+
+    const dims = existing[0] || {};
+    const itemId = uuidv4();
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const isSubPart = parent_question ? 1 : 0;
+
+    await db.execute(
+      `INSERT INTO item_master (
+        item_id, item_code, subject_official_code, subject_alpha_code, paper_no,
+        year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id,
+        language_id, question_number, parent_question, is_sub_part, parent_item_id,
+        question_text, marks, marks_allocated, qp_marks, memo_marks,
+        item_type_id, cognitive_level_id, difficulty_id, status, review_status,
+        source_year, source_paper_code, source_question_number, created_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        itemId,
+        source_paper_code + '_' + String(question_number).replace(/\./g, '_'),
+        dims.subject_official_code || null,
+        dims.subject_alpha_code || null,
+        dims.paper_no || null,
+        dims.year_id || null,
+        dims.grade_id || null,
+        dims.subject_id || null,
+        dims.paper_id || null,
+        dims.assessment_type_id || null,
+        dims.assessment_body_id || null,
+        dims.language_id || null,
+        question_number,
+        parent_question || null,
+        isSubPart,
+        parent_item_id || null,
+        question_text || null,
+        marks || 0,
+        marks || 0,
+        marks || 0,
+        memo_marks || null,
+        1, 1, 1,
+        'draft', 'draft',
+        dims.year_id || null,
+        source_paper_code,
+        question_number,
+        1,
+        now, now
+      ]
+    );
+
+    // Create memo if provided
+    if (answer_text !== undefined || memo_marks !== undefined) {
+      const memoId = uuidv4();
+      await db.execute(
+        `INSERT INTO item_memos (memo_id, item_id, question_number, answer_text, marks, is_current, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+        [memoId, itemId, question_number, answer_text || null, memo_marks || 0, now, now]
+      );
+    }
+
+    res.json({ success: true, item_id: itemId, message: 'Item created' });
+  } catch (e) {
+    console.error('POST /api/qbank/items/create error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
