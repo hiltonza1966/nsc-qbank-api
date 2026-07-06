@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Master Harness v2.2 - Fixed for all 75 papers.
-Combines 4 parsers with QP marks as PRIMARY.
+"""
+Master Harness v2.3 — Fixed attachment linkage with inheritance.
 
-FIXES (v2.2):
-1. Fixed section totals validation - include main question marks
-2. Better variance calculation
-3. More accurate confidence scoring
+CRITICAL FIX (v2.3): 
+- Sub-items now inherit images from parent headers/sub-headers
+- Images are linked by spatial proximity in qp_content_parser
+- Harness propagates inherited images to sub-items in output
+
+Combines 4 parsers with QP marks as PRIMARY.
 """
 
 import os
@@ -90,7 +92,7 @@ def _validate_section_totals(items, section_totals):
             continue
 
         section_items = main_questions[main_q]
-        # v2.2 FIX: Sum ALL marks in section (including main question and sub-items)
+        # v2.3: Sum ALL marks in section (including main question and sub-items)
         # Exclude headers since their marks are sums of sub-items
         inline_sum = sum(i.get('final_marks', 0) for i in section_items
                         if not i.get('is_header'))
@@ -147,9 +149,45 @@ def _create_main_question_items(items, section_totals):
     return items + new_items
 
 
+def _propagate_images(items):
+    """
+    v2.3 FIX: Propagate images from headers to their sub-items.
+    Sub-items inherit images from their parent headers/sub-headers.
+    """
+    item_map = {item['question_number']: item for item in items}
+
+    for item in items:
+        q_num = item['question_number']
+        parts = q_num.split('.')
+
+        if len(parts) <= 1:
+            continue  # Main questions don't inherit
+
+        # Build parent chain: 1.1.6 -> 1.1, 1
+        for i in range(len(parts) - 1, 0, -1):
+            parent_num = '.'.join(parts[:i])
+            parent = item_map.get(parent_num)
+            if parent:
+                # Inherit parent's images
+                parent_images = parent.get('qp_images', [])
+                for img_path in parent_images:
+                    if img_path not in item['qp_images']:
+                        item['qp_images'].append(img_path)
+
+                # Also inherit image metadata if present
+                parent_meta = parent.get('image_metadata', [])
+                item_meta = item.get('image_metadata', [])
+                for meta in parent_meta:
+                    if meta.get('file_path') not in [m.get('file_path') for m in item_meta]:
+                        item_meta.append(meta)
+                item['image_metadata'] = item_meta
+
+    return items
+
+
 def run_harness_v2(qp_path, memo_path, paper_code, output_dir=None):
     """Run complete four-parser chain and return combined results."""
-    print(f"=== HARNESS v2.2: {paper_code} ===")
+    print(f"=== HARNESS v2.3: {paper_code} ===")
 
     qp_img_dir = None
     memo_img_dir = None
@@ -160,7 +198,7 @@ def run_harness_v2(qp_path, memo_path, paper_code, output_dir=None):
         os.makedirs(memo_img_dir, exist_ok=True)
 
     print("\n[1/5] QP Content Parser...")
-    qp_content_items = extract_qp_content(qp_path, qp_img_dir)
+    qp_content_items = extract_qp_content(qp_path, output_dir)
     print(f"  QP content items: {len(qp_content_items)}")
 
     print("\n[2/5] Memo Content Parser...")
@@ -261,6 +299,11 @@ def run_harness_v2(qp_path, memo_path, paper_code, output_dir=None):
 
         issue = '; '.join(issues) if issues else ''
 
+        # v2.3: Include image metadata from qp_content_parser
+        qp_images = qp_content.get('images', []) if qp_content else []
+        memo_images = memo_content.get('images', []) if memo_content else []
+        image_metadata = qp_content.get('image_metadata', []) if qp_content else []
+
         item = {
             'question_number': q_num,
             'question_text': qp_content['question_text'] if qp_content else '',
@@ -270,8 +313,9 @@ def run_harness_v2(qp_path, memo_path, paper_code, output_dir=None):
             'final_marks': final_marks,
             'confidence': confidence,
             'issue': issue,
-            'qp_images': qp_content.get('images', []) if qp_content else [],
-            'memo_images': memo_content.get('images', []) if memo_content else [],
+            'qp_images': qp_images,
+            'memo_images': memo_images,
+            'image_metadata': image_metadata,  # v2.3: Full metadata for DB insertion
             'qp_tables': qp_content.get('tables', []) if qp_content else [],
             'memo_tables': memo_content.get('tables', []) if memo_content else [],
             'qp_pages': qp_content.get('page_numbers', []) if qp_content else [],
@@ -293,6 +337,9 @@ def run_harness_v2(qp_path, memo_path, paper_code, output_dir=None):
     all_items = matched + qp_only + memo_only
     all_items, header_map = _detect_headers(all_items)
 
+    # v2.3 FIX: Propagate images from headers to sub-items
+    all_items = _propagate_images(all_items)
+
     all_items = _create_main_question_items(all_items, section_totals)
 
     all_items = _validate_section_totals(all_items, section_totals)
@@ -308,17 +355,21 @@ def run_harness_v2(qp_path, memo_path, paper_code, output_dir=None):
     total_marks = sum(m['final_marks'] for m in matched)
     target_marks = sum(section_totals.values()) if section_totals else 150
 
+    # v2.3: Log image inheritance summary
+    total_images = sum(len(i.get('qp_images', [])) for i in all_items)
+    inherited_images = sum(len(i.get('image_metadata', [])) for i in all_items)
     print(f"\n=== Results ===")
     print(f"  Matched: {len(matched)} | QP Only: {len(qp_only)} | Memo Only: {len(memo_only)}")
     print(f"  Green: {len(green)} | Yellow: {len(yellow)} | Red: {len(red)}")
     print(f"  Headers detected: {len(header_map)}")
+    print(f"  Total images: {total_images} (with inheritance)")
     print(f"  Total marks: {total_marks} (target: {target_marks})")
     print(f"  Variance: {target_marks - total_marks}")
 
     return {
         'status': 'success',
         'paper_code': paper_code,
-        'parser_version': 'v32',
+        'parser_version': 'v33',
         'matched': len(matched),
         'qp_only': len(qp_only),
         'memo_only': len(memo_only),
@@ -342,4 +393,4 @@ if __name__ == '__main__':
     if len(sys.argv) >= 3:
         result = run_harness_v2(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else 'TEST')
         print("\n=== FINAL OUTPUT ===")
-        print(json.dumps(result, indent=2))
+        print(json.dumps(result, indent=2, default=str))

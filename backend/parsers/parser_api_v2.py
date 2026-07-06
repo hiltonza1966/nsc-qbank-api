@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""QBank Parser API Wrapper v2.2 - Fixed for batch parser compatibility.
+"""QBank Parser API Wrapper v2.3 - Fixed for batch parser compatibility.
 
-FIXED:
-- Added all fields that batch_parser.js expects
-- Fixed memo marks extraction
-- Fixed memo content extraction
-- Version updated to v32
+FIXED (v2.3):
+- Version updated to v33 (matches harness v2.3)
+- Added image_metadata field support for attachment linkage
+- All other fields unchanged for batch_parser.js compatibility
 """
 import json
 import sys
@@ -23,7 +22,7 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
         result = run_harness_v2(qp_path, memo_path, paper_code, output_dir)
 
         # Ensure all fields that batch_parser.js expects are present
-        result['parser_version'] = 'v32'
+        result['parser_version'] = 'v33'
         result['timestamp'] = __import__('datetime').datetime.now().isoformat()
         result['status'] = 'success'
 
@@ -65,7 +64,7 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f'parser_result_{paper_code}.json')
             with open(output_file, 'w') as f:
-                json.dump(result, f, indent=2)
+                json.dump(result, f, indent=2, default=str)
 
         return result
     except Exception as e:
@@ -73,7 +72,7 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
             'status': 'error',
             'error': str(e),
             'paper_code': paper_code,
-            'parser_version': 'v32',
+            'parser_version': 'v33',
             'matched': 0,
             'qp_only': 0,
             'memo_only': 0,
@@ -132,7 +131,7 @@ def get_parser_status():
     except ImportError:
         status['python-docx'] = False
 
-    status['apiVersion'] = 'v32'
+    status['apiVersion'] = 'v33'
     return status
 
 
@@ -160,7 +159,7 @@ if __name__ == '__main__':
         output_dir = sys.argv[5] if len(sys.argv) > 5 else None
 
         result = run_parser(qp_path, memo_path, paper_code, output_dir)
-        print(json.dumps(result))
+        print(json.dumps(result, default=str))
         sys.stdout.flush()
 
     elif command == 'parse-qp':
@@ -176,7 +175,7 @@ if __name__ == '__main__':
             items = extract_qp_content(qp_path, output_dir)
             result = {
                 'status': 'success',
-                'parser_version': 'v32',
+                'parser_version': 'v33',
                 'paper_code': paper_code,
                 'qp_items': len(items),
                 'items': items,
@@ -185,11 +184,11 @@ if __name__ == '__main__':
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
                 with open(os.path.join(output_dir, f'qp_result_{paper_code}.json'), 'w') as f:
-                    json.dump(result, f, indent=2)
-            print(json.dumps(result))
+                    json.dump(result, f, indent=2, default=str)
+            print(json.dumps(result, default=str))
             sys.stdout.flush()
         except Exception as e:
-            print(json.dumps({'status': 'error', 'error': str(e), 'parser_version': 'v32'}))
+            print(json.dumps({'status': 'error', 'error': str(e), 'parser_version': 'v33'}))
             sys.stdout.flush()
 
     else:
