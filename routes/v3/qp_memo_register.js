@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // QP & MEMO REGISTER - BACKEND v40
 // Date: 2026-07-02
 // Changes:
@@ -470,5 +470,97 @@ async function getDatabaseData(req, res) {
     res.json({ success: true, data: allPapers, filters: { subjects, assessment_bodies, assessment_types, sessions, grades, languages, years }, summary, diagnostics });
   } finally { conn.release(); }
 }
+
+
+// ============================================================
+// ATTACHMENT ENDPOINTS (dedicated to avoid route collisions)
+// ============================================================
+
+/**
+ * GET /api/v2/attachments/:identifier
+ * Fetch attachments by item_id (char) or result_id (int)
+ * Used by QP/Memo Register CRUD panel
+ */
+router.get('/attachments/:identifier', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const id = req.params.identifier;
+    const idNum = parseInt(id);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    let query, params;
+    if (isUuid) {
+      // UUID = item_id only (avoid matching result_id=0 or session_id collision)
+      query = `SELECT attachment_id, item_id, result_id, session_id, file_name, file_path, file_size, mime_type, attachment_type, question_number, is_extracted, pdf_page_number, image_index, description, display_order, created_at FROM item_attachments WHERE item_id = ? ORDER BY display_order ASC, pdf_page_number ASC, image_index ASC, created_at ASC`;
+      params = [id];
+    } else if (!isNaN(idNum) && idNum > 0) {
+      // Numeric = result_id
+      query = `SELECT attachment_id, item_id, result_id, session_id, file_name, file_path, file_size, mime_type, attachment_type, question_number, is_extracted, pdf_page_number, image_index, description, display_order, created_at FROM item_attachments WHERE result_id = ? ORDER BY display_order ASC, pdf_page_number ASC, image_index ASC, created_at ASC`;
+      params = [idNum];
+    } else {
+      // String = session_id
+      query = `SELECT attachment_id, item_id, result_id, session_id, file_name, file_path, file_size, mime_type, attachment_type, question_number, is_extracted, pdf_page_number, image_index, description, display_order, created_at FROM item_attachments WHERE session_id = ? ORDER BY display_order ASC, pdf_page_number ASC, image_index ASC, created_at ASC`;
+      params = [id];
+    }
+
+    const [rows] = await conn.execute(query, params);
+    res.json({ success: true, attachments: rows });
+  } catch (error) {
+    console.error('Register attachments fetch error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  } finally { conn.release(); }
+});
+
+/**
+ * DELETE /api/v2/attachments/:attachmentId
+ * Delete a single attachment by attachment_id
+ */
+router.delete('/attachments/:attachmentId', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const attachmentId = parseInt(req.params.attachmentId);
+    if (!attachmentId || attachmentId <= 0) {
+      return res.status(400).json({ success: false, error: 'Invalid attachment_id' });
+    }
+
+    await conn.execute('DELETE FROM item_attachments WHERE attachment_id = ?', [attachmentId]);
+    res.json({ success: true, message: 'Attachment deleted' });
+  } catch (error) {
+    console.error('Register attachment delete error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  } finally { conn.release(); }
+});
+
+router.get('/attachments/paper/:paperCode', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const paperCode = req.params.paperCode;
+    const [items] = await conn.execute('SELECT item_id FROM item_master WHERE source_paper_code = ?', [paperCode]);
+    const itemIds = items.map(i => i.item_id).filter(Boolean);
+    const [results] = await conn.execute('SELECT result_id FROM parse_results WHERE paper_code = ? AND is_memo = 0', [paperCode]);
+    const resultIds = results.map(r => r.result_id).filter(Boolean);
+    let whereClauses = [];
+    let params = [];
+    if (itemIds.length > 0) {
+      const p1 = itemIds.map(() => '?').join(',');
+      whereClauses.push('item_id IN (' + p1 + ')');
+      params.push(...itemIds);
+    }
+    if (resultIds.length > 0) {
+      const p2 = resultIds.map(() => '?').join(',');
+      whereClauses.push('result_id IN (' + p2 + ')');
+      params.push(...resultIds);
+    }
+    if (whereClauses.length === 0) {
+      return res.json({ success: true, attachments: [] });
+    }
+    const query = 'SELECT attachment_id, item_id, result_id, file_name, file_path FROM item_attachments WHERE ' + whereClauses.join(' OR ');
+    const [attachments] = await conn.execute(query, params);
+    res.json({ success: true, attachments });
+  } catch (error) {
+    console.error('Register paper attachments error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  } finally { conn.release(); }
+});
 
 module.exports = router;

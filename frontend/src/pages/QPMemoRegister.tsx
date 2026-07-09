@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 
 interface QPMemoRecord {
   paper_code: string; display_paper_code: string; subject_code: string; subject_name: string;
@@ -94,6 +94,8 @@ export default function QPMemoRegister() {
   const [itemListOpen, setItemListOpen] = useState(false);
   const [itemListPaperCode, setItemListPaperCode] = useState('');
   const [itemListItems, setItemListItems] = useState<ItemPair[]>([]);
+const [itemAttachmentCounts, setItemAttachmentCounts] = useState<Record<string, number>>({});
+  const [paperAttachmentCounts, setPaperAttachmentCounts] = useState<Record<string, number>>({});
   const [itemListLoading, setItemListLoading] = useState(false);
   const [itemListFilter, setItemListFilter] = useState('');
   const [itemListShowErrorsOnly, setItemListShowErrorsOnly] = useState(false);
@@ -117,8 +119,19 @@ export default function QPMemoRegister() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [addItemForm, setAddItemForm] = useState({ question_number: '', question_text: '', expected_marks: 0, answer_text: '', memo_marks: 0, parent_item_id: '' });
   const [addItemLoading, setAddItemLoading] = useState(false);
+  const [itemAttachments, setItemAttachments] = useState<any[]>([]);
+  const [itemSvgs, setItemSvgs] = useState<any[]>([]);
+  const [itemAudio, setItemAudio] = useState<any[]>([]);
+  const [attachmentLoading, setAttachmentLoading] = useState(false);
 
   useEffect(() => { fetchData(); }, [dataSource, viewMode]);
+
+  // Fetch attachments when CRUD panel opens for an item with item_id
+  useEffect(() => {
+    if (crudPanelOpen && crudItem?.item_id) {
+      fetchAttachments(crudItem.item_id, crudPaperCode, crudItem.question_number);
+    }
+  }, [crudPanelOpen, crudItem?.item_id]);
 
   // Fetch items for the paper when CRUD panel opens (needed for hierarchy dropdowns)
   useEffect(() => {
@@ -128,6 +141,20 @@ export default function QPMemoRegister() {
         .then(result => {
           if (result.success) {
             setItemListItems(result.items || []);
+// Fetch attachment counts for all items in this paper
+fetch(`${API_BASE}/attachments/paper/${encodeURIComponent(itemListPaperCode)}`)
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      const counts: Record<string, number> = {};
+      for (const att of data.attachments || []) {
+        if (att.item_id) counts[att.item_id] = (counts[att.item_id] || 0) + 1;
+        if (att.result_id) counts[att.result_id] = (counts[att.result_id] || 0) + 1;
+      }
+      setItemAttachmentCounts(counts);
+    }
+  })
+  .catch(() => {});
           }
         })
         .catch(() => {});
@@ -168,7 +195,22 @@ export default function QPMemoRegister() {
     };
   }, [filteredData, diagnostics]);
 
-  const fetchData = async () => { setLoading(true); setError(''); setActionMessage(''); try { const params = new URLSearchParams(); params.append('data_source', dataSource); if (viewMode === 'errors') params.append('show_errors_only', 'true'); const res = await fetch(`${API_BASE}?${params.toString()}`); const result = await res.json(); if (result.success) { setData(result.data); setFilteredData(result.data); setFilters(result.filters); setSummary(result.summary); setDiagnostics(result.diagnostics); } else { setError(result.message || result.error || 'Unknown error'); } } catch (err: any) { setError(err.message); } finally { setLoading(false); } };
+  const fetchData = async () => { setLoading(true); setError(''); setActionMessage(''); try { const params = new URLSearchParams(); params.append('data_source', dataSource); if (viewMode === 'errors') params.append('show_errors_only', 'true'); const res = await fetch(`${API_BASE}?${params.toString()}`); const result = await res.json(); if (result.success) { setData(result.data); setFilteredData(result.data); setFilters(result.filters); setSummary(result.summary); setDiagnostics(result.diagnostics);
+    // Fetch attachment counts for all papers
+    const paperCodes = result.data.map((p: QPMemoRecord) => p.paper_code);
+    const fetchPaperAttachments = async (pc: string) => {
+      try {
+        const r = await fetch(`${API_BASE}/attachments/paper/${encodeURIComponent(pc)}`);
+        const d = await r.json();
+        return { paperCode: pc, count: d.attachments?.length || 0 };
+      } catch (e) { return { paperCode: pc, count: 0 }; }
+    };
+    Promise.all(paperCodes.map(fetchPaperAttachments)).then((counts) => {
+      const map: Record<string, number> = {};
+      for (const c of counts) map[c.paperCode] = c.count;
+      setPaperAttachmentCounts(map);
+    });
+  } else { setError(result.message || result.error || 'Unknown error'); } } catch (err: any) { setError(err.message); } finally { setLoading(false); } };
 
   const applyFilters = () => { let filtered = [...data]; if (selectedBody) { const bodyId = parseInt(selectedBody); if (!isNaN(bodyId)) { filtered = filtered.filter(r => r.assessment_body_id === bodyId); } else { filtered = filtered.filter(r => r.paper_code.includes(selectedBody)); } } if (selectedType) { const typeId = parseInt(selectedType); if (!isNaN(typeId)) { filtered = filtered.filter(r => r.assessment_type_id === typeId); } else { filtered = filtered.filter(r => r.paper_code.includes(selectedType)); } } if (selectedSession) filtered = filtered.filter(r => r.session === selectedSession); if (selectedGrade) filtered = filtered.filter(r => String(r.grade) === selectedGrade || r.paper_code.includes(selectedGrade)); if (selectedLanguage) filtered = filtered.filter(r => r.language === selectedLanguage); if (selectedYear) filtered = filtered.filter(r => String(r.year) === selectedYear); if (selectedPaperNo) filtered = filtered.filter(r => String(r.paper_no) === selectedPaperNo); if (selectedSubject) filtered = filtered.filter(r => (r.subject_official_code && String(r.subject_official_code).toLowerCase() === selectedSubject.toLowerCase()) || (r.subject_code && r.subject_code.toLowerCase() === selectedSubject.toLowerCase()) || (r.subject_alpha_code && r.subject_alpha_code.toLowerCase() === selectedSubject.toLowerCase())); if (searchTerm) { const term = searchTerm.toLowerCase(); filtered = filtered.filter(r => (r.display_paper_code || r.paper_code).toLowerCase().includes(term) || r.subject_code.toLowerCase().includes(term) || (r.subject_name && r.subject_name.toLowerCase().includes(term))); } setFilteredData(filtered); };
 
@@ -335,6 +377,54 @@ export default function QPMemoRegister() {
       }
     } catch (err: any) { setCrudMessage(`Network error: ${err.message}`); }
     finally { setAddItemLoading(false); }
+  };
+
+  // Dedicated register endpoint to avoid route collision with other /api/attachments routers
+  const fetchAttachments = async (itemId: string, paperCode?: string, questionNumber?: string) => {
+    if (!itemId) return;
+    setAttachmentLoading(true);
+    try {
+      const attachRes = await fetch(`${API_BASE}/attachments/${itemId}`);
+      const attachData = await attachRes.json();
+      if (attachData.success) setItemAttachments(attachData.attachments || []);
+      const svgRes = await fetch(API_BASE.replace('/v2', '') + '/media/svg/' + itemId);
+      const svgData = await svgRes.json();
+      if (svgData.success) setItemSvgs(svgData.svgs || []);
+      const audioRes = await fetch(API_BASE.replace('/v2', '') + '/media/audio/' + itemId);
+      const audioData = await audioRes.json();
+      if (audioData.success) setItemAudio(audioData.audio || []);
+    } catch (e) { /* ignore */ }
+    finally { setAttachmentLoading(false); }
+  };
+
+  const uploadImage = async (file: File, itemId: string) => {
+    if (!file || !itemId) return;
+    setAttachmentLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch(API_BASE.replace('/v2', '') + '/attachments/' + itemId, { method: 'POST', body: formData });
+      const result = await res.json();
+      if (result.success) { setCrudMessage('Image uploaded'); await fetchAttachments(itemId, crudPaperCode, crudItem?.question_number); }
+      else { setCrudMessage(result.error || 'Upload failed'); }
+    } catch (err: any) { setCrudMessage('Upload error: ' + err.message); }
+    finally { setAttachmentLoading(false); }
+  };
+
+  // Use register-specific delete endpoint for images to avoid route collision
+  const deleteAttachment = async (attachmentId: string, type: string) => {
+    if (!attachmentId) return;
+    // CONFIRMATION: prevent accidental deletion when clicking image
+    if (!window.confirm('Are you sure you want to delete this attachment?')) return;
+    try {
+      let url = '';
+      if (type === 'image') url = `${API_BASE}/attachments/${attachmentId}`;
+      else if (type === 'svg') url = API_BASE.replace('/v2', '') + '/media/svg/' + attachmentId;
+      else if (type === 'audio') url = API_BASE.replace('/v2', '') + '/media/audio/' + attachmentId;
+      const res = await fetch(url, { method: 'DELETE' });
+      const result = await res.json();
+      if (result.success) { setCrudMessage('Deleted'); if (crudItem?.item_id) await fetchAttachments(crudItem.item_id, crudPaperCode, crudItem?.question_number); }
+    } catch (err: any) { setCrudMessage('Delete error: ' + err.message); }
   };
 
   const createMemoItem = async () => {
@@ -627,9 +717,9 @@ export default function QPMemoRegister() {
     return 0;
   }
 
-  const MatchBadge = ({ match, label }: { match: boolean; label: string }) => ( <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', background: match ? '#d1fae5' : '#fee2e2', color: match ? '#065f46' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}> {match ? '✓' : '✗'} {label} </span> );
+  const MatchBadge = ({ match, label }: { match: boolean; label: string }) => ( <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', background: match ? '#d1fae5' : '#fee2e2', color: match ? '#065f46' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}> {match ? 'âœ“' : 'âœ—'} {label} </span> );
   const VarianceBadge = ({ value }: { value: number }) => ( <span style={{ fontSize: '12px', fontWeight: 'bold', color: value === 0 ? '#10b981' : value > 0 ? '#f59e0b' : '#ef4444' }}> {value > 0 ? `+${value}` : value} </span> );
-  const IssueBadge = ({ count }: { count: number }) => ( <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', background: count === 0 ? '#d1fae5' : count < 3 ? '#fef3c7' : '#fee2e2', color: count === 0 ? '#065f46' : count < 3 ? '#92400e' : '#991b1b' }}> {count === 0 ? '✓ Clean' : `⚠ ${count} issue${count > 1 ? 's' : ''}`} </span> );
+  const IssueBadge = ({ count }: { count: number }) => ( <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', background: count === 0 ? '#d1fae5' : count < 3 ? '#fef3c7' : '#fee2e2', color: count === 0 ? '#065f46' : count < 3 ? '#92400e' : '#991b1b' }}> {count === 0 ? 'âœ“ Clean' : `âš  ${count} issue${count > 1 ? 's' : ''}`} </span> );
   const ErrorHighlight = ({ hasError, children }: { hasError: boolean; children: React.ReactNode }) => ( <span style={{ border: hasError ? '2px solid #ef4444' : '2px solid transparent', background: hasError ? '#fef2f2' : 'transparent', borderRadius: '4px', padding: '2px 4px', display: 'inline-block' }}> {children} </span> );
 
   const activeFilters = derivedFilters || filters;
@@ -640,7 +730,7 @@ export default function QPMemoRegister() {
   return (
     <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
       <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: '#1f2937', marginBottom: '8px' }}>QP & Memo Diagnostic Register</h1>
-      <p style={{ color: '#6b7280', marginBottom: '24px' }}>Track Question Items and Memos — Data Quality Dashboard</p>
+      <p style={{ color: '#6b7280', marginBottom: '24px' }}>Track Question Items and Memos â€” Data Quality Dashboard</p>
       {actionMessage && (<div style={{ background: '#d1fae5', border: '1px solid #10b981', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px', color: '#065f46' }}>{actionMessage}</div>)}
       {displaySummary && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '24px' }}>
@@ -680,7 +770,7 @@ export default function QPMemoRegister() {
       <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'auto', marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}><h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1f2937', margin: 0 }}>QP & Memo Register <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 'normal' }}>({filteredData.length} papers)</span></h2></div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-          <thead><tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}><th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 'bold' }}>Paper Code</th><th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 'bold' }}>Subject</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Grade</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Paper</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Year</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>QP Items</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Memo Items</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Items Match</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Exp Marks</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Corr Marks</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Issues</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Actions</th></tr></thead>
+          <thead><tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}><th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 'bold' }}>Paper Code</th><th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 'bold' }}>Subject</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Grade</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Paper</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Year</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Att</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>QP Items</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Memo Items</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Items Match</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Exp Marks</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Corr Marks</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Issues</th><th style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>Actions</th></tr></thead>
           <tbody>
             {filteredData.length === 0 ? (<tr><td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>No papers found.</td></tr>) : (
               filteredData.map((row, idx) => (
@@ -690,6 +780,7 @@ export default function QPMemoRegister() {
                   <td style={{ padding: '12px', textAlign: 'center', color: '#374151' }}>{row.grade ? `Grade ${row.grade}` : '-'}</td>
                   <td style={{ padding: '12px', textAlign: 'center', color: '#374151' }}>Paper {row.paper_no}</td>
                   <td style={{ padding: '12px', textAlign: 'center', color: '#374151' }}>{row.year}</td>
+                  <td style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>{paperAttachmentCounts[row.paper_code] || 0}</td>
                   <td style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>{row.qp_item_count}</td>
                   <td style={{ padding: '12px', textAlign: 'center', color: '#374151', fontWeight: 'bold' }}>{row.memo_item_count}</td>
                   <td style={{ padding: '12px', textAlign: 'center' }}><MatchBadge match={row.items_match} label={row.item_variance === 0 ? 'Match' : `Diff ${row.item_variance}`} /></td>
@@ -699,7 +790,7 @@ export default function QPMemoRegister() {
                   <td style={{ padding: '12px', textAlign: 'center' }}>
                     <button onClick={() => openItemList(row.paper_code)} style={{ padding: '6px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Edit Items</button>
                     {row.duplicate_count > 0 && (<button onClick={() => deleteDuplicates(row.paper_code)} disabled={fixing} style={{ padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold', marginLeft: '4px' }}>Del Dups ({row.duplicate_count})</button>)}
-                    {row.error_count > 0 && (<div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px', maxWidth: '250px', lineHeight: '1.4', textAlign: 'left' }}>{row.data_quality_issues.slice(0, 3).map((issue, i) => (<div key={i} style={{ marginBottom: '2px' }}>• {issue}</div>))}{row.data_quality_issues.length > 3 && <div>...and {row.data_quality_issues.length - 3} more</div>}</div>)}
+                    {row.error_count > 0 && (<div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px', maxWidth: '250px', lineHeight: '1.4', textAlign: 'left' }}>{row.data_quality_issues.slice(0, 3).map((issue, i) => (<div key={i} style={{ marginBottom: '2px' }}>â€¢ {issue}</div>))}{row.data_quality_issues.length > 3 && <div>...and {row.data_quality_issues.length - 3} more</div>}</div>)}
                   </td>
                 </tr>
               ))
@@ -711,9 +802,9 @@ export default function QPMemoRegister() {
         <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '24px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1f2937', marginBottom: '16px' }}>Data Quality Diagnostics</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
-            <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}><h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#f97316', marginBottom: '8px' }}>⚠ Missing Memos ({diagnostics.missing_memos.length})</h3><div style={{ maxHeight: '200px', overflow: 'auto' }}>{diagnostics.missing_memos.length === 0 ? <p style={{ fontSize: '12px', color: '#10b981' }}>All papers have memos</p> : diagnostics.missing_memos.slice(0, 10).map((m, i) => (<div key={i} style={{ fontSize: '12px', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>{m.paper_code} — {m.qp_count} QP items</div>))}</div></div>
-            <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}><h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#eab308', marginBottom: '8px' }}>⚠ Orphaned Memos ({diagnostics.orphaned_memos.length})</h3><div style={{ maxHeight: '200px', overflow: 'auto' }}>{diagnostics.orphaned_memos.length === 0 ? <p style={{ fontSize: '12px', color: '#10b981' }}>No orphaned memos</p> : diagnostics.orphaned_memos.slice(0, 10).map((o, i) => (<div key={i} style={{ fontSize: '12px', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>{o.paper_code} Q{o.question_number} (memo_id: {o.memo_id})</div>))}</div></div>
-            <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}><h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#ef4444', marginBottom: '8px' }}>⚠ NULL Paper Codes ({diagnostics.null_fields.length})</h3><div style={{ maxHeight: '200px', overflow: 'auto' }}>{diagnostics.null_fields.length === 0 ? <p style={{ fontSize: '12px', color: '#10b981' }}>No NULL paper codes</p> : diagnostics.null_fields.slice(0, 10).map((n, i) => (<div key={i} style={{ fontSize: '12px', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>result_id: {n.result_id}, Q{n.question_number}, session: {n.session_id}</div>))}</div></div>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}><h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#f97316', marginBottom: '8px' }}>âš  Missing Memos ({diagnostics.missing_memos.length})</h3><div style={{ maxHeight: '200px', overflow: 'auto' }}>{diagnostics.missing_memos.length === 0 ? <p style={{ fontSize: '12px', color: '#10b981' }}>All papers have memos</p> : diagnostics.missing_memos.slice(0, 10).map((m, i) => (<div key={i} style={{ fontSize: '12px', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>{m.paper_code} â€” {m.qp_count} QP items</div>))}</div></div>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}><h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#eab308', marginBottom: '8px' }}>âš  Orphaned Memos ({diagnostics.orphaned_memos.length})</h3><div style={{ maxHeight: '200px', overflow: 'auto' }}>{diagnostics.orphaned_memos.length === 0 ? <p style={{ fontSize: '12px', color: '#10b981' }}>No orphaned memos</p> : diagnostics.orphaned_memos.slice(0, 10).map((o, i) => (<div key={i} style={{ fontSize: '12px', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>{o.paper_code} Q{o.question_number} (memo_id: {o.memo_id})</div>))}</div></div>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}><h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#ef4444', marginBottom: '8px' }}>âš  NULL Paper Codes ({diagnostics.null_fields.length})</h3><div style={{ maxHeight: '200px', overflow: 'auto' }}>{diagnostics.null_fields.length === 0 ? <p style={{ fontSize: '12px', color: '#10b981' }}>No NULL paper codes</p> : diagnostics.null_fields.slice(0, 10).map((n, i) => (<div key={i} style={{ fontSize: '12px', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>result_id: {n.result_id}, Q{n.question_number}, session: {n.session_id}</div>))}</div></div>
           </div>
         </div>
       )}
@@ -731,7 +822,7 @@ export default function QPMemoRegister() {
                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}><input type="checkbox" checked={itemListShowErrorsOnly} onChange={(e) => setItemListShowErrorsOnly(e.target.checked)} /> Errors only</label>
                 <button onClick={() => deleteDuplicates(itemListPaperCode)} disabled={fixing} style={{ padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>{fixing ? 'Working...' : 'Delete Duplicates'}</button>
                 <button onClick={() => setAddItemOpen(true)} style={{ padding: '6px 12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>+ Add New Item</button>
-                <button onClick={() => setItemListOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>×</button>
+                <button onClick={() => setItemListOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>Ã—</button>
               </div>
             </div>
             {bulkAssignMode && (
@@ -766,18 +857,18 @@ export default function QPMemoRegister() {
             )}
             {showHierarchyView && hierarchyTotals.length > 0 && (
               <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px', marginBottom: '16px', border: '1px solid #e5e7eb' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px' }}>Mark Validation (Header → Sub-header → Sub-item)</h4>
+                <h4 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px' }}>Mark Validation (Header â†’ Sub-header â†’ Sub-item)</h4>
                 {hierarchyTotals.map((ht, idx) => (
                   <div key={idx} style={{ marginBottom: '12px', padding: '8px', background: 'white', borderRadius: '6px', borderLeft: '3px solid #3b82f6' }}>
                     <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
                       Header {ht.headerQn}: {ht.headerMarks} marks
-                      {ht.headerMarks !== ht.total && <span style={{ color: '#ef4444', fontSize: '11px', marginLeft: '8px' }}>⚠ Computed: {ht.total}</span>}
-                      {ht.headerMarks === ht.total && ht.total > 0 && <span style={{ color: '#10b981', fontSize: '11px', marginLeft: '8px' }}>✓ Valid</span>}
+                      {ht.headerMarks !== ht.total && <span style={{ color: '#ef4444', fontSize: '11px', marginLeft: '8px' }}>âš  Computed: {ht.total}</span>}
+                      {ht.headerMarks === ht.total && ht.total > 0 && <span style={{ color: '#10b981', fontSize: '11px', marginLeft: '8px' }}>âœ“ Valid</span>}
                     </div>
                     {ht.subHeaders.map((sh, shIdx) => (
                       <div key={shIdx} style={{ marginLeft: '16px', marginTop: '4px', fontSize: '12px' }}>
-                        └ Sub-header {sh.subHeaderQn}: {sh.subHeaderMarks} marks (computed: {sh.subTotal})
-                        {sh.subItems.map(si => <div key={si.qn} style={{ marginLeft: '16px', color: '#6b7280' }}>└ {si.qn}: {si.marks} marks</div>)}
+                        â”” Sub-header {sh.subHeaderQn}: {sh.subHeaderMarks} marks (computed: {sh.subTotal})
+                        {sh.subItems.map(si => <div key={si.qn} style={{ marginLeft: '16px', color: '#6b7280' }}>â”” {si.qn}: {si.marks} marks</div>)}
                       </div>
                     ))}
                     {ht.directItems.length > 0 && <div style={{ marginLeft: '16px', marginTop: '4px', fontSize: '12px', color: '#6b7280' }}>Direct items: {ht.directItems.map(di => `${di.qn}(${di.marks})`).join(', ')}</div>}
@@ -787,8 +878,8 @@ export default function QPMemoRegister() {
             )}
             {itemListLoading ? (<div>Loading items...</div>) : (
               <div>
-                <div style={{ display: 'grid', gridTemplateColumns: '40px 80px minmax(300px, 2fr) minmax(300px, 2fr) 100px 100px 100px 80px 180px', gap: '8px', padding: '8px 12px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', fontWeight: 'bold', fontSize: '12px', color: '#374151' }}>
-                  <div></div><div>Q#</div><div>Question Text</div><div>Answer Text</div><div style={{ textAlign: 'center' }}>QP Marks</div><div style={{ textAlign: 'center' }}>Memo Marks</div><div style={{ textAlign: 'center' }}>Variance</div><div style={{ textAlign: 'center' }}>Status</div><div style={{ textAlign: 'center' }}>Action</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '40px 80px minmax(300px, 2fr) minmax(300px, 2fr) 60px 100px 100px 100px 80px 180px', gap: '8px', padding: '8px 12px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', fontWeight: 'bold', fontSize: '12px', color: '#374151' }}>
+                  <div></div><div>Q#</div><div>Question Text</div><div>Answer Text</div><div style={{ textAlign: 'center' }}>Att</div><div style={{ textAlign: 'center' }}>QP Marks</div><div style={{ textAlign: 'center' }}>Memo Marks</div><div style={{ textAlign: 'center' }}>Variance</div><div style={{ textAlign: 'center' }}>Status</div><div style={{ textAlign: 'center' }}>Action</div>
                 </div>
                 <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
                   {sortItemsWithHeaders((itemListItems || []).filter(item => {
@@ -796,7 +887,7 @@ export default function QPMemoRegister() {
                     if (itemListShowErrorsOnly && !item.has_errors) return false;
                     return true;
                   })).map((item, idx) => (
-                    <div key={`${item.question_number}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '40px 80px minmax(300px, 2fr) minmax(300px, 2fr) 100px 100px 100px 80px 180px', gap: '8px', padding: '12px', paddingLeft: `${(item._indent || 0) * 24 + 12}px`, borderBottom: '1px solid #f3f4f6', background: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '#fef3c7' : '#f0fdf4') : item._indent ? '#f0f9ff' : item.has_errors ? '#fffbeb' : idx % 2 === 0 ? 'white' : '#fafafa', borderLeft: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '4px solid #f59e0b' : '4px solid #10b981') : item._indent ? '4px solid #3b82f6' : 'none', alignItems: 'start' }}>
+                    <div key={`${item.question_number}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '40px 80px minmax(300px, 2fr) minmax(300px, 2fr) 60px 100px 100px 100px 80px 180px', gap: '8px', padding: '12px', paddingLeft: `${(item._indent || 0) * 24 + 12}px`, borderBottom: '1px solid #f3f4f6', background: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '#fef3c7' : '#f0fdf4') : item._indent ? '#f0f9ff' : item.has_errors ? '#fffbeb' : idx % 2 === 0 ? 'white' : '#fafafa', borderLeft: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '4px solid #f59e0b' : '4px solid #10b981') : item._indent ? '4px solid #3b82f6' : 'none', alignItems: 'start' }}>
                       <div style={{ display: 'flex', alignItems: 'center' }}>
                         {bulkAssignMode && (
                           <input type="checkbox" checked={selectedItems.has(dataSource === 'database' ? item.item_id! : item.result_id!)} onChange={() => toggleItemSelection(dataSource === 'database' ? item.item_id! : item.result_id!)} style={{ marginRight: '8px', cursor: 'pointer' }} />
@@ -805,8 +896,8 @@ export default function QPMemoRegister() {
                       <div style={{ fontWeight: 'bold', color: item.is_header ? ((item.header_level === 1 || item.header_level === null) ? '#f59e0b' : '#10b981') : item._indent ? '#3b82f6' : '#1f2937' }}>
                         {(item.is_header && (item.header_level === 1 || item.header_level === null)) && <span style={{ marginRight: '4px', padding: '2px 6px', background: '#f59e0b', color: 'white', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>HEADER</span>}
                         {item.is_header && item.header_level === 2 && <span style={{ marginRight: '4px', padding: '2px 6px', background: '#10b981', color: 'white', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>SUB-H</span>}
-                        {item._indent === 1 && <span style={{ marginRight: '4px', color: '#3b82f6' }}>└─</span>}
-                        {item._indent === 2 && <span style={{ marginRight: '4px', color: '#6b7280' }}>  └─</span>}
+                        {item._indent === 1 && <span style={{ marginRight: '4px', color: '#3b82f6' }}>â””â”€</span>}
+                        {item._indent === 2 && <span style={{ marginRight: '4px', color: '#6b7280' }}>  â””â”€</span>}
                         {item.question_number}
                       </div>
                       <div style={{ fontSize: '12px', color: '#374151', maxHeight: '80px', overflow: 'auto' }}>{item.question_text || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No question text</span>}</div>
@@ -814,7 +905,7 @@ export default function QPMemoRegister() {
                       <div style={{ textAlign: 'center' }}><ErrorHighlight hasError={item.expected_marks !== (item.memo_expected_marks || 0)}>{item.expected_marks}</ErrorHighlight></div>
                       <div style={{ textAlign: 'center' }}><ErrorHighlight hasError={item.expected_marks !== (item.memo_expected_marks || 0)}>{item.memo_expected_marks ?? '-'}</ErrorHighlight></div>
                       <div style={{ textAlign: 'center' }}><VarianceBadge value={item.variance || 0} /></div>
-                      <div style={{ textAlign: 'center' }}><span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', background: item.is_red_flag ? '#fee2e2' : '#d1fae5', color: item.is_red_flag ? '#991b1b' : '#065f46' }}>{item.is_red_flag ? '⚠' : '✓'}</span></div>
+                      <div style={{ textAlign: 'center' }}><span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', background: item.is_red_flag ? '#fee2e2' : '#d1fae5', color: item.is_red_flag ? '#991b1b' : '#065f46' }}>{item.is_red_flag ? 'âš ' : 'âœ“'}</span></div>
                       <div style={{ textAlign: 'center' }}>
                         <button onClick={() => openCrudPanel(item, itemListPaperCode)} style={{ padding: '4px 10px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>Edit</button>
                         {!item.is_header && (
@@ -827,7 +918,7 @@ export default function QPMemoRegister() {
                             defaultValue=""
                             disabled={getAvailableHeaders(itemListItems).length === 0}
                           >
-                            <option value="">→Sub-H</option>
+                            <option value="">â†’Sub-H</option>
                             {getAvailableHeaders(itemListItems).map(h => (
                               <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>under {h.question_number}</option>
                             ))}
@@ -847,7 +938,7 @@ export default function QPMemoRegister() {
                             style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #8b5cf6', fontSize: '11px', marginLeft: '4px', minWidth: '80px', cursor: 'pointer' }}
                             defaultValue=""
                           >
-                            <option value="">→Sub-item</option>
+                            <option value="">â†’Sub-item</option>
                             <optgroup label="Headers">
                               {itemListItems.filter(i => i.is_header && i.header_level === 1).map(h => <option key={dataSource === 'database' ? h.item_id : h.result_id} value={dataSource === 'database' ? h.item_id : h.result_id}>{h.question_number}</option>)}
                             </optgroup>
@@ -875,7 +966,7 @@ export default function QPMemoRegister() {
           <div style={{ background: 'white', borderRadius: '12px', padding: '24px', width: '500px', maxHeight: '80vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0 }}>Add New Item</h3>
-              <button onClick={() => setAddItemOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>×</button>
+              <button onClick={() => setAddItemOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>Ã—</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
@@ -927,20 +1018,20 @@ export default function QPMemoRegister() {
                 {crudMessage && (
                   <span style={{ background: crudMessage.includes('failed') || crudMessage.includes('error') || crudMessage.includes('Cannot') || crudMessage.includes('Cancelled') ? '#fee2e2' : '#d1fae5', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', color: crudMessage.includes('failed') || crudMessage.includes('error') || crudMessage.includes('Cannot') || crudMessage.includes('Cancelled') ? '#991b1b' : '#065f46' }}>{crudMessage}</span>
                 )}
-                <button onClick={() => setCrudPanelOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>×</button>
+                <button onClick={() => setCrudPanelOpen(false)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>Ã—</button>
               </div>
             </div>
 
             {crudItem.has_errors && crudItem.error_details.length > 0 && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px', marginBottom: '16px', maxHeight: '120px', overflow: 'auto' }}>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#991b1b', marginBottom: '8px' }}>⚠ Errors Detected:</div>
-                {crudItem.error_details.map((err, i) => (<div key={i} style={{ fontSize: '12px', color: '#dc2626', marginBottom: '4px' }}>• {err}</div>))}
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#991b1b', marginBottom: '8px' }}>âš  Errors Detected:</div>
+                {crudItem.error_details.map((err, i) => (<div key={i} style={{ fontSize: '12px', color: '#dc2626', marginBottom: '4px' }}>â€¢ {err}</div>))}
               </div>
             )}
 
             {dataSource === 'parsed' && (crudItem.result_id || 0) <= 0 && (
               <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#92400e' }}>⚠ Orphaned Memo</div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#92400e' }}>âš  Orphaned Memo</div>
                 <div style={{ fontSize: '12px', color: '#92400e' }}>This item has no QP (result_id = 0). Click "+ Add QP Item" below to create a matching QP for question {crudItem.question_number}.</div>
               </div>
             )}
@@ -964,11 +1055,174 @@ export default function QPMemoRegister() {
                   <input type="number" value={crudForm.qp_auto_corrected_marks ?? ''} onChange={(e) => setCrudForm({...crudForm, qp_auto_corrected_marks: e.target.value ? parseInt(e.target.value) : null})} disabled={dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '13px', background: (crudItem.result_id || 0) <= 0 ? '#f3f4f6' : 'white' }} />
                 </div>
                 <div style={{ marginBottom: '12px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: 'bold' }}>Question Text</label>
+                  
+                  {/* QP Image Gallery - Inline with Question */}
+                  {(() => {
+                    const qpImages = itemAttachments.filter((att) => att.file_path && att.file_path.includes('qp_images'));
+                    if (qpImages.length === 0) return null;
+                    return (
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: '600', color: '#1d4ed8', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>ðŸ“„</span> QP Diagrams / Images ({qpImages.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {qpImages.map((att) => (
+                            <div key={att.attachment_id} style={{ border: '1px solid #d1d5db', borderRadius: '8px', padding: '6px', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                              <img
+                                src={`http://localhost:4000/uploads/parser_output/${crudPaperCode}/${att.file_path}`}
+                                alt={att.file_name}
+                                style={{ width: '200px', height: 'auto', maxHeight: '200px', objectFit: 'contain', borderRadius: '4px', cursor: 'pointer', display: 'block' }}
+                                onClick={() => window.open(`http://localhost:4000/uploads/parser_output/${crudPaperCode}/${att.file_path}`, '_blank')}
+                                title={`Click to view full size: ${att.file_name}`}
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                              <div style={{ fontSize: '9px', color: '#6b7280', textAlign: 'center', marginTop: '4px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {att.file_name}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+<label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: 'bold' }}>Question Text</label>
                   <textarea value={crudForm.qp_question_text} onChange={(e) => setCrudForm({...crudForm, qp_question_text: e.target.value})} disabled={dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: !crudForm.qp_question_text ? '2px solid #ef4444' : '1px solid #d1d5db', fontSize: '13px', minHeight: '120px', resize: 'vertical', background: (crudItem.result_id || 0) <= 0 ? '#f3f4f6' : !crudForm.qp_question_text ? '#fef2f2' : 'white' }} placeholder="Enter question text..." />
                 </div>
-                <button onClick={saveQpFields} disabled={savingQp || (dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0)} style={{ width: '100%', padding: '8px', background: savingQp ? '#93c5fd' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: savingQp || (dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0) ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 'bold' }}>{savingQp ? 'Saving...' : '💾 Save QP Changes'}</button>
+                <button onClick={saveQpFields} disabled={savingQp || (dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0)} style={{ width: '100%', padding: '8px', background: savingQp ? '#93c5fd' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: savingQp || (dataSource === 'database' ? !crudItem.item_id : (crudItem.result_id || 0) <= 0) ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 'bold' }}>{savingQp ? 'Saving...' : 'ðŸ’¾ Save QP Changes'}</button>
                 <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '8px' }}>Status: {crudItem.correction_status}</div>
+
+                {/* Attachments Section */}
+                <div style={{ marginTop: '16px', padding: '12px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>ðŸ“Ž All Attachments</div>
+
+                  {itemAttachments.length === 0 && !attachmentLoading && (
+                    <div style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>No attachments for this item.</div>
+                  )}
+
+                  {itemAttachments.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {(() => {
+                        const qpAttachments = itemAttachments.filter((att) => att.file_path && att.file_path.includes('qp_images'));
+                        const memoAttachments = itemAttachments.filter((att) => att.file_path && att.file_path.includes('memo_images'));
+                        const otherAttachments = itemAttachments.filter((att) => !att.file_path || (!att.file_path.includes('qp_images') && !att.file_path.includes('memo_images')));
+
+                        return (
+                          <>
+                            {qpAttachments.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: '11px', fontWeight: '600', color: '#1d4ed8', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>ðŸ“„</span> QP Images ({qpAttachments.length})
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                  {qpAttachments.map((att) => (
+                                    <div key={att.attachment_id} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px', background: '#f9fafb', width: '100px', textAlign: 'center' }}>
+                                      {(() => {
+                                        const imgUrl = crudPaperCode 
+                                          ? `http://localhost:4000/uploads/parser_output/${crudPaperCode}/${att.file_path}`
+                                          : `http://localhost:4000/uploads/parser_output/${crudPaperCode}/${att.file_path}`;
+                                        return (
+                                          <>
+                                            <div onClick={() => window.open(imgUrl, '_blank')} style={{ cursor: 'pointer' }} title="Click to view full size">
+                                              <img
+                                                src={imgUrl}
+                                                alt={att.file_name}
+                                                style={{ width: '80px', height: '80px', objectFit: 'contain', borderRadius: '4px', display: 'block', margin: '0 auto' }}
+                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                              />
+                                            </div>
+                                            <div style={{ fontSize: '8px', color: '#6b7280', marginTop: '4px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {att.file_name}
+                                            </div>
+                                            <button onClick={() => window.open(imgUrl, '_blank')} style={{ marginTop: '4px', padding: '2px 8px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer', width: '100%' }}>View</button>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {memoAttachments.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: '11px', fontWeight: '600', color: '#047857', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>ðŸ“</span> Memo Images ({memoAttachments.length})
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                  {memoAttachments.map((att) => (
+                                    <div key={att.attachment_id} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px', background: '#f9fafb', width: '100px', textAlign: 'center' }}>
+                                      {(() => {
+                                        const imgUrl = crudPaperCode 
+                                          ? `http://localhost:4000/uploads/parser_output/${crudPaperCode}/${att.file_path}`
+                                          : `http://localhost:4000/uploads/parser_output/${crudPaperCode}/${att.file_path}`;
+                                        return (
+                                          <>
+                                            <div onClick={() => window.open(imgUrl, '_blank')} style={{ cursor: 'pointer' }} title="Click to view full size">
+                                              <img
+                                                src={imgUrl}
+                                                alt={att.file_name}
+                                                style={{ width: '80px', height: '80px', objectFit: 'contain', borderRadius: '4px', display: 'block', margin: '0 auto' }}
+                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                              />
+                                            </div>
+                                            <div style={{ fontSize: '8px', color: '#6b7280', marginTop: '4px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {att.file_name}
+                                            </div>
+                                            <button onClick={() => window.open(imgUrl, '_blank')} style={{ marginTop: '4px', padding: '2px 8px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer', width: '100%' }}>View</button>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {otherAttachments.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>
+                                  Other Attachments ({otherAttachments.length})
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                  {otherAttachments.map((att) => (
+                                    <div key={att.attachment_id} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px', background: '#f9fafb', width: '100px', textAlign: 'center' }}>
+                                      {(() => {
+                                        const imgUrl = crudPaperCode 
+                                          ? `http://localhost:4000/uploads/parser_output/${crudPaperCode}/${att.file_path}`
+                                          : `http://localhost:4000/uploads/parser_output/${crudPaperCode}/${att.file_path}`;
+                                        return (
+                                          <>
+                                            <div onClick={() => window.open(imgUrl, '_blank')} style={{ cursor: 'pointer' }} title="Click to view full size">
+                                              <img
+                                                src={imgUrl}
+                                                alt={att.file_name}
+                                                style={{ width: '80px', height: '80px', objectFit: 'contain', borderRadius: '4px', display: 'block', margin: '0 auto' }}
+                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                              />
+                                            </div>
+                                            <div style={{ fontSize: '8px', color: '#6b7280', marginTop: '4px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {att.file_name}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                                              <button onClick={() => window.open(imgUrl, '_blank')} style={{ flex: 1, padding: '2px 4px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>View</button>
+                                              <button onClick={() => deleteAttachment(att.attachment_id, 'image')} style={{ flex: 1, padding: '2px 4px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>Delete</button>
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {attachmentLoading && <div style={{ fontSize: '11px', color: '#6b7280' }}>Loading attachments...</div>}
+                </div>
               </div>
 
               <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}>
@@ -994,7 +1248,7 @@ export default function QPMemoRegister() {
                       <label style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: 'bold' }}>Answer Text</label>
                       <textarea value={crudForm.memo_answer_text} onChange={(e) => setCrudForm({...crudForm, memo_answer_text: e.target.value})} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: !crudForm.memo_answer_text ? '2px solid #ef4444' : '1px solid #d1d5db', fontSize: '13px', minHeight: '120px', resize: 'vertical', background: !crudForm.memo_answer_text ? '#fef2f2' : 'white' }} placeholder="Enter answer text..." />
                     </div>
-                    <button onClick={saveMemoFields} disabled={savingMemo} style={{ width: '100%', padding: '8px', background: savingMemo ? '#c4b5fd' : '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: savingMemo ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 'bold' }}>{savingMemo ? 'Saving...' : '💾 Save Memo Changes'}</button>
+                    <button onClick={saveMemoFields} disabled={savingMemo} style={{ width: '100%', padding: '8px', background: savingMemo ? '#c4b5fd' : '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: savingMemo ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 'bold' }}>{savingMemo ? 'Saving...' : 'ðŸ’¾ Save Memo Changes'}</button>
                     <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '8px' }}>Status: {crudItem.memo_correction_status}</div>
                   </>
                 ) : (
@@ -1007,7 +1261,7 @@ export default function QPMemoRegister() {
             </div>
             {/* HIERARCHY MANAGEMENT SECTION */}
             <div style={{ marginTop: '24px', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px' }}>
-              <h4 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px' }}>Hierarchy Management (Header → Sub-header → Sub-item)</h4>
+              <h4 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px' }}>Hierarchy Management (Header â†’ Sub-header â†’ Sub-item)</h4>
               <div style={{ marginBottom: '16px', padding: '8px', background: '#f9fafb', borderRadius: '6px' }}>
                 <div style={{ fontSize: '13px' }}>
                   <strong>Current Status:</strong>{' '}
@@ -1065,11 +1319,11 @@ export default function QPMemoRegister() {
               )}
               <div style={{ marginTop: '16px', padding: '12px', background: '#eff6ff', borderRadius: '6px', fontSize: '12px', color: '#1e40af' }}>
                 <strong>Hierarchy Rules:</strong><br/>
-                • Header (Level 1) = Sum of all Sub-headers + Direct sub-items<br/>
-                • Sub-header (Level 2) = Sum of all its Sub-items<br/>
-                • Sub-item = Individual question with its own marks<br/>
-                • Header + Sub-headers + Sub-items = Complete ITEM<br/>
-                • All Header totals = Question Paper Total
+                â€¢ Header (Level 1) = Sum of all Sub-headers + Direct sub-items<br/>
+                â€¢ Sub-header (Level 2) = Sum of all its Sub-items<br/>
+                â€¢ Sub-item = Individual question with its own marks<br/>
+                â€¢ Header + Sub-headers + Sub-items = Complete ITEM<br/>
+                â€¢ All Header totals = Question Paper Total
               </div>
             </div>
 
@@ -1084,3 +1338,4 @@ export default function QPMemoRegister() {
     </div>
   );
 }
+

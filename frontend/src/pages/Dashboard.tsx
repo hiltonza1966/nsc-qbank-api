@@ -134,6 +134,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchStats();
+    fetchAttachments();
   }, []);
 
   const fetchStats = async () => {
@@ -149,6 +150,20 @@ export default function Dashboard() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Separate endpoint to avoid route collision with loadedDashboard.js at /api/dashboard/stats
+  const fetchAttachments = async () => {
+    try {
+      const res = await fetch('http://localhost:4000/api/dashboard/attachments/count');
+      const data = await res.json();
+      if (data.success) {
+        setStats(prev => prev ? { ...prev, totalAttachments: data.total_attachments } : null);
+      }
+    } catch (err: any) {
+      // Silently fail — attachments are optional and the separate endpoint may not exist yet
+      console.error('Attachments fetch error:', err.message);
     }
   };
 

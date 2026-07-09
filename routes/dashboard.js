@@ -189,4 +189,25 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/dashboard/attachments/count
+ * Dedicated endpoint for attachment count to avoid route collision with loadedDashboard.js
+ */
+router.get('/attachments/count', async (req, res) => {
+  try {
+    const [attachmentCounts] = await req.db.query(`
+      SELECT COUNT(*) as total_attachments FROM item_attachments
+    `);
+
+    res.json({
+      success: true,
+      total_attachments: attachmentCounts[0].total_attachments
+    });
+
+  } catch (error) {
+    console.error('Dashboard attachments count error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
