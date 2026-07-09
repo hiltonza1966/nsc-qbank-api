@@ -7,6 +7,7 @@ interface DashboardStats {
   totalSubjects: number;
   totalTopics: number;
   totalSubtopics: number;
+  totalAttachments: number;
   itemsByStatus: Record<string, number>;
   papersByStatus: Record<string, number>;
   itemsByBody: Array<{ body_code: string; body_name: string; count: number }>;
@@ -238,6 +239,7 @@ export default function Dashboard() {
         <StatCard title="Subjects" value={stats.totalSubjects} color="#f59e0b" />
         <StatCard title="CAPS Topics" value={stats.totalTopics} color="#10b981" />
         <StatCard title="CAPS Subtopics" value={stats.totalSubtopics} color="#ef4444" />
+        <StatCard title="Attachments" value={stats.totalAttachments || 0} color="#ec4899" />
       </div>
 
       {/* CHARTS ROW 1: Donut + Bar Charts */}

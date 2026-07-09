@@ -165,6 +165,10 @@ router.get('/stats', async (req, res) => {
       FROM parse_results
     `);
 
+    const [attachmentCounts] = await req.db.query(`
+      SELECT COUNT(*) as total_attachments FROM item_attachments
+    `);
+
     res.json({
       success: true,
       stats: {
@@ -174,7 +178,8 @@ router.get('/stats', async (req, res) => {
         total_expected_marks: itemCounts[0].total_expected_marks,
         total_parsed_items: resultCounts[0].total_parsed_items,
         auto_corrected: resultCounts[0].auto_corrected,
-        manual_review: resultCounts[0].manual_review
+        manual_review: resultCounts[0].manual_review,
+        total_attachments: attachmentCounts[0].total_attachments
       }
     });
 
