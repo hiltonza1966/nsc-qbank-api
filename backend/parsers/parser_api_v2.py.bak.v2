@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""QBank Parser API Wrapper v3.0 - Uses v3 harness with hierarchy, MCQ, tables."""
+import json, sys, os, warnings
+
+PARSERS_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PARSERS_DIR)
+
+def run_parser(qp_path, memo_path, paper_code, output_dir=None):
+    try:
+        from master_harness_v3 import run_harness_v3
+        result = run_harness_v3(qp_path, memo_path, paper_code, output_dir)
+        result['parser_version'] = 'v35'
+        result['timestamp'] = __import__('datetime').datetime.now().isoformat()
+        result['status'] = 'success'
+
+        # Ensure all expected fields exist for backward compatibility
+        for field in ['matched', 'qp_only', 'memo_only', 'total_marks', 'target_marks', 'variance',
+                      'green_count', 'yellow_count', 'red_count', 'green_items', 'yellow_items', 'red_items',
+                      'qp_only_items', 'memo_only_items', 'section_totals', 'header_map']:
+            if field not in result:
+                result[field] = 0 if 'count' in field or field in ['matched', 'qp_only', 'memo_only'] else ([] if 'items' in field else {})
+
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            with open(os.path.join(output_dir, f'parser_result_{paper_code}.json'), 'w') as f:
+                json.dump(result, f, indent=2, default=str)
+
+        return result
+    except Exception as e:
+        import traceback
+        return {
+            'status': 'error',
+            'error': str(e),
+            'traceback': traceback.format_exc(),
+            'paper_code': paper_code,
+            'parser_version': 'v35',
+            'matched': 0, 'qp_only': 0, 'memo_only': 0,
+            'total_marks': 0, 'target_marks': 150, 'variance': 0,
+            'green_count': 0, 'yellow_count': 0, 'red_count': 0,
+            'green_items': [], 'yellow_items': [], 'red_items': [],
+            'qp_only_items': [], 'memo_only_items': [],
+            'section_totals': {}, 'header_map': {}
+        }
+
+def get_parser_status():
+    status = {
+        'python_version': sys.version,
+        'parsers_dir': PARSERS_DIR,
+        'parsers_available': {}
+    }
+    for parser in ['bilingual_cleaner.py', 'qp_content_parser.py', 'memo_content_parser.py',
+                   'qp_marks_parser.py', 'memo_marks_parser.py', 'master_harness_v2.py', 'master_harness_v3.py']:
+        status['parsers_available'][parser] = os.path.exists(os.path.join(PARSERS_DIR, parser))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            import fitz
+            status['pymupdf'] = True
+        except ImportError:
+            status['pymupdf'] = False
+        try:
+            import PyPDF2
+            status['pypdf2'] = True
+        except ImportError:
+            status['pypdf2'] = False
+
+    status['apiVersion'] = 'v35'
+    return status
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print(json.dumps({'error': 'No command specified'}))
+        sys.stdout.flush()
+        sys.exit(1)
+
+    command = sys.argv[1]
+
+    if command == 'status':
+        print(json.dumps(get_parser_status()))
+        sys.stdout.flush()
+
+    elif command == 'parse':
+        if len(sys.argv) < 5:
+            print(json.dumps({'error': 'Usage: parse <qp> <memo> <paper_code> [output_dir]'}))
+            sys.stdout.flush()
+            sys.exit(1)
+        result = run_parser(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5] if len(sys.argv) > 5 else None)
+        print(json.dumps(result, default=str))
+        sys.stdout.flush()
+
+    elif command == 'parse-qp':
+        if len(sys.argv) < 4:
+            print(json.dumps({'error': 'Usage: parse-qp <qp> <paper_code> [output_dir]'}))
+            sys.stdout.flush()
+            sys.exit(1)
+        try:
+            from qp_content_parser import extract_qp_content
+            items = extract_qp_content(sys.argv[2], sys.argv[4] if len(sys.argv) > 4 else None)
+            result = {
+                'status': 'success',
+                'parser_version': 'v35',
+                'paper_code': sys.argv[3],
+                'qp_items': len(items),
+                'items': items
+            }
+            if len(sys.argv) > 4:
+                os.makedirs(sys.argv[4], exist_ok=True)
+                with open(os.path.join(sys.argv[4], f'qp_result_{sys.argv[3]}.json'), 'w') as f:
+                    json.dump(result, f, indent=2, default=str)
+            print(json.dumps(result, default=str))
+            sys.stdout.flush()
+        except Exception as e:
+            import traceback
+            print(json.dumps({
+                'status': 'error',
+                'error': str(e),
+                'traceback': traceback.format_exc(),
+                'parser_version': 'v35'
+            }))
+            sys.stdout.flush()
+
+    else:
+        print(json.dumps({'error': f'Unknown command: {command}'}))
+        sys.stdout.flush()

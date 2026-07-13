@@ -206,8 +206,9 @@ def extract_qp_content(pdf_path, output_dir=None):
     all_images = []     # global image list, filtered per-item later
 
     for page_num, page in enumerate(doc):
-        page_images = _extract_images(doc, page, page_num, output_dir)
-        all_images.extend(page_images)
+        # Images handled by attachment_parser.py — not extracted here
+        # page_images = _extract_images(doc, page, page_num, output_dir)
+        # all_images.extend(page_images)
 
         for row in _get_rows(page):
             toks = [(w['x0'], w['text']) for w in row['words']]
@@ -296,7 +297,7 @@ def extract_qp_content(pdf_path, output_dir=None):
 
         # Associate images with this item by vertical proximity on same page
         # (Simple heuristic: images on pages where this item appears)
-        item_images = all_images
+        item_images = []  # Images handled by attachment_parser.py
 
         result.append({
             'question_number': q,

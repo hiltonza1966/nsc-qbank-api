@@ -39,8 +39,8 @@ function parseMachineFilename(filename) {
   // Extract subject (first part)
   const subject = parts[0];
 
-  // Extract paper number (find part starting with P)
-  const paperPart = parts.find(p => p.startsWith('P'));
+  // Extract paper number (only P1, P2, P3 - not POWERSYSTEMS etc.)
+  const paperPart = parts.find(p => /^P[123]$/.test(p));
   const paperNo = paperPart ? paperPart.replace('P', '') : '1';
 
   // Extract year (4-digit number)
@@ -119,7 +119,12 @@ async function lookupAllIds(db, parsed, defaultGradeId = 3, defaultAssessmentTyp
         'HL': 'HOMELANGUAGE',
         'SAL': 'SECONDADDITIONALLANGUAGE'
       };
-      parserSubjectCode = parsed.subject + (typeMap[parsed.assessmentType] || parsed.assessmentType);
+      const expectedSuffix = typeMap[parsed.assessmentType];
+      // v3 FIX: Don't append if subject already ends with the suffix
+      const alreadyHasSuffix = expectedSuffix && parsed.subject.toUpperCase().endsWith(expectedSuffix);
+      if (!alreadyHasSuffix) {
+        parserSubjectCode = parsed.subject + expectedSuffix;
+      }
     } else if (parsed.specialization) {
       parserSubjectCode = parsed.subject + '(' + parsed.specialization + ')';
     }
