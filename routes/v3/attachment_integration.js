@@ -186,13 +186,32 @@ async function integrateAttachments(db, sessionId, paperCode, qpPdfPath, memoPdf
           }
 
           try {
+            // Build metadata JSON + individual columns
+            const metadataJson = JSON.stringify({
+              bbox: rec.bbox || null,
+              relevance_score: rec.relevance_score || 0,
+              link_method: rec.link_method || '',
+              is_inherited: rec.is_inherited || false,
+              image_hash: rec.image_hash || '',
+              aspect_ratio: rec.aspect_ratio || 0,
+              file_size_kb: rec.file_size_kb || 0,
+              image_width: rec.image_width || 0,
+              image_height: rec.image_height || 0,
+              attachment_type: rec.attachment_type || 'diagram',
+              page_number: rec.page_number || 0
+            });
+
+            const bbox = rec.bbox || [null, null, null, null];
+
             await db.execute(
               `INSERT INTO item_attachments (
                 item_id, result_id, session_id, stimulus_id, file_name, file_path,
                 file_size, mime_type, attachment_type, question_number, is_extracted,
                 extracted_at, pdf_page_number, image_index, description, display_order,
-                bbox_x0, bbox_y0, bbox_x1, bbox_y1, is_inherited, relevance_score
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                attachment_metadata_json,
+                bbox_x0, bbox_y0, bbox_x1, bbox_y1,
+                relevance_score, link_method, image_hash
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 null,                       // item_id - set during promotion
                 resultId,                   // result_id - link to parse_results
@@ -206,16 +225,18 @@ async function integrateAttachments(db, sessionId, paperCode, qpPdfPath, memoPdf
                 qn,                         // question_number
                 1,                          // is_extracted
                 now,                        // extracted_at
-                rec.page_number,            // pdf_page_number
+                rec.page_number || 0,       // pdf_page_number
                 0,                          // image_index
                 null,                       // description
                 0,                          // display_order
-                rec.bbox ? rec.bbox[0] : null,  // bbox_x0
-                rec.bbox ? rec.bbox[1] : null,  // bbox_y0
-                rec.bbox ? rec.bbox[2] : null,  // bbox_x1
-                rec.bbox ? rec.bbox[3] : null,  // bbox_y1
-                rec.is_inherited ? 1 : 0,   // is_inherited
-                rec.relevance_score || 0    // relevance_score
+                metadataJson,               // attachment_metadata_json
+                bbox[0],                    // bbox_x0
+                bbox[1],                    // bbox_y0
+                bbox[2],                    // bbox_x1
+                bbox[3],                    // bbox_y1
+                rec.relevance_score || 0,   // relevance_score
+                rec.link_method || '',      // link_method
+                rec.image_hash || ''        // image_hash
               ]
             );
             totalInserted++;
@@ -251,13 +272,31 @@ async function integrateAttachments(db, sessionId, paperCode, qpPdfPath, memoPdf
           }
 
           try {
+            const metadataJson = JSON.stringify({
+              bbox: rec.bbox || null,
+              relevance_score: rec.relevance_score || 0,
+              link_method: rec.link_method || '',
+              is_inherited: rec.is_inherited || false,
+              image_hash: rec.image_hash || '',
+              aspect_ratio: rec.aspect_ratio || 0,
+              file_size_kb: rec.file_size_kb || 0,
+              image_width: rec.image_width || 0,
+              image_height: rec.image_height || 0,
+              attachment_type: rec.attachment_type || 'diagram',
+              page_number: rec.page_number || 0
+            });
+
+            const bbox = rec.bbox || [null, null, null, null];
+
             await db.execute(
               `INSERT INTO item_attachments (
                 item_id, result_id, session_id, stimulus_id, file_name, file_path,
                 file_size, mime_type, attachment_type, question_number, is_extracted,
                 extracted_at, pdf_page_number, image_index, description, display_order,
-                bbox_x0, bbox_y0, bbox_x1, bbox_y1, is_inherited, relevance_score
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                attachment_metadata_json,
+                bbox_x0, bbox_y0, bbox_x1, bbox_y1,
+                relevance_score, link_method, image_hash
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 null,
                 memoId,                     // result_id points to memo_id for memo attachments
@@ -271,16 +310,18 @@ async function integrateAttachments(db, sessionId, paperCode, qpPdfPath, memoPdf
                 qn,
                 1,
                 now,
-                rec.page_number,
+                rec.page_number || 0,
                 0,
                 null,
                 0,
-                rec.bbox ? rec.bbox[0] : null,
-                rec.bbox ? rec.bbox[1] : null,
-                rec.bbox ? rec.bbox[2] : null,
-                rec.bbox ? rec.bbox[3] : null,
-                rec.is_inherited ? 1 : 0,
-                rec.relevance_score || 0
+                metadataJson,
+                bbox[0],
+                bbox[1],
+                bbox[2],
+                bbox[3],
+                rec.relevance_score || 0,
+                rec.link_method || '',
+                rec.image_hash || ''
               ]
             );
             totalInserted++;

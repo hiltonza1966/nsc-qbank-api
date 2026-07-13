@@ -561,7 +561,7 @@ router.post('/batch', async (req, res) => {
           headers_detected: Object.keys(headerMap).length,
           qp_duplicates_skipped: qpDuplicatesSkipped,
           memo_duplicates_skipped: memoDuplicatesSkipped,
-          attachments_inserted: attachmentResult ? attachmentResult.inserted : 0,
+          attachments_inserted: 0,  // Will be updated after attachmentResult is populated
         });
 
         // Run attachment integration after parse, before promote
@@ -582,7 +582,9 @@ router.post('/batch', async (req, res) => {
           }
         }
 
+        // FIX: Update attachments_inserted after attachmentResult is populated
         const lastResult = results[results.length - 1];
+        lastResult.attachments_inserted = attachmentResult ? attachmentResult.inserted : 0;
         lastResult.promote_status = promoteResult ? (promoteResult.error ? 'failed' : 'success') : 'skipped';
         lastResult.promote_error = promoteResult?.error || null;
         lastResult.promote_items_inserted = promoteResult?.itemsInserted || 0;
@@ -722,31 +724,6 @@ async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseRes
       resultIdToItemId.set(qp.result_id, itemId);
       qnToItemId.set(qp.question_number, itemId);
 
-      // 6.5 Link existing attachments to item_master (UPDATE only, no INSERT)
-      const [existingAttachments] = await db.execute(
-        `SELECT attachment_id, result_id, file_path FROM item_attachments WHERE session_id = ?`,
-        [sessionId]
-      );
-
-      if (existingAttachments && existingAttachments.length > 0) {
-        let attachmentsLinked = 0;
-        for (const att of existingAttachments) {
-          const resultId = att.result_id;
-          if (resultId) {
-            const itemId = resultIdToItemId.get(resultId);
-            if (itemId) {
-              await db.execute(
-                `UPDATE item_attachments SET item_id = ?, updated_at = ? WHERE attachment_id = ?`,
-                [itemId, now, att.attachment_id]
-              );
-              attachmentsLinked++;
-            }
-          }
-        }
-        console.log(`[AUTO-PROMOTE] Linked ${attachmentsLinked} existing attachments to item_master`);
-      } else {
-        console.log(`[AUTO-PROMOTE] No existing attachments for session ${sessionId}`);
-      }
 
       if (memo) {
         const memoId = uuidv4();
@@ -756,6 +733,34 @@ async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseRes
           [memoId, itemId, memo.question_number, memo.answer_text || null, memo.expected_marks || 0, now, now]
         );
       }
+    }  // END FIRST LOOP
+
+    // 6.5 Link existing attachments to item_master (UPDATE only, no INSERT)
+    // MOVED OUTSIDE THE LOOP — runs exactly once per session
+    const [existingAttachments] = await db.execute(
+      `SELECT attachment_id, result_id, file_path FROM item_attachments WHERE session_id = ?`,
+      [sessionId]
+    );
+
+    if (existingAttachments && existingAttachments.length > 0) {
+      let loopAttachmentsLinked = 0;
+      for (const att of existingAttachments) {
+        const resultId = att.result_id;
+        if (resultId) {
+          const itemId = resultIdToItemId.get(resultId);
+          if (itemId) {
+            await db.execute(
+              `UPDATE item_attachments SET item_id = ?, updated_at = ? WHERE attachment_id = ?`,
+              [itemId, now, att.attachment_id]
+            );
+            loopAttachmentsLinked++;
+          }
+        }
+      }
+      attachmentsLinked += loopAttachmentsLinked;
+      console.log(`[AUTO-PROMOTE] Linked ${loopAttachmentsLinked} existing attachments to item_master`);
+    } else {
+      console.log(`[AUTO-PROMOTE] No existing attachments for session ${sessionId} — attachment_integration.js may not have run`);
     }
 
     // 7. Second pass: Link parent_item_id for sub-items based on parent_header_id
@@ -772,14 +777,6 @@ async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseRes
       }
     }
 
-    // Also update existing item_attachments to link to item_master items
-    for (const [resultId, itemId] of resultIdToItemId) {
-      const [updateResult] = await db.execute(
-        'UPDATE item_attachments SET item_id = ? WHERE result_id = ? AND item_id IS NULL',
-        [itemId, resultId]
-      );
-      attachmentsLinked += updateResult.affectedRows || 0;
-    }
 
     return {
       success: true,

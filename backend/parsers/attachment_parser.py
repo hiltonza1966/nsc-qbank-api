@@ -304,6 +304,55 @@ class AttachmentParser:
         self.cfg = cfg or Config()
         self.records = []
 
+    def _extract_page_numbers(self, doc, anchors):
+        """Scan PDF pages to assign actual page numbers to anchors with page_number=0."""
+        import re
+        result = []
+
+        for anchor in anchors:
+            qn = str(anchor.get('question_number', ''))
+            page_num = anchor.get('page_number', 0)
+
+            # If already has a page number, keep it
+            if page_num and page_num != 0:
+                result.append(anchor)
+                continue
+
+            # Search all pages for this question number
+            found_page = 0
+            found_y = 0.0
+            found_x = 0.0
+
+            # Build regex that matches the question number as a standalone marker
+            escaped = re.escape(qn)
+            pattern = re.compile(
+                r'(?:^|[\s\(\[])' + escaped + r'(?=[\s\.\)\]\n]|$)',
+                re.IGNORECASE
+            )
+
+            for p_idx in range(len(doc)):
+                page = doc[p_idx]
+                text = page.get_text()
+
+                if pattern.search(text):
+                    found_page = p_idx + 1  # 1-based
+                    # Try to get position from first occurrence
+                    rects = page.search_for(qn)
+                    if rects:
+                        r = rects[0]
+                        found_y = r.y1
+                        found_x = r.x0
+                    break
+
+            # Create updated anchor copy
+            updated = dict(anchor)
+            updated['page_number'] = found_page
+            updated['y_position'] = found_y
+            updated['x_position'] = found_x
+            result.append(updated)
+
+        return result
+
     def parse_pdf(self, pdf_path: str, anchors: List[Dict], paper_code: str = '') -> List[Dict]:
         self.records = []
         doc = fitz.open(pdf_path)
