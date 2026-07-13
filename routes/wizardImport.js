@@ -1,11 +1,13 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 
 // ============================================================
 // POST /api/wizard/import
-// Imports validated items from parse_results to item_master + item_memos
+// Imports validated items from parse_results to item_master + item_memos + item_attachments
 // Body: { session_id, paper_code, created_by }
+// FIXED: Now migrates attachments from parse_results to item_master
+// FIXED: Added user_id to item_master INSERT
 // ============================================================
 router.post('/import', async (req, res) => {
   const conn = await req.db.getConnection();
@@ -21,9 +23,9 @@ router.post('/import', async (req, res) => {
 
     // 1. Get all validated QP items from parse_results
     const [qpItems] = await conn.execute(
-      `SELECT r.question_number, r.question_text, r.parsed_section,
+      `SELECT r.result_id, r.question_number, r.question_text, r.parsed_section,
               r.parser_extracted_marks, r.expected_marks, r.auto_corrected_marks,
-              r.user_corrected_marks, r.correction_status,
+              r.user_corrected_marks, r.correction_status, r.images,
               e.question_type_id, e.year_id, e.grade_id, e.subject_id,
               e.paper_id, e.assessment_type_id, e.assessment_body_id,
               s.subject_official_code, p.paper_no
@@ -51,9 +53,26 @@ router.post('/import', async (req, res) => {
     const memoMap = new Map();
     memoItems.forEach(m => memoMap.set(m.question_number, m));
 
-    // 3. Import each QP item to item_master
+    // 3. Get existing attachments for this session
+    const [sessionAttachments] = await conn.execute(
+      `SELECT attachment_id, result_id, file_name, file_path, file_size, mime_type,
+              attachment_type, question_number, pdf_page_number, image_index
+       FROM item_attachments
+       WHERE session_id = ?`,
+      [session_id]
+    );
+    const attachmentsByResultId = new Map();
+    for (const att of sessionAttachments) {
+      if (!attachmentsByResultId.has(att.result_id)) {
+        attachmentsByResultId.set(att.result_id, []);
+      }
+      attachmentsByResultId.get(att.result_id).push(att);
+    }
+
+    // 4. Import each QP item to item_master
     const importedItems = [];
     const typeNameMap = { 1: 'MCQ', 2: 'Short', 3: 'Matching', 4: 'Diagram', 5: 'Extended' };
+    let totalAttachmentsMigrated = 0;
 
     for (const item of qpItems) {
       const subjectCode = item.subject_official_code || 'UNKNOWN';
@@ -72,6 +91,7 @@ router.post('/import', async (req, res) => {
       const cognitiveLevelId = 2;
       const difficultyLevelId = 2;
 
+      // FIXED: Added user_id column
       await conn.execute(
         `INSERT INTO item_master
          (item_code, year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id,
@@ -94,6 +114,61 @@ router.post('/import', async (req, res) => {
       );
       const itemId = inserted[0].item_id;
 
+      // FIXED: Migrate attachments from parse_results to item_master
+      const attachments = attachmentsByResultId.get(item.result_id) || [];
+      for (const att of attachments) {
+        await conn.execute(
+          `UPDATE item_attachments
+           SET item_id = ?,
+               updated_at = NOW()
+           WHERE attachment_id = ?`,
+          [itemId, att.attachment_id]
+        );
+        totalAttachmentsMigrated++;
+      }
+
+      // Also parse images JSON from parse_results and create attachments if not already in item_attachments
+      if (item.images && item.images !== '[]' && item.images !== '') {
+        try {
+          const images = JSON.parse(item.images);
+          for (const img of images) {
+            if (!img.file_path) continue;
+
+            // Check if this attachment already exists for this result
+            const existing = attachmentsByResultId.get(item.result_id) || [];
+            const alreadyExists = existing.some(a => a.file_path === img.file_path);
+            if (alreadyExists) continue;
+
+            const normalizedPath = img.file_path.replace(/\\/g, '/');
+            const fileName = img.file_name || require('path').basename(normalizedPath);
+            const mimeType = img.mime_type || 'image/png';
+
+            await conn.execute(
+              `INSERT INTO item_attachments
+               (item_id, result_id, session_id, file_name, file_path, file_size, mime_type,
+                attachment_type, question_number, is_extracted, extracted_at, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+              [
+                itemId,
+                item.result_id,
+                session_id,
+                fileName,
+                normalizedPath,
+                img.file_size || 0,
+                mimeType,
+                'image',
+                item.question_number,
+                1,
+                img.extracted_at || new Date()
+              ]
+            );
+            totalAttachmentsMigrated++;
+          }
+        } catch (imgErr) {
+          console.error('[WIZARD IMPORT] Attachment parse error for', item.question_number, imgErr.message);
+        }
+      }
+
       // 4. Insert memo if available
       const memo = memoMap.get(item.question_number);
       if (memo) {
@@ -109,7 +184,8 @@ router.post('/import', async (req, res) => {
         item_code: itemCode,
         question_number: item.question_number,
         marks: finalMarks,
-        has_memo: !!memo
+        has_memo: !!memo,
+        attachments_migrated: attachments.length
       });
     }
 
@@ -124,6 +200,7 @@ router.post('/import', async (req, res) => {
     res.json({
       success: true,
       imported_count: importedItems.length,
+      attachments_migrated: totalAttachmentsMigrated,
       items: importedItems
     });
 
@@ -137,4 +214,3 @@ router.post('/import', async (req, res) => {
 });
 
 module.exports = router;
-

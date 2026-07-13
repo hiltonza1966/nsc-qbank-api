@@ -114,6 +114,7 @@ if (isEnabled('wizard_parser_v30')) {
   safeRequire('./routes/v3/batch_parser', '/api/v3/parser');
   safeRequire('./routes/v3/parser_review', '/api/v3/review');
   safeRequire('./routes/v3/parser', '/api/v3/parser');
+  safeRequire('./routes/v3/attachment_integration', '/api/v3/attachments');
 }
 
 // QP & Memo Register (restored from v2 to v3, mounted at v2 for frontend compatibility)
