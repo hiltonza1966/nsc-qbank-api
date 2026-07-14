@@ -370,12 +370,27 @@ const BatchParserDashboard: React.FC = () => {
                 <div className="flex items-center justify-center h-32"><div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" /></div>
               ) : (
                 <div className="space-y-2">
-                  {sessionItems.map((item: any, idx: number) => (
-                    <div key={idx} className="border border-gray-200 rounded-md p-3 hover:bg-gray-50">
+                  {sessionItems.map((item: any, idx: number) => {
+                    // Parse item_answer_json for MCQ display
+                    let mcqData: any = null;
+                    if (item.item_answer_json) {
+                      try {
+                        mcqData = typeof item.item_answer_json === 'string'
+                          ? JSON.parse(item.item_answer_json)
+                          : item.item_answer_json;
+                      } catch (e) { mcqData = null; }
+                    }
+                    const isMcq = item.parsed_type_id === 1 || (mcqData && mcqData.options);
+                    const itemTypeLabel = item.parsed_type_id === 1 ? 'MCQ' : item.parsed_type_id === 2 ? 'Short Answer' : item.parsed_type_id === 3 ? 'Medium' : item.parsed_type_id === 4 ? 'Extended' : item.parsed_type_id === 5 ? 'Essay' : 'Other';
+
+                    return (
+                    <div key={idx} className={`border rounded-md p-3 hover:bg-gray-50 ${isMcq ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200'}`}>
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-blue-600">{item.question_number}</span>
                           <span className={`px-2 py-0.5 text-xs rounded-full ${getConfidenceColor(item.correction_status)}`}>{item.correction_status}</span>
+                          <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${isMcq ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>{itemTypeLabel}</span>
+                          {isMcq && <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 font-semibold">✓ MCQ</span>}
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-medium text-gray-900">Marks: {item.parser_extracted_marks} / {item.expected_marks}</div>
@@ -385,8 +400,30 @@ const BatchParserDashboard: React.FC = () => {
                         <div><div className="text-xs font-medium text-gray-500 uppercase mb-1">Question</div><div className="text-gray-800 line-clamp-3">{item.question_text || '—'}</div></div>
                         <div><div className="text-xs font-medium text-gray-500 uppercase mb-1">Answer / Memo</div><div className="text-gray-800 line-clamp-3">{item.answer_text || '—'}</div></div>
                       </div>
+                      {/* MCQ Options Display */}
+                      {mcqData && mcqData.options && (
+                        <div className="mt-3 p-3 bg-white rounded-md border border-blue-100">
+                          <div className="text-xs font-semibold text-blue-700 uppercase mb-2">MCQ Options</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.entries(mcqData.options).map(([label, text]: [string, any]) => {
+                              const isCorrect = mcqData.correct_answer === label;
+                              return (
+                                <div key={label} className={`flex items-center gap-2 p-2 rounded-md text-sm ${isCorrect ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}`}>
+                                  <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${isCorrect ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'}`}>{label}</span>
+                                  <span className={isCorrect ? 'text-green-800 font-medium' : 'text-gray-700'}>{String(text)}</span>
+                                  {isCorrect && <span className="ml-auto text-green-600 text-xs font-bold">✓ Correct</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {mcqData.correct_answer && (
+                            <div className="mt-2 text-xs text-green-700 font-semibold">Correct Answer: {mcqData.correct_answer}</div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                   {sessionItems.length === 0 && <div className="text-center text-gray-500 py-8">No items found</div>}
                 </div>
               )}

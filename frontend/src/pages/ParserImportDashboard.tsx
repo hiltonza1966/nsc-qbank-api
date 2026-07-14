@@ -26,6 +26,7 @@ interface DashboardRow {
     qp_items: number;
     memo_items: number;
     attachments: number;
+    mcq_count?: number;
   };
   import_status: 'complete' | 'partial' | 'missing';
 }
@@ -271,6 +272,7 @@ const ParserImportDashboard: React.FC = () => {
                   <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>Memo Parsed</th>
                   <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>Memo DB</th>
                   <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>Attach DB</th>
+                  <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>MCQs</th>
                   <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>Status</th>
                 </tr>
               </thead>
@@ -300,6 +302,7 @@ const ParserImportDashboard: React.FC = () => {
                       {row.database.memo_items}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'center' }}>{row.database.attachments}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: '#3b82f6' }}>{row.database.mcq_count || 0}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                       <span style={{ 
                         display: 'inline-block',

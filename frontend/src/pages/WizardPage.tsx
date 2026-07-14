@@ -69,6 +69,18 @@ interface ParserResult {
   green_items: Array<{q: string}>;
   parser_version: string;
   status: string;
+  // NEW: MCQ and item type fields from parser v6
+  mcq_count?: number;
+  item_type_breakdown?: Record<string, number>;
+  items?: Array<{
+    question_number: string;
+    question_text: string;
+    marks: number;
+    is_mcq: number;
+    item_type_id: number;
+    item_answer_json?: string;
+    correct_key?: string;
+  }>;
 }
 
 // ============================================================
@@ -454,7 +466,8 @@ const WizardPage: React.FC = () => {
           paper_id: dimensions.paper_id,
           assessment_type_id: dimensions.assessment_type_id,
           assessment_body_id: dimensions.assessment_body_id,
-          language: 'English'
+          language: 'English',
+          create_production_items: true  // Auto-promote to item_master
         })
       });
 
