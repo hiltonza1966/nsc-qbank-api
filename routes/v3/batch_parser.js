@@ -703,7 +703,7 @@ router.post('/batch', async (req, res) => {
 router.get('/batch/status', async (req, res) => {
   try {
     const db = req.db;
-    const [rows] = await db.execute(`SELECT paper_code, status, total_items_found, total_marks_parser, auto_corrected_count, created_at FROM parse_sessions WHERE parser_version = 'v38' ORDER BY created_at DESC LIMIT 50`);
+    const [rows] = await db.execute(`SELECT session_id, paper_code, status, total_items_found, total_marks_parser, auto_corrected_count, created_at FROM parse_sessions WHERE parser_version = 'v38' ORDER BY created_at DESC LIMIT 50`);
     res.json({ success: true, batches: rows });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -1083,5 +1083,113 @@ router.post('/rename-apply', async (req, res) => {
   }
 });
 
+
+// ------------------------------------------------------------------
+// GET /session/:sessionId/items — Fetch all items for a session
+// Used by BatchParserDashboard.tsx modal
+// ------------------------------------------------------------------
+router.get('/session/:sessionId/items', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    console.log(`[GET /session/:sessionId/items] sessionId=${sessionId}`);
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: 'sessionId required' });
+    }
+
+    // Use req.db if available, otherwise try to find db in scope
+    const db = req.db || (typeof db !== 'undefined' ? db : null);
+    if (!db) {
+      console.error('[GET /session/:sessionId/items] ERROR: db not available');
+      return res.status(500).json({ success: false, error: "Database not available" });
+    }
+    console.log(`[GET /session/:sessionId/items] db available, type=${typeof db}`);
+
+    // Fetch QP items from parse_results — use only columns that definitely exist
+    const qpSql = `SELECT 
+        question_number,
+        question_text,
+        answer_text,
+        parser_extracted_marks as marks,
+        expected_marks,
+        correction_status,
+        parsed_type_id,
+        item_answer_json,
+        is_header,
+        header_level,
+        images,
+        created_at
+      FROM parse_results
+      WHERE session_id = ?
+      ORDER BY question_number`;
+
+    console.log(`[GET /session/:sessionId/items] Executing QP query...`);
+    const qpResult = await db.execute(qpSql, [sessionId]);
+    console.log(`[GET /session/:sessionId/items] QP result type=${typeof qpResult}, isArray=${Array.isArray(qpResult)}`);
+
+    let qpItems = [];
+    if (Array.isArray(qpResult) && qpResult.length > 0) {
+      qpItems = qpResult[0];
+      console.log(`[GET /session/:sessionId/items] QP items count=${qpItems.length}`);
+    } else if (qpResult && qpResult.rows) {
+      qpItems = qpResult.rows;
+      console.log(`[GET /session/:sessionId/items] QP items count (from .rows)=${qpItems.length}`);
+    } else {
+      console.log(`[GET /session/:sessionId/items] QP result structure:`, JSON.stringify(qpResult).substring(0, 200));
+    }
+
+    // Fetch memo items from parse_memos
+    const memoSql = `SELECT 
+        question_number,
+        answer_text,
+        created_at
+      FROM parse_memos
+      WHERE session_id = ?
+      ORDER BY question_number`;
+
+    console.log(`[GET /session/:sessionId/items] Executing memo query...`);
+    let memoItems = [];
+    try {
+      const memoResult = await db.execute(memoSql, [sessionId]);
+      if (Array.isArray(memoResult) && memoResult.length > 0) {
+        memoItems = memoResult[0];
+      } else if (memoResult && memoResult.rows) {
+        memoItems = memoResult.rows;
+      }
+      console.log(`[GET /session/:sessionId/items] Memo items count=${memoItems.length}`);
+    } catch (memoErr) {
+      console.log(`[GET /session/:sessionId/items] Memo query failed (expected if no memos): ${memoErr.message}`);
+    }
+
+    // Combine: QP items first, then memo-only items
+    const qpNumbers = new Set(qpItems.map((i) => i.question_number));
+    const combined = [
+      ...qpItems.map((item) => ({
+        ...item,
+        is_mcq: item.parsed_type_id === 1 || (item.item_answer_json && item.item_answer_json.includes('options')) ? 1 : 0,
+        source: 'qp'
+      })),
+      ...memoItems
+        .filter((m) => !qpNumbers.has(m.question_number))
+        .map((item) => ({
+          ...item,
+          question_text: '[Memo only]',
+          correction_status: 'memo_only',
+          parsed_type_id: null,
+          item_answer_json: null,
+          is_header: 0,
+          header_level: 0,
+          is_mcq: 0,
+          source: 'memo'
+        }))
+    ];
+
+    console.log(`[GET /session/:sessionId/items] Returning ${combined.length} items`);
+    res.json({ success: true, items: combined, count: combined.length });
+  } catch (err) {
+    console.error('[GET /session/:sessionId/items] FATAL ERROR:', err);
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
+  }
+});
 
 module.exports = router;
