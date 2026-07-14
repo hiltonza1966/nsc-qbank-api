@@ -11,6 +11,9 @@ def run_parser(qp_path, memo_path, paper_code, output_dir=None):
         harness_result = run_harness_v3(qp_path, memo_path, paper_code, output_dir)
 
         # Map harness output to batch_parser expected fields
+        # NOTE: item_type_id is now set by the parser (master_harness_v3.py)
+        # and flows through to batch_parser.js for parse_results.parsed_type_id
+        # and item_master.item_type_id
         items = harness_result.get('items', [])
         section_totals = harness_result.get('section_totals', {})
 

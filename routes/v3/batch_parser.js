@@ -363,6 +363,105 @@ async function insertAttachments(db, insertResult, sessionId, item, allImages, n
   return insertedCount;
 }
 
+
+// ============================================
+// HELPER: Infer item type from parsed data
+// FIXED: Properly checks item_answer_json for mcq_single type
+// ============================================
+function inferItemType(item) {
+  // 0. If parser already set item_type_id, trust it
+  if (item.item_type_id) return item.item_type_id;
+
+  // 1. Multiple Choice: check item_answer_json for mcq_single type
+  if (item.item_answer_json) {
+    try {
+      const answerJson = typeof item.item_answer_json === 'string'
+        ? JSON.parse(item.item_answer_json)
+        : item.item_answer_json;
+
+      // Direct type check
+      if (answerJson.type === 'mcq_single' || answerJson.type === 'mcq') {
+        return 1;
+      }
+
+      // Options check: if options object has 2+ entries, it's an MCQ
+      if (answerJson.options && typeof answerJson.options === 'object') {
+        const optionCount = Object.keys(answerJson.options).length;
+        if (optionCount >= 2) {
+          return 1;
+        }
+      }
+    } catch (e) {
+      // JSON parse failed, ignore
+    }
+  }
+
+  // 2. Legacy mcq_options check
+  if (item.mcq_options) {
+    try {
+      const opts = typeof item.mcq_options === 'string'
+        ? JSON.parse(item.mcq_options)
+        : item.mcq_options;
+      if (opts && typeof opts === 'object' && Object.keys(opts).length >= 2) {
+        return 1;
+      }
+    } catch (e) {
+      // Ignore parse error
+    }
+  }
+
+  // 3. is_mcq flag from parser
+  if (item.is_mcq === 1 || item.is_mcq === true) {
+    return 1;
+  }
+
+  const marks = item.qp_marks || item.final_marks || item.expected_marks || 0;
+  const qn = String(item.question_number || '');
+  const section = qn.split('.')[0];
+  const hasAttachments = (item.images && item.images.length > 0) ||
+                         (item.qp_images && item.qp_images.length > 0) ||
+                         (item.image_metadata && item.image_metadata.length > 0);
+  const text = (item.question_text || '').toLowerCase();
+
+  // 4. Diagram: has attachments + section 3+ + label/diagram/annotate keywords
+  if (hasAttachments && marks >= 1 && marks <= 5) {
+    if (section === '3' || section === '4' || section === '5' || section === '6') {
+      if (text.includes('diagram') || text.includes('label') || text.includes('annotate') ||
+          text.includes('sketch') || text.includes('draw') || text.includes('illustrate')) {
+        return 6;
+      }
+    }
+  }
+
+  // 5. Source-Based: comprehension section with source/passage keywords
+  if ((section === '3' || section === '4' || section === '5') && marks >= 1 && marks <= 5) {
+    if (text.includes('source') || text.includes('passage') || text.includes('text') ||
+        text.includes('read') || text.includes('extract')) {
+      return 9;
+    }
+  }
+
+  // 6. Matching: match/column/table structure
+  if (text.includes('match') || text.includes('column') || text.includes('table') ||
+      text.includes('corresponding') || text.includes('pair')) {
+    return 7;
+  }
+
+  // 7. Practical: experiment/investigation/practical keywords
+  if (text.includes('experiment') || text.includes('investigation') || text.includes('practical') ||
+      text.includes('apparatus') || text.includes('method') || text.includes('procedure')) {
+    return 8;
+  }
+
+  // 8. Marks-based classification for remaining types
+  if (marks >= 1 && marks <= 2) return 2;      // Short Answer
+  if (marks >= 3 && marks <= 5) return 3;      // Medium Response
+  if (marks >= 6 && marks <= 9) return 4;     // Extended Response
+  if (marks >= 10) return 5;                   // Essay
+
+  return 2; // Default: Short Answer
+}
+
 router.post('/batch', async (req, res) => {
   try {
     const folderPath = req.body.folder_path || req.body.folderPath;
@@ -471,7 +570,7 @@ router.post('/batch', async (req, res) => {
         const [insertResult] = await db.execute(
             `INSERT INTO parse_results (session_id, paper_code, question_number, question_text, answer_text, parsed_type_id, parsed_section, parser_extracted_marks, expected_marks, auto_corrected_marks, correction_status, user_corrected_marks, reviewer_notes, is_memo, is_header, header_level, parent_header_id, images, item_answer_json, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [sessionId, paperCode, item.question_number, item.question_text || null, item.answer_text || null, null, item.section || null, item.qp_marks || item.final_marks || 0, item.expected_marks || item.final_marks || 0, item.final_marks || 0, item.confidence === 'green' ? 'auto_corrected' : 'manual_review', item.final_marks || 0, item.notes || null, isMemo, isHeader, item.header_level || 0, parentHeaderId, imagesJson, item.item_answer_json || null, now, now]
+            [sessionId, paperCode, item.question_number, item.question_text || null, item.answer_text || null, item.item_type_id || inferItemType(item) || 2, item.section || null, item.qp_marks || item.final_marks || 0, item.expected_marks || item.final_marks || 0, item.final_marks || 0, item.confidence === 'green' ? 'auto_corrected' : 'manual_review', item.final_marks || 0, item.notes || null, isMemo, isHeader, item.header_level || 0, parentHeaderId, imagesJson, item.item_answer_json || null, now, now]
           );
 
           if (isHeader) {
@@ -675,51 +774,68 @@ async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseRes
       const memoMarks = memo ? (memo.expected_marks || 0) : null;
 
       await db.execute("SET @current_user_id = 1, @current_ip = '127.0.0.1'");
-      await db.execute(
-        `INSERT INTO item_master (
-          item_id, item_code, subject_official_code, subject_alpha_code, paper_no,
-          year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id,
-          language_id, question_number, parent_question, is_sub_part, question_text,
-          marks, marks_allocated, qp_marks, memo_marks, item_type_id, cognitive_level_id,
-          difficulty_id, status, review_status, source_year, source_paper_code,
-          source_question_number, item_answer_json, created_by, user_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          itemId,
-          paperCode + '_' + String(qp.question_number).replace(/\./g, '_'),
-          dimensions.subject_official_code || null,
-          subjectAlphaCode || null,
-          dimensions.paper_no || null,
-          dimensions.year_id || null,
-          dimensions.grade_id || null,
-          dimensions.subject_id || null,
-          dimensions.paper_id || null,
-          dimensions.assessment_type_id || null,
-          dimensions.assessment_body_id || null,
-          dimensions.language_id || null,
-          qp.question_number,
-          parentQuestion,
-          isSubPart,
-          qp.question_text || null,
-          qpMarks,
-          qpMarks,
-          qpMarks,
-          memoMarks,
-          qp.parsed_type_id || 1,
-          1,
-          1,
-          'draft',
-          'draft',
-          dimensions.year || null,
-          paperCode,
-          qp.question_number,
-          qp.item_answer_json ? JSON.stringify(qp.item_answer_json) : null,
-          1,
-          1,
-          now,
-          now
-        ]
-      );
+      // FIX: Handle null/empty question_text — use placeholder instead of NULL
+      // to prevent "Column 'question_text' cannot be null" error
+      const safeQuestionText = qp.question_text && qp.question_text.trim().length > 0
+        ? qp.question_text
+        : (qp.is_header ? `[Header: ${qp.question_number}]` : '[No question text extracted]');
+
+      // FIX: Handle item_answer_json — it's already a JSON string in parse_results,
+      // don't double-encode it
+      const safeAnswerJson = qp.item_answer_json && typeof qp.item_answer_json === 'string'
+        ? qp.item_answer_json
+        : (qp.item_answer_json ? JSON.stringify(qp.item_answer_json) : null);
+
+      try {
+        await db.execute(
+          `INSERT INTO item_master (
+            item_id, item_code, subject_official_code, subject_alpha_code, paper_no,
+            year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id,
+            language_id, question_number, parent_question, is_sub_part, question_text,
+            marks, marks_allocated, qp_marks, memo_marks, item_type_id, cognitive_level_id,
+            difficulty_id, status, review_status, source_year, source_paper_code,
+            source_question_number, item_answer_json, created_by, user_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            itemId,
+            paperCode + '_' + String(qp.question_number).replace(/\./g, '_'),
+            dimensions.subject_official_code || null,
+            subjectAlphaCode || null,
+            dimensions.paper_no || null,
+            dimensions.year_id || null,
+            dimensions.grade_id || null,
+            dimensions.subject_id || null,
+            dimensions.paper_id || null,
+            dimensions.assessment_type_id || null,
+            dimensions.assessment_body_id || null,
+            dimensions.language_id || null,
+            qp.question_number,
+            parentQuestion,
+            isSubPart,
+            safeQuestionText,
+            qpMarks,
+            qpMarks,
+            qpMarks,
+            memoMarks,
+            qp.parsed_type_id || 1,
+            1,
+            1,
+            'draft',
+            'draft',
+            dimensions.year || null,
+            paperCode,
+            qp.question_number,
+            safeAnswerJson,
+            1,
+            1,
+            now,
+            now
+          ]
+        );
+      } catch (insertErr) {
+        console.error(`[AUTO-PROMOTE] FAILED item ${qp.question_number}: ${insertErr.message}`);
+        continue; // Skip this item, continue with others
+      }
 
       resultIdToItemId.set(qp.result_id, itemId);
       qnToItemId.set(qp.question_number, itemId);

@@ -24,6 +24,14 @@ from memo_content_parser import extract_memo_content
 from qp_marks_parser import extract_qp_marks
 from memo_marks_parser import extract_memo_marks
 
+# MCQ Parser v6 - Dedicated Section 1 extractor
+try:
+    from mcq_parser_v6 import extract_section1_mcq_items, convert_to_harness_format
+    MCQ_PARSER_AVAILABLE = True
+except ImportError:
+    MCQ_PARSER_AVAILABLE = False
+    print("[WARNING] mcq_parser_v6 not available, falling back to regular parser for MCQs")
+
 VERSION = "v39"
 
 
@@ -47,6 +55,38 @@ def _validate_section_totals(combined_items, paper_code):
     return True, "Section totals OK"
 
 
+
+def _infer_item_type_id(item):
+    """Infer item_type_id from item properties.
+    Maps to lookup_item_types:
+        1 = MCQ (has options)
+        2 = Short Answer (1-2 marks)
+        3 = Medium Response (3-5 marks)
+        4 = Extended Response (6-9 marks)
+        5 = Essay (10+ marks)
+    Specialized types (6=Diagram, 7=Matching, 8=Practical, 9=Source-Based)
+    require text analysis and are better handled by post-processing SQL.
+    """
+    # If parser already set it, trust it
+    if item.get('item_type_id') is not None:
+        return item['item_type_id']
+
+    # MCQ: has options or is_mcq flag
+    if item.get('is_mcq', 0) == 1 or item.get('mcq_options'):
+        return 1
+
+    marks = item.get('marks', 0) or 0
+    if marks >= 10:
+        return 5   # Essay
+    elif marks >= 6:
+        return 4   # Extended Response
+    elif marks >= 3:
+        return 3   # Medium Response
+    elif marks >= 1:
+        return 2   # Short Answer
+
+    return 2  # Default to Short Answer
+
 def run_parsing_harness(qp_path, memo_path, paper_code, output_dir=None):
     """Run the full QP + Memo parsing pipeline and return combined items.
 
@@ -67,6 +107,22 @@ def run_parsing_harness(qp_path, memo_path, paper_code, output_dir=None):
     # ------------------------------------------------------------------
     # 1. Extract all four components
     # ------------------------------------------------------------------
+
+    # NEW: MCQ Parser v6 for Section 1 (always runs first)
+    mcq_items = []
+    if MCQ_PARSER_AVAILABLE:
+        print(f"[MCQ Parser v6] Extracting Section 1 MCQs from {qp_path}")
+        raw_mcq_items = extract_section1_mcq_items(qp_path, memo_path)
+        mcq_items = convert_to_harness_format(raw_mcq_items)
+        print(f"[MCQ Parser v6] Found {len(mcq_items)} valid MCQs")
+
+        # Validation: Section 1 should have exactly 10 MCQs
+        if len(mcq_items) < 8:
+            print(f"[MCQ Parser v6] WARNING: Only {len(mcq_items)} MCQs found (expected 10). Flagging for review.")
+        elif len(mcq_items) > 12:
+            print(f"[MCQ Parser v6] WARNING: {len(mcq_items)} MCQs found (expected 10). Possible duplicates.")
+
+    # Regular parser for ALL sections (including Section 1 as fallback)
     qp_content = extract_qp_content(qp_path, output_dir)
     qp_marks   = extract_qp_marks(qp_path)
     memo_content = extract_memo_content(memo_path, output_dir)
@@ -82,9 +138,24 @@ def run_parsing_harness(qp_path, memo_path, paper_code, output_dir=None):
     # ------------------------------------------------------------------
     # 3. Merge QP content + marks + memo content + memo marks
     # ------------------------------------------------------------------
+
+    # Build MCQ lookup for Section 1
+    mcq_lookup = {item['question_number']: item for item in mcq_items}
+
     combined_items = []
     for qp_item in qp_content:
         qn = qp_item['question_number']
+
+        # NEW: If MCQ parser found this item, use its data (more accurate)
+        if qn in mcq_lookup and mcq_lookup[qn].get('is_mcq', 0) == 1:
+            mcq_item = mcq_lookup[qn]
+            # Use MCQ parser's stem and options, but keep marks from marks parser
+            qp_item['question_text'] = mcq_item['question_text']
+            qp_item['is_mcq'] = 1
+            qp_item['mcq_options'] = mcq_item.get('mcq_options')
+            qp_item['item_answer_json'] = mcq_item.get('item_answer_json')
+            # Remove from lookup so we don't double-process
+            del mcq_lookup[qn]
 
         # --- marks (QP) ------------------------------------------------
         qp_mark = qp_marks_dict.get(qn, 0)
@@ -123,6 +194,9 @@ def run_parsing_harness(qp_path, memo_path, paper_code, output_dir=None):
         header_level = qp_item.get('header_level', len(qn.split('.')))
 
         # --- build combined item --------------------------------------
+        # Infer item type before building combined item
+        item_type_id = _infer_item_type_id(qp_item)
+
         combined_item = {
             'question_number':  qn,
             'question_text':    qp_item.get('question_text', ''),
@@ -131,6 +205,7 @@ def run_parsing_harness(qp_path, memo_path, paper_code, output_dir=None):
             'answer_text':      answer_text,
             'correct_key':      correct_key,
             'is_mcq':           is_mcq,
+            'item_type_id':     item_type_id,
             'mcq_options':      mcq_options,
             'item_answer_json': item_answer_json,
             'images':           images,     # renamed for DB insert compatibility
@@ -139,6 +214,26 @@ def run_parsing_harness(qp_path, memo_path, paper_code, output_dir=None):
             'source':           'combined',
         }
         combined_items.append(combined_item)
+
+    # ------------------------------------------------------------------
+        # 3b. Add any remaining MCQ items not found by regular parser
+    for qn, mcq_item in mcq_lookup.items():
+        print(f"[MCQ Parser v6] Adding missing item: {qn}")
+        # Look up marks from QP marks parser (Section 1 MCQs are typically 2 marks each)
+        qp_mark = qp_marks_dict.get(qn, 0)
+        if not qp_mark:
+            qp_mark = memo_marks_dict.get(qn, 2)  # Default 2 for Section 1 MCQ
+        mcq_item['marks'] = qp_mark
+        mcq_item['expected_marks'] = qp_mark
+        # Ensure item_type_id is set for MCQ
+        if not mcq_item.get('item_type_id'):
+            mcq_item['item_type_id'] = 1  # MCQ
+        # Look up memo data for correct answer
+        memo_item = memo_dict.get(qn, {})
+        if memo_item.get('correct_key'):
+            mcq_item['correct_key'] = memo_item['correct_key']
+            mcq_item['answer_text'] = memo_item.get('answer_text', mcq_item.get('correct_key', ''))
+        combined_items.append(mcq_item)
 
     # ------------------------------------------------------------------
     # 4. FINAL SAFETY PASS: ensure header_level is never NULL
