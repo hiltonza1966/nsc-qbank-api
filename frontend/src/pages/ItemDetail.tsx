@@ -21,6 +21,8 @@ interface Item {
   created_at: string;
   updated_at: string;
   status: string;
+  item_answer_json?: any;
+  correct_answer?: string;
   options?: any[];
   memos?: any[];
   attachments?: any[];
@@ -486,12 +488,108 @@ const ItemDetail: React.FC = () => {
       {/* Content Tab */}
       {activeTab === 'content' && (
         <div>
+          {/* Question Stem */}
           <div style={{ background: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '24px' }}>
             <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: '#374151' }}>Question</h3>
             <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', color: '#1f2937' }}>
               {item?.question_text || 'No question text'}
             </div>
           </div>
+
+          {/* MCQ Options — parsed from item_answer_json */}
+          {(() => {
+            // Parse item_answer_json for MCQ options
+            let mcqData: any = null;
+            if (item?.item_answer_json) {
+              try {
+                mcqData = typeof item.item_answer_json === 'string'
+                  ? JSON.parse(item.item_answer_json)
+                  : item.item_answer_json;
+              } catch (e) {
+                mcqData = null;
+              }
+            }
+            // Also check direct options field
+            const opts = mcqData?.options || item?.options;
+            if (!opts || Object.keys(opts).length === 0) return null;
+
+            const optionEntries = Object.entries(opts);
+            const correctAnswer = mcqData?.correct_answer || mcqData?.answer || item?.correct_answer;
+
+            return (
+              <div style={{ background: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: '#374151' }}>
+                  Options
+                  {correctAnswer && (
+                    <span style={{
+                      marginLeft: '12px',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      color: '#059669',
+                      background: '#d1fae5',
+                      padding: '4px 10px',
+                      borderRadius: '12px',
+                    }}>
+                      Correct: {correctAnswer}
+                    </span>
+                  )}
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {optionEntries.map(([label, text]: [string, any]) => {
+                    const isCorrect = correctAnswer && String(correctAnswer).toUpperCase() === String(label).toUpperCase();
+                    return (
+                      <div
+                        key={label}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '14px',
+                          padding: '14px 18px',
+                          borderRadius: '8px',
+                          border: isCorrect ? '2px solid #10b981' : '1px solid #e5e7eb',
+                          background: isCorrect ? '#ecfdf5' : '#fafafa',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        <span style={{
+                          width: '32px',
+                          height: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '50%',
+                          background: isCorrect ? '#10b981' : '#e5e7eb',
+                          color: isCorrect ? 'white' : '#374151',
+                          fontWeight: '700',
+                          fontSize: '14px',
+                          flexShrink: 0,
+                        }}>
+                          {label}
+                        </span>
+                        <span style={{ fontSize: '15px', color: '#1f2937', lineHeight: '1.5' }}>
+                          {typeof text === 'string' ? text : JSON.stringify(text)}
+                        </span>
+                        {isCorrect && (
+                          <span style={{
+                            marginLeft: 'auto',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#059669',
+                            background: '#d1fae5',
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                          }}>
+                            ✓ Correct
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {item?.question_text_afr && (
             <div style={{ background: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: '#374151' }}>Afrikaans</h3>

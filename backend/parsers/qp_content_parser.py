@@ -59,14 +59,79 @@ def _clean(tok):
     return re.sub(r'[\uf000-\uf8ff]', '', tok).strip()
 
 
-def _get_rows(page, y_tol=Y_TOLERANCE):
-    """Group a page's words into visual rows, sorted top-to-bottom / left-to-right."""
+def _detect_bilingual_columns(page):
+    """Detect if page has bilingual layout and return column boundaries.
+    Returns (is_bilingual, left_max_x, right_min_x) or (False, None, None).
+    """
+    words = page.get_text("words")
+    if not words or len(words) < 20:
+        return False, None, None
+
+    page_width = page.rect.width
+    mid = page_width * 0.5
+
+    # Count words in left vs right half
+    left_words = [w for w in words if w[0] < mid - 20]
+    right_words = [w for w in words if w[0] > mid + 20]
+
+    # Bilingual if both sides have substantial text (at least 15 words each)
+    if len(left_words) < 15 or len(right_words) < 15:
+        return False, None, None
+
+    # Find the gap between columns (minimum word density zone)
+    x_positions = sorted([w[0] for w in words])
+    gaps = []
+    for i in range(1, len(x_positions)):
+        gap = x_positions[i] - x_positions[i-1]
+        if gap > 30:  # Significant gap
+            gaps.append((gap, x_positions[i-1], x_positions[i]))
+
+    # Find the largest gap in the middle third of the page
+    if gaps:
+        mid_third_start = page_width * 0.33
+        mid_third_end = page_width * 0.67
+        mid_gaps = [g for g in gaps if mid_third_start < g[1] < mid_third_end]
+        if mid_gaps:
+            mid_gaps.sort(reverse=True)
+            _, left_max, right_min = mid_gaps[0]
+            return True, left_max + 10, right_min - 10
+
+    # Fallback: use midpoint
+    return True, mid - 10, mid + 10
+
+
+def _get_rows(page, y_tol=Y_TOLERANCE, language='ENG'):
+    """Group a page's words into visual rows, sorted top-to-bottom / left-to-right.
+
+    For bilingual pages, extracts only the specified language column:
+    - ENG: left column (English)
+    - AFR: right column (Afrikaans)
+    """
     raw_words = page.get_text("words")
+    page_width = page.rect.width
+
+    # Detect bilingual layout
+    is_bilingual, left_max_x, right_min_x = _detect_bilingual_columns(page)
+
     words = []
     for w in raw_words:
         text = _clean(w[4])
-        if text:
-            words.append({'x0': w[0], 'top': w[1], 'text': text})
+        if not text:
+            continue
+
+        # Bilingual filtering: only keep words from the correct column
+        if is_bilingual and left_max_x is not None and right_min_x is not None:
+            if language.upper() == 'AFR':
+                # Afrikaans: right column
+                if w[0] < right_min_x:
+                    continue
+            else:
+                # English (default): left column
+                if w[0] > left_max_x:
+                    continue
+
+        words.append({'x0': w[0], 'top': w[1], 'text': text})
+
     words.sort(key=lambda w: (w['top'], w['x0']))
 
     rows = []
@@ -199,6 +264,10 @@ def extract_qp_content(pdf_path, output_dir=None):
         qp_images         : list  image metadata for this item
         marks             : None  (filled later by marks parser)
     """
+    # Detect language from filename
+    filename = os.path.basename(pdf_path).upper()
+    language = 'AFR' if 'AFR' in filename or 'AFRIKAANS' in filename else 'ENG'
+
     doc = fitz.open(pdf_path)
     items = {}          # q_num -> list of text segments
     order = []          # preserve extraction order
@@ -210,7 +279,7 @@ def extract_qp_content(pdf_path, output_dir=None):
         # page_images = _extract_images(doc, page, page_num, output_dir)
         # all_images.extend(page_images)
 
-        for row in _get_rows(page):
+        for row in _get_rows(page, language=language):
             toks = [(w['x0'], w['text']) for w in row['words']]
             if not toks:
                 continue
@@ -271,6 +340,9 @@ def extract_qp_content(pdf_path, output_dir=None):
         raw_segments = items[q]
         raw_text = ' '.join(raw_segments).strip()
         raw_text = re.sub(r'\s+', ' ', raw_text).strip()
+
+        # Apply bilingual cleaner as final safety net
+        raw_text = extract_english_from_bilingual(raw_text)
 
         parts = q.split('.')
         depth = len(parts)
