@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { LogIn, AlertCircle, Eye, EyeOff, Shield, LogOut, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const LoginPage: React.FC = () => {
-  const { login } = useAuth();
+  const { login, logout, isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -25,6 +27,7 @@ const LoginPage: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         login(data.token, data.user);
+        navigate('/');
       } else {
         setError(data.error || 'Login failed');
       }
@@ -33,6 +36,13 @@ const LoginPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleFreshLogin = () => {
+    logout();
+    setUsername('');
+    setPassword('');
+    setError('');
   };
 
   return (
@@ -46,6 +56,36 @@ const LoginPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-gray-900">QBank Login</h1>
             <p className="text-gray-500 text-sm mt-1">Corporate Question Bank System</p>
           </div>
+
+          {/* Active session warning — requires explicit action */}
+          {isAuthenticated && user && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Shield className="w-4 h-4 text-amber-600" />
+                <span className="text-sm font-semibold text-amber-800">Active Session Detected</span>
+              </div>
+              <p className="text-xs text-amber-700 mb-3">
+                Logged in as <strong>{user.display_name || user.username}</strong> ({user.role}).
+                For security, fresh credentials are required.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => navigate('/')}
+                  className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 transition-colors flex items-center justify-center gap-1"
+                >
+                  <ArrowRight className="w-3 h-3" />
+                  Continue Session
+                </button>
+                <button
+                  onClick={handleFreshLogin}
+                  className="flex-1 py-2 bg-white text-amber-700 border border-amber-300 rounded-lg text-xs font-medium hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
+                >
+                  <LogOut className="w-3 h-3" />
+                  Fresh Login
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-center gap-2">
@@ -64,6 +104,7 @@ const LoginPage: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter username"
                 required
+                autoComplete="off"
               />
             </div>
 
@@ -77,6 +118,7 @@ const LoginPage: React.FC = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10"
                   placeholder="Enter password"
                   required
+                  autoComplete="off"
                 />
                 <button
                   type="button"
