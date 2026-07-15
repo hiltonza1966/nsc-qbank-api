@@ -377,16 +377,18 @@ async function getParsedData(req, res) {
       const hasMemo = memoPaperCodes.some(r => r.paper_code === paperCode);
       const parsed = parsePaperCode(paperCode);
       const qpCount = qpItemCount[0]?.count || 0; const memoCount = memoItemCount[0]?.count || 0;
-      const [allQpItems] = await conn.execute('SELECT question_number, expected_marks FROM parse_results WHERE paper_code =? AND is_memo = 0 ORDER BY question_number', [paperCode]);
+      const [allQpItems] = await conn.execute('SELECT question_number, expected_marks, is_header FROM parse_results WHERE paper_code =? AND is_memo = 0 ORDER BY question_number', [paperCode]);
       const qnSet = new Set(allQpItems.map(i => String(i.question_number)));
       const leafQpItems = allQpItems.filter(item => {
+        if (item.is_header === 1) return false;
         const qn = String(item.question_number);
         return !Array.from(qnSet).some(otherQn => otherQn !== qn && otherQn.startsWith(qn + '.'));
       });
       const qpTotal = leafQpItems.reduce((sum, i) => sum + (parseInt(i.expected_marks) || 0), 0);
-      const [allMemoItems] = await conn.execute('SELECT question_number, expected_marks FROM parse_memos WHERE paper_code =? ORDER BY question_number', [paperCode]);
+      const [allMemoItems] = await conn.execute('SELECT question_number, expected_marks, is_header FROM parse_memos WHERE paper_code =? ORDER BY question_number', [paperCode]);
       const memoQnSet = new Set(allMemoItems.map(i => String(i.question_number)));
       const leafMemoItems = allMemoItems.filter(item => {
+        if (item.is_header === 1) return false;
         const qn = String(item.question_number);
         return !Array.from(memoQnSet).some(otherQn => otherQn !== qn && otherQn.startsWith(qn + '.'));
       });
@@ -422,12 +424,13 @@ async function getDatabaseData(req, res) {
     const allPaperCodes = paperCodes.map(r => r.source_paper_code).filter(Boolean).sort();
     const allPapers = [];
     for (const paperCode of allPaperCodes) {
-      const [allItems] = await conn.execute('SELECT item_id, question_number, marks, qp_marks, memo_marks FROM item_master WHERE source_paper_code =? ORDER BY question_number', [paperCode]);
+      const [allItems] = await conn.execute('SELECT item_id, question_number, marks, qp_marks, memo_marks, is_header FROM item_master WHERE source_paper_code =? ORDER BY question_number', [paperCode]);
       const [memoCounts] = await conn.execute('SELECT COUNT(*) as count, CAST(SUM(im.marks) AS UNSIGNED) as total_memo_marks FROM item_memos im JOIN item_master m ON im.item_id = m.item_id WHERE m.source_paper_code =?', [paperCode]);
 
       // Determine leaf items (items that don't have children based on question_number prefix)
       const qnSet = new Set(allItems.map(i => String(i.question_number)));
       const leafItems = allItems.filter(item => {
+        if (item.is_header === 1) return false;
         const qn = String(item.question_number);
         // A leaf item has no other item whose question_number starts with qn + '.'
         return !Array.from(qnSet).some(otherQn => otherQn !== qn && otherQn.startsWith(qn + '.'));

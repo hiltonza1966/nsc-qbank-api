@@ -791,11 +791,11 @@ async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseRes
           `INSERT INTO item_master (
             item_id, item_code, subject_official_code, subject_alpha_code, paper_no,
             year_id, grade_id, subject_id, paper_id, assessment_type_id, assessment_body_id,
-            language_id, question_number, parent_question, is_sub_part, question_text,
-            marks, marks_allocated, qp_marks, memo_marks, item_type_id, cognitive_level_id,
+            language_id, question_number, parent_question, is_sub_part, is_header, header_level,
+            question_text, marks, marks_allocated, qp_marks, memo_marks, item_type_id, cognitive_level_id,
             difficulty_id, status, review_status, source_year, source_paper_code,
             source_question_number, item_answer_json, created_by, user_id, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             itemId,
             paperCode + '_' + String(qp.question_number).replace(/\./g, '_'),
@@ -812,6 +812,8 @@ async function autoPromoteSession(db, sessionId, paperCode, dimensions, parseRes
             qp.question_number,
             parentQuestion,
             isSubPart,
+            qp.is_header || 0,
+            qp.header_level || 0,
             safeQuestionText,
             qpMarks,
             qpMarks,
