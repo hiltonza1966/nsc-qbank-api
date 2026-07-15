@@ -38,6 +38,7 @@ const dbPool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0
 });
+app.locals.db = dbPool;
 
 // Attach db to requests
 app.use((req, res, next) => {
@@ -74,6 +75,9 @@ function safeRequire(routePath, mountPath) {
 }
 
 // Item Development Module
+  // Moderator + Review Workflow (mounted BEFORE items to avoid /:id collision)
+  safeRequire('./routes/v2/moderator', '/api/qbank');
+
 safeRequire('./routes/items', '/api/qbank/items');
 safeRequire('./routes/versions', '/api/qbank/items');
 safeRequire('./routes/reviews', '/api/qbank/items');

@@ -20,30 +20,43 @@ async function getToolRequired(db, subject_official_code) {
 }
 
 // GET /api/qbank/items — List items with JOINs for display names + pagination + search
+// GET /api/qbank/items — List items with JOINs for display names + pagination + search + metadata filters
 router.get('/', async (req, res) => {
   const db = req.db;
-  const { subject_official_code, paper_no, status, grade_id, limit, offset, search } = req.query;
+  const {
+    subject_official_code, paper_no, status, grade_id,
+    item_type_id, cognitive_level_id, difficulty_id,
+    min_marks, max_marks, has_attachments, has_memo,
+    created_after, created_before,
+    limit, offset, search
+  } = req.query;
 
   // Build WHERE clause and params
   let where = 'WHERE 1=1';
   const params = [];
+
   if (subject_official_code) { where += ' AND im.subject_official_code = ?'; params.push(subject_official_code); }
   if (paper_no) { where += ' AND im.paper_no = ?'; params.push(parseInt(paper_no)); }
   if (status) { where += ' AND im.status = ?'; params.push(status); }
   if (grade_id) { where += ' AND im.grade_id = ?'; params.push(parseInt(grade_id)); }
-  if (search) { where += ' AND (im.question_text LIKE ? OR im.item_code LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+  if (item_type_id) { where += ' AND im.item_type_id = ?'; params.push(parseInt(item_type_id)); }
+  if (cognitive_level_id) { where += ' AND im.cognitive_level_id = ?'; params.push(parseInt(cognitive_level_id)); }
+  if (difficulty_id) { where += ' AND im.difficulty_id = ?'; params.push(parseInt(difficulty_id)); }
+  if (min_marks) { where += ' AND im.marks >= ?'; params.push(parseInt(min_marks)); }
+  if (max_marks) { where += ' AND im.marks <= ?'; params.push(parseInt(max_marks)); }
+  if (created_after) { where += ' AND im.created_at >= ?'; params.push(created_after + ' 00:00:00'); }
+  if (created_before) { where += ' AND im.created_at <= ?'; params.push(created_before + ' 23:59:59'); }
+  if (search) {
+    where += ' AND (im.question_text LIKE ? OR im.item_code LIKE ? OR im.question_number LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
 
   const pageLimit = parseInt(limit) || 20;
   const pageOffset = parseInt(offset) || 0;
 
   try {
-    // Count total — use query() to avoid prepared statement issues
-    const countSql = `SELECT COUNT(*) as total FROM item_master im ${where}`;
-    const [countRows] = await db.query(countSql, params);
-    const total = countRows[0].total;
-
-    // Main query — use query() with LIMIT/OFFSET as literals (not prepared params)
-    const sql = `SELECT
+    // Base select columns
+    let selectCols = `
       im.item_id, im.item_code, im.question_number, im.question_text, im.marks, im.status,
       im.subject_official_code, im.subject_alpha_code, im.paper_no,
       im.year_id, im.grade_id, im.assessment_type_id, im.assessment_body_id,
@@ -55,6 +68,30 @@ router.get('/', async (req, res) => {
       lcl.level_name as cognitive_level_name,
       ldl.difficulty_name,
       lit.type_name as item_type_name
+    `;
+
+    // Joins for has_attachments / has_memo filtering
+    let joinClause = '';
+    if (has_attachments === '1') {
+      joinClause += ' INNER JOIN (SELECT DISTINCT item_id FROM item_attachments) att ON im.item_id = att.item_id';
+    } else if (has_attachments === '0') {
+      joinClause += ' LEFT JOIN (SELECT DISTINCT item_id FROM item_attachments) att ON im.item_id = att.item_id';
+      where += ' AND att.item_id IS NULL';
+    }
+    if (has_memo === '1') {
+      joinClause += ' INNER JOIN (SELECT DISTINCT item_id FROM item_memos WHERE is_current = 1) mem ON im.item_id = mem.item_id';
+    } else if (has_memo === '0') {
+      joinClause += ' LEFT JOIN (SELECT DISTINCT item_id FROM item_memos WHERE is_current = 1) mem ON im.item_id = mem.item_id';
+      where += ' AND mem.item_id IS NULL';
+    }
+
+    // Count total
+    const countSql = `SELECT COUNT(*) as total FROM item_master im ${joinClause} ${where}`;
+    const [countRows] = await db.query(countSql, params);
+    const total = countRows[0].total;
+
+    // Main query
+    const sql = `SELECT ${selectCols}
     FROM item_master im
     LEFT JOIN lookup_subjects ls ON im.subject_official_code = ls.subject_official_code
     LEFT JOIN lookup_papers lp ON im.paper_id = lp.paper_id
@@ -62,17 +99,51 @@ router.get('/', async (req, res) => {
     LEFT JOIN lookup_cognitive_levels lcl ON im.cognitive_level_id = lcl.cognitive_level_id
     LEFT JOIN lookup_difficulty_levels ldl ON im.difficulty_id = ldl.difficulty_id
     LEFT JOIN lookup_item_types lit ON im.item_type_id = lit.item_type_id
+    ${joinClause}
     ${where}
     ORDER BY im.created_at DESC
     LIMIT ${pageLimit} OFFSET ${pageOffset}`;
 
     const [items] = await db.query(sql, params);
-    res.json({ success: true, total, count: items.length, items });
+
+    // Also return attachment/memo counts for each item
+    const itemIds = items.map(i => i.item_id);
+    let attachmentCounts = new Map();
+    let memoCounts = new Map();
+
+    if (itemIds.length > 0) {
+      const placeholders = itemIds.map(() => '?').join(',');
+
+      const [attachRows] = await db.query(
+        `SELECT item_id, COUNT(*) as cnt FROM item_attachments WHERE item_id IN (${placeholders}) GROUP BY item_id`,
+        itemIds
+      );
+      for (const row of attachRows) {
+        attachmentCounts.set(row.item_id, row.cnt);
+      }
+
+      const [memoRows] = await db.query(
+        `SELECT item_id, COUNT(*) as cnt FROM item_memos WHERE item_id IN (${placeholders}) AND is_current = 1 GROUP BY item_id`,
+        itemIds
+      );
+      for (const row of memoRows) {
+        memoCounts.set(row.item_id, row.cnt);
+      }
+    }
+
+    const enrichedItems = items.map(item => ({
+      ...item,
+      has_attachments: attachmentCounts.get(item.item_id) || 0,
+      has_memo: memoCounts.get(item.item_id) || 0,
+    }));
+
+    res.json({ success: true, total, count: enrichedItems.length, items: enrichedItems });
   } catch (e) {
     console.error('GET /api/qbank/items error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
+
 
 
 // GET /api/qbank/items/paper/:paperCode — Get all items for a paper (Register-compatible)
