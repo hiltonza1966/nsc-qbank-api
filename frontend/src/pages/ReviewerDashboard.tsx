@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
-import { MessageSquare, CheckCircle, XCircle, AlertCircle, Clock, User, BookOpen, Filter, Send, History, FileText, BookMarked, BarChart3, Shield, Wrench } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MessageSquare, CheckCircle, XCircle, AlertCircle, Clock, User, BookOpen, Filter, Send, History, FileText, BookMarked, BarChart3, Shield, Wrench, Download, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 
 interface ReviewItem {
   item_id: string;
@@ -59,10 +59,17 @@ interface AuditEntry {
   action: string;
   action_by: string;
   timestamp: string;
-  old_value: string;
-  new_value: string;
+  old_value: any;
+  new_value: any;
   reason: string;
   comment: string;
+}
+
+interface AuditPagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
 }
 
 const ReviewerDashboard: React.FC = () => {
@@ -89,6 +96,13 @@ const ReviewerDashboard: React.FC = () => {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [auditPagination, setAuditPagination] = useState<AuditPagination>({ page: 1, limit: 50, total: 0, pages: 0 });
+  const [auditFilters, setAuditFilters] = useState({
+    dateFrom: '',
+    dateTo: '',
+    actionFilter: '',
+    paperCodeFilter: ''
+  });
   const [diagramPaperCode, setDiagramPaperCode] = useState('');
   const [diagramResult, setDiagramResult] = useState<any>(null);
   const [moderatorActionLoading, setModeratorActionLoading] = useState(false);
@@ -104,7 +118,7 @@ const ReviewerDashboard: React.FC = () => {
 
   useEffect(() => {
     if (isModerator && activeTab === 'audit_log') fetchAuditLog();
-  }, [activeTab, isModerator]);
+  }, [activeTab, isModerator, auditPagination.page, auditFilters]);
 
   const fetchItems = async () => {
     setLoading(true);
@@ -142,7 +156,15 @@ const ReviewerDashboard: React.FC = () => {
   const fetchAuditLog = async () => {
     setAuditLoading(true);
     try {
-      const res = await fetch('/api/qbank/audit-log?limit=50');
+      const params = new URLSearchParams();
+      params.append('page', String(auditPagination.page));
+      params.append('limit', String(auditPagination.limit));
+      if (auditFilters.dateFrom) params.append('date_from', auditFilters.dateFrom);
+      if (auditFilters.dateTo) params.append('date_to', auditFilters.dateTo);
+      if (auditFilters.actionFilter) params.append('action', auditFilters.actionFilter);
+      if (auditFilters.paperCodeFilter) params.append('paper_code', auditFilters.paperCodeFilter);
+
+      const res = await fetch(`/api/qbank/audit-log?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
         const parsed = (data.data || []).map((entry: any) => {
@@ -155,9 +177,36 @@ const ReviewerDashboard: React.FC = () => {
           return entry;
         });
         setAuditLog(parsed);
+        setAuditPagination(prev => ({
+          ...prev,
+          total: data.pagination?.total || 0,
+          pages: data.pagination?.pages || 0
+        }));
       }
     } catch (e) { console.error('Audit log fetch error:', e); }
     finally { setAuditLoading(false); }
+  };
+
+  const handleAuditExport = async () => {
+    try {
+      const params = new URLSearchParams();
+      params.append('format', 'csv');
+      if (auditFilters.dateFrom) params.append('date_from', auditFilters.dateFrom);
+      if (auditFilters.dateTo) params.append('date_to', auditFilters.dateTo);
+      if (auditFilters.actionFilter) params.append('action', auditFilters.actionFilter);
+      if (auditFilters.paperCodeFilter) params.append('paper_code', auditFilters.paperCodeFilter);
+
+      const res = await fetch(`/api/qbank/audit-log/export?${params.toString()}`);
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit_log_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) { console.error('Audit export error:', e); alert('Export failed'); }
   };
 
   const fetchReviewThreads = async (itemId: string) => {
@@ -263,21 +312,24 @@ const ReviewerDashboard: React.FC = () => {
     finally { setModeratorActionLoading(false); }
   };
 
+  // FIXED: Bulk publish now uses publish_all flag instead of empty array
   const handleBulkPublish = async () => {
-    if (!window.confirm('Publish all approved items? This cannot be undone.')) return;
+    if (!window.confirm('Publish ALL approved items? This cannot be undone.')) return;
     try {
       const res = await fetch('/api/qbank/items/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_ids: [], publisher: userId })
+        body: JSON.stringify({ item_ids: [], publish_all: true, publisher: userId })
       });
       const data = await res.json();
       if (data.success) {
         alert(`Published ${data.data.published} items. Skipped ${data.data.skipped}.`);
         fetchItems();
         fetchStats();
+      } else {
+        alert(`Publish failed: ${data.error}`);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); alert('Publish request failed'); }
   };
 
   const handleDiagramFix = async () => {
@@ -351,6 +403,15 @@ const ReviewerDashboard: React.FC = () => {
       default: return 'bg-gray-600';
     }
   };
+
+  const auditActionOptions = [
+    { value: '', label: 'All Actions' },
+    { value: 'approve', label: 'Approve' },
+    { value: 'reject', label: 'Reject' },
+    { value: 'publish', label: 'Publish' },
+    { value: 'state_change', label: 'State Change' },
+    { value: 'update', label: 'Update' }
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -809,7 +870,7 @@ const ReviewerDashboard: React.FC = () => {
                                 </div>
                                 <div className="flex items-center gap-2 text-sm">
                                   <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(entry.previous_state)}`}>{entry.previous_state}</span>
-                                  <span className="text-gray-400">â†’</span>
+                                  <span className="text-gray-400">→</span>
                                   <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(entry.current_state)}`}>{entry.current_state}</span>
                                 </div>
                                 {entry.transition_reason && (
@@ -860,7 +921,71 @@ const ReviewerDashboard: React.FC = () => {
                     )}
 
                     {activeTab === 'audit_log' && isModerator && (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
+                        {/* Audit Log Filters */}
+                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 flex flex-wrap gap-3 items-end">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Date From</label>
+                            <div className="relative">
+                              <Calendar className="w-4 h-4 absolute left-2 top-2.5 text-gray-400" />
+                              <input
+                                type="date"
+                                value={auditFilters.dateFrom}
+                                onChange={(e) => setAuditFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                                className="pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Date To</label>
+                            <div className="relative">
+                              <Calendar className="w-4 h-4 absolute left-2 top-2.5 text-gray-400" />
+                              <input
+                                type="date"
+                                value={auditFilters.dateTo}
+                                onChange={(e) => setAuditFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                                className="pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Action</label>
+                            <select
+                              value={auditFilters.actionFilter}
+                              onChange={(e) => setAuditFilters(prev => ({ ...prev, actionFilter: e.target.value }))}
+                              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              {auditActionOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Paper Code</label>
+                            <input
+                              type="text"
+                              placeholder="Filter by paper..."
+                              value={auditFilters.paperCodeFilter}
+                              onChange={(e) => setAuditFilters(prev => ({ ...prev, paperCodeFilter: e.target.value }))}
+                              className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-40 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
+                          <button
+                            onClick={fetchAuditLog}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                          >
+                            <Filter className="w-4 h-4" />
+                            Apply Filters
+                          </button>
+                          <button
+                            onClick={handleAuditExport}
+                            className="ml-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 transition-colors flex items-center gap-2"
+                          >
+                            <Download className="w-4 h-4" />
+                            Export CSV
+                          </button>
+                        </div>
+
                         {auditLoading ? (
                           <div className="text-center py-8">
                             <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>
@@ -872,45 +997,75 @@ const ReviewerDashboard: React.FC = () => {
                             <p>No audit entries</p>
                           </div>
                         ) : (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="bg-gray-50 border-b border-gray-200">
-                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Time</th>
-                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Action</th>
-                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Item</th>
-                                  <th className="px-3 py-2 text-left font-medium text-gray-700">User</th>
-                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Old â†’ New</th>
-                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Reason</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {auditLog.map((entry) => (
-                                  <tr key={entry.log_id} className="hover:bg-gray-50">
-                                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{new Date(entry.timestamp).toLocaleString()}</td>
-                                    <td className="px-3 py-2">
-                                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                        entry.action === 'approve' ? 'bg-green-100 text-green-700' :
-                                        entry.action === 'reject' ? 'bg-red-100 text-red-700' :
-                                        entry.action === 'publish' ? 'bg-blue-100 text-blue-700' :
-                                        'bg-gray-100 text-gray-700'
-                                      }`}>
-                                        {entry.action}
-                                      </span>
-                                    </td>
-                                    <td className="px-3 py-2 font-mono text-xs text-gray-600">{entry.item_id?.slice(0, 8)}...</td>
-                                    <td className="px-3 py-2 text-xs text-gray-600">{entry.action_by}</td>
-                                    <td className="px-3 py-2 text-xs text-gray-600">
-                                      {entry.old_value ? JSON.stringify(entry.old_value).slice(0, 40) : 'â€”'}
-                                      <span className="text-gray-400 mx-1">â†’</span>
-                                      {entry.new_value ? JSON.stringify(entry.new_value).slice(0, 40) : 'â€”'}
-                                    </td>
-                                    <td className="px-3 py-2 text-xs text-gray-500">{entry.reason || 'â€”'}</td>
+                          <>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="bg-gray-50 border-b border-gray-200">
+                                    <th className="px-3 py-2 text-left font-medium text-gray-700">Time</th>
+                                    <th className="px-3 py-2 text-left font-medium text-gray-700">Action</th>
+                                    <th className="px-3 py-2 text-left font-medium text-gray-700">Item</th>
+                                    <th className="px-3 py-2 text-left font-medium text-gray-700">User</th>
+                                    <th className="px-3 py-2 text-left font-medium text-gray-700">Old → New</th>
+                                    <th className="px-3 py-2 text-left font-medium text-gray-700">Reason</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {auditLog.map((entry) => (
+                                    <tr key={entry.log_id} className="hover:bg-gray-50">
+                                      <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{new Date(entry.timestamp).toLocaleString()}</td>
+                                      <td className="px-3 py-2">
+                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                          entry.action === 'approve' ? 'bg-green-100 text-green-700' :
+                                          entry.action === 'reject' ? 'bg-red-100 text-red-700' :
+                                          entry.action === 'publish' ? 'bg-blue-100 text-blue-700' :
+                                          'bg-gray-100 text-gray-700'
+                                        }`}>
+                                          {entry.action}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 font-mono text-xs text-gray-600">{entry.item_id?.slice(0, 8)}...</td>
+                                      <td className="px-3 py-2 text-xs text-gray-600">{entry.action_by}</td>
+                                      <td className="px-3 py-2 text-xs text-gray-600">
+                                        {entry.old_value ? JSON.stringify(entry.old_value).slice(0, 40) : '—'}
+                                        <span className="text-gray-400 mx-1">→</span>
+                                        {entry.new_value ? JSON.stringify(entry.new_value).slice(0, 40) : '—'}
+                                      </td>
+                                      <td className="px-3 py-2 text-xs text-gray-500">{entry.reason || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Audit Log Pagination */}
+                            {auditPagination.pages > 1 && (
+                              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                                <span className="text-xs text-gray-500">
+                                  Showing {((auditPagination.page - 1) * auditPagination.limit) + 1} - {Math.min(auditPagination.page * auditPagination.limit, auditPagination.total)} of {auditPagination.total}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setAuditPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                                    disabled={auditPagination.page <= 1}
+                                    className="p-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronLeft className="w-4 h-4" />
+                                  </button>
+                                  <span className="text-sm text-gray-700">
+                                    Page {auditPagination.page} of {auditPagination.pages}
+                                  </span>
+                                  <button
+                                    onClick={() => setAuditPagination(prev => ({ ...prev, page: Math.min(prev.pages, prev.page + 1) }))}
+                                    disabled={auditPagination.page >= auditPagination.pages}
+                                    className="p-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}

@@ -3,7 +3,7 @@ const router = express.Router();
 const { randomUUID } = require('crypto');
 
 // ============================================
-// AUDIT HELPER — Aligned to existing item_audit_log schema
+// AUDIT HELPER — Aligned to item_audit_log schema
 // Columns: log_id, item_id, user_id, action, field_name, old_value, new_value, reason, comment, ip_address, user_agent, timestamp
 // ============================================
 async function logAudit(db, { item_id, action, action_by, old_values, new_values, notes, paper_code }) {
@@ -76,7 +76,7 @@ router.get('/items/pending', async (req, res) => {
        LEFT JOIN lookup_subjects s ON i.subject_id = s.subject_id
        LEFT JOIN item_attachments a ON CONVERT(i.item_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(a.item_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
        WHERE ${whereClause}
-       GROUP BY i.item_id
+       GROUP BY i.item_id, s.subject_name, s.subject_official_code
        ORDER BY i.source_paper_code, i.question_number
        LIMIT ? OFFSET ?`,
       [...params, limitNum, offset]
@@ -128,17 +128,14 @@ router.post('/items/:id/review', async (req, res) => {
 
     const item = items[0];
     const oldValues = { review_status: item.review_status, status: item.status };
-    let newReviewStatus, newStatus;
+    let newReviewStatus;
 
     if (action === 'approve') {
       newReviewStatus = 'approved';
-      newStatus = item.status;
     } else if (action === 'reject') {
       newReviewStatus = 'rejected';
-      newStatus = item.status;
     } else {
       newReviewStatus = 'peer_review';
-      newStatus = item.status;
     }
 
     await db.query(
@@ -165,30 +162,48 @@ router.post('/items/:id/review', async (req, res) => {
 
 // ============================================
 // POST /api/qbank/items/publish
-// Body: { item_ids: ['uuid', ...], publisher? }
+// Body: { item_ids: ['uuid', ...], publisher?, publish_all?: boolean }
+// If publish_all=true OR item_ids is empty, publishes ALL approved items
 // Only items with review_status = 'approved' can be published
+// Transaction-safe with connection pooling
 // ============================================
 router.post('/items/publish', async (req, res) => {
+  let connection;
   try {
     const db = req.db || req.app.locals.db;
-    const { item_ids, publisher } = req.body;
+    const { item_ids, publisher, publish_all = false } = req.body;
 
-    if (!Array.isArray(item_ids) || item_ids.length === 0) {
-      return res.status(400).json({ success: false, error: 'item_ids array required' });
+    let publishableIds = [];
+    let skippedIds = [];
+    let items = [];
+
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    if (publish_all || !Array.isArray(item_ids) || item_ids.length === 0) {
+      // Publish ALL approved items that are not yet published
+      const [approvedItems] = await connection.query(
+        `SELECT item_id, review_status, status, source_paper_code 
+         FROM item_master 
+         WHERE review_status = 'approved' AND status != 'published'`
+      );
+      items = approvedItems;
+      publishableIds = approvedItems.map(i => i.item_id);
+    } else {
+      const placeholders = item_ids.map(() => '?').join(',');
+      const [matchedItems] = await connection.query(
+        `SELECT item_id, review_status, status, source_paper_code 
+         FROM item_master 
+         WHERE item_id IN (${placeholders}) AND review_status = 'approved'`,
+        item_ids
+      );
+      items = matchedItems;
+      publishableIds = matchedItems.map(i => i.item_id);
+      skippedIds = item_ids.filter(id => !publishableIds.includes(id));
     }
 
-    const placeholders = item_ids.map(() => '?').join(',');
-    const [items] = await db.query(
-      `SELECT item_id, review_status, status, source_paper_code 
-       FROM item_master 
-       WHERE item_id IN (${placeholders}) AND review_status = 'approved'`,
-      item_ids
-    );
-
-    const publishableIds = items.map(i => i.item_id);
-    const skippedIds = item_ids.filter(id => !publishableIds.includes(id));
-
     if (publishableIds.length === 0) {
+      await connection.rollback();
       return res.status(400).json({
         success: false,
         error: 'No approved items to publish',
@@ -197,7 +212,7 @@ router.post('/items/publish', async (req, res) => {
     }
 
     const pubPlaceholders = publishableIds.map(() => '?').join(',');
-    await db.query(
+    await connection.query(
       `UPDATE item_master 
        SET status = 'published', published_by = ?, published_at = NOW()
        WHERE item_id IN (${pubPlaceholders})`,
@@ -205,7 +220,7 @@ router.post('/items/publish', async (req, res) => {
     );
 
     for (const item of items) {
-      await logAudit(db, {
+      await logAudit(connection, {
         item_id: item.item_id,
         action: 'publish',
         action_by: publisher || 'system',
@@ -214,6 +229,8 @@ router.post('/items/publish', async (req, res) => {
         paper_code: item.source_paper_code
       });
     }
+
+    await connection.commit();
 
     res.json({
       success: true,
@@ -226,7 +243,14 @@ router.post('/items/publish', async (req, res) => {
     });
   } catch (error) {
     console.error("[POST /items/publish ERROR]", error);
+    if (connection) {
+      try { await connection.rollback(); } catch (e) {}
+    }
     res.status(500).json({ success: false, error: error.message });
+  } finally {
+    if (connection) {
+      try { connection.release(); } catch (e) {}
+    }
   }
 });
 
@@ -431,22 +455,24 @@ router.get('/items/stats', async (req, res) => {
 
 // ============================================
 // GET /api/qbank/audit-log
-// Query: ?item_id=&paper_code=&action=&page=1&limit=50
+// Query: ?item_id=&paper_code=&action=&date_from=&date_to=&page=1&limit=50
 // ============================================
 router.get('/audit-log', async (req, res) => {
   try {
     const db = req.db || req.app.locals.db;
-    const { item_id, paper_code, action, page = 1, limit = 50 } = req.query;
+    const { item_id, paper_code, action, date_from, date_to, page = 1, limit = 50 } = req.query;
     const conditions = ["1=1"];
     const params = [];
 
     if (item_id) { conditions.push("item_id = ?"); params.push(item_id); }
     if (paper_code) { conditions.push("reason LIKE ?"); params.push(`%${paper_code}%`); }
     if (action) { conditions.push("action = ?"); params.push(action); }
+    if (date_from) { conditions.push("timestamp >= ?"); params.push(date_from); }
+    if (date_to) { conditions.push("timestamp <= ?"); params.push(`${date_to} 23:59:59`); }
 
     const whereClause = conditions.join(' AND ');
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     const [countRows] = await db.query(
@@ -454,8 +480,20 @@ router.get('/audit-log', async (req, res) => {
       params
     );
 
+    // FIXED: Alias user_id as action_by for frontend compatibility
     const [logs] = await db.query(
-      `SELECT * FROM item_audit_log 
+      `SELECT 
+        log_id,
+        item_id,
+        user_id as action_by,
+        action,
+        field_name,
+        old_value,
+        new_value,
+        reason,
+        comment,
+        timestamp
+       FROM item_audit_log 
        WHERE ${whereClause} 
        ORDER BY timestamp DESC 
        LIMIT ? OFFSET ?`,
@@ -487,7 +525,74 @@ router.get('/audit-log', async (req, res) => {
   }
 });
 
-module.exports = router;
+// ============================================
+// GET /api/qbank/audit-log/export
+// Query: ?item_id=&paper_code=&action=&date_from=&date_to=&format=csv
+// Returns CSV download of all matching audit entries (no pagination)
+// ============================================
+router.get('/audit-log/export', async (req, res) => {
+  try {
+    const db = req.db || req.app.locals.db;
+    const { item_id, paper_code, action, date_from, date_to, format = 'csv' } = req.query;
+    const conditions = ["1=1"];
+    const params = [];
+
+    if (item_id) { conditions.push("item_id = ?"); params.push(item_id); }
+    if (paper_code) { conditions.push("reason LIKE ?"); params.push(`%${paper_code}%`); }
+    if (action) { conditions.push("action = ?"); params.push(action); }
+    if (date_from) { conditions.push("timestamp >= ?"); params.push(date_from); }
+    if (date_to) { conditions.push("timestamp <= ?"); params.push(`${date_to} 23:59:59`); }
+
+    const whereClause = conditions.join(' AND ');
+
+    // FIXED: Alias user_id as action_by for frontend compatibility
+    const [logs] = await db.query(
+      `SELECT 
+        log_id,
+        item_id,
+        user_id as action_by,
+        action,
+        old_value,
+        new_value,
+        reason,
+        comment,
+        timestamp
+       FROM item_audit_log 
+       WHERE ${whereClause} 
+       ORDER BY timestamp DESC`,
+      params
+    );
+
+    if (format === 'csv') {
+      const headers = ['log_id', 'item_id', 'action_by', 'action', 'old_value', 'new_value', 'reason', 'comment', 'timestamp'];
+      const rows = logs.map(log => [
+        log.log_id,
+        log.item_id,
+        log.action_by,
+        log.action,
+        log.old_value || '',
+        log.new_value || '',
+        log.reason || '',
+        log.comment || '',
+        log.timestamp
+      ].map(cell => {
+        const str = String(cell).replace(/"/g, '""');
+        return `"${str}"`;
+      }).join(','));
+
+      const csv = [headers.join(','), ...rows].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="audit_log_${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csv);
+    } else {
+      res.json({ success: true, data: logs, count: logs.length });
+    }
+  } catch (error) {
+    console.error("[GET /audit-log/export ERROR]", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // ============================================
 // POST /api/qbank/admin/bulk-set-mcq-answers
@@ -539,7 +644,7 @@ router.post('/admin/bulk-set-mcq-answers', upload.single('csv'), async (req, res
 
       // Validate item exists and is MCQ
       const [items] = await db.query(
-        `SELECT item_id, item_type_id, item_answer_json FROM item_master WHERE item_id = ?`,
+        `SELECT item_id, item_type_id, item_answer_json, source_paper_code FROM item_master WHERE item_id = ?`,
         [itemId]
       );
 
@@ -562,9 +667,9 @@ router.post('/admin/bulk-set-mcq-answers', upload.single('csv'), async (req, res
 
       if (!answerJson || typeof answerJson !== 'object') {
         answerJson = { options: [
-          { label: "P", text: "[DIAGRAM â€” Option P]" },
-          { label: "S", text: "[DIAGRAM â€” Option S]" },
-          { label: "R", text: "[DIAGRAM â€” Option R]" }
+          { label: "P", text: "[DIAGRAM — Option P]" },
+          { label: "S", text: "[DIAGRAM — Option S]" },
+          { label: "R", text: "[DIAGRAM — Option R]" }
         ]};
       }
 
@@ -606,3 +711,4 @@ router.post('/admin/bulk-set-mcq-answers', upload.single('csv'), async (req, res
   }
 });
 
+module.exports = router;
