@@ -76,6 +76,11 @@ function safeRequire(routePath, mountPath) {
 
 // Item Development Module
   // Moderator + Review Workflow (mounted BEFORE items to avoid /:id collision)
+  // Auth routes (public - no auth required for login/register)
+  const authRoutes = require('./routes/auth');
+  app.use('/api/auth', authRoutes);
+  console.log('Mounted: /api/auth -> ./routes/auth');
+
   safeRequire('./routes/v2/moderator', '/api/qbank');
 
 safeRequire('./routes/items', '/api/qbank/items');
