@@ -3,6 +3,7 @@ import { debugLogger } from './utils/debugLogger';
 import DebugPanel from './components/DebugPanel';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
 
 // Real pages
 import Dashboard from './pages/Dashboard';
@@ -25,6 +26,8 @@ import AdminAssignmentPanel from './pages/AdminAssignmentPanel';
 import QPMemoRegister from './pages/QPMemoRegister';
 import ParserImportDashboard from './pages/ParserImportDashboard';
 import CapsRegister from './pages/CapsRegister';
+import { AuthProvider } from './context/AuthContext';
+import LoginPage from './pages/LoginPage';
 
 // ============================================
 // TYPES
@@ -154,16 +157,13 @@ const LoadingFallback: React.FC = () => (
 // NAVIGATION
 // ============================================
 const Navigation: React.FC = () => {
-  const [userRole, setUserRole] = useState('author');
+  const { user, isAuthenticated, isAdmin, isModerator, logout } = useAuth();
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [capsParserOpen, setCapsParserOpen] = useState(false);
   const location = useLocation();
 
-  useEffect(() => {
-    const storedRole = localStorage.getItem('qbank_role') || 'author';
-    setUserRole(storedRole);
-  }, []);
+  // Auth state from AuthContext, no localStorage needed
 
   const navStyle: React.CSSProperties = {
     display: 'flex',
@@ -226,7 +226,7 @@ const Navigation: React.FC = () => {
           }}
         >
           Reviews
-          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: reviewsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>â–¼</span>
+          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: reviewsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
         </button>
         {reviewsOpen && (
           <div 
@@ -269,7 +269,7 @@ const Navigation: React.FC = () => {
           }}
         >
           Wizard
-          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: wizardOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>â–¼</span>
+          <span style={{ fontSize: '10px', transition: 'transform 0.2s', transform: wizardOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
         </button>
         {wizardOpen && (
           <div 
@@ -336,11 +336,26 @@ const Navigation: React.FC = () => {
           </div>
         )}
       </div>
-      {userRole === 'admin' && (
+      {(isAdmin || isModerator) && (
         <Link to="/admin" style={location.pathname === '/admin' ? activeLinkStyle : linkStyle}>Admin</Link>
       )}
-      <div style={{ marginLeft: 'auto', fontSize: '12px', color: '#9ca3af' }}>
-        Role: {userRole}
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {isAuthenticated && user && (
+          <>
+            <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+              {user.display_name || user.username}
+            </span>
+            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: isAdmin ? '#dc2626' : isModerator ? '#f59e0b' : '#3b82f6', color: 'white' }}>
+              {user.role}
+            </span>
+            <button onClick={logout} style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'transparent', color: '#9ca3af', border: '1px solid #4b5563', cursor: 'pointer' }}>
+              Logout
+            </button>
+          </>
+        )}
+        {!isAuthenticated && (
+          <Link to="/login" style={{ ...linkStyle, background: '#3b82f6', color: 'white', padding: '4px 12px', borderRadius: '4px' }}>Login</Link>
+        )}
       </div>
     </nav>
   );
@@ -383,6 +398,7 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
+      <AuthProvider>
       <QueryClientProvider client={new QueryClient()}><BrowserRouter>
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
           <Navigation />
@@ -425,6 +441,7 @@ const App: React.FC = () => {
                 <Route path="/caps-parser" element={<CAPSParserPage />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="/admin/assignments" element={<AdminAssignmentPanel />} />
+                <Route path="/login" element={<LoginPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </React.Suspense>
@@ -432,6 +449,7 @@ const App: React.FC = () => {
           <DebugPanel />
         </div>
       </BrowserRouter></QueryClientProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 };
