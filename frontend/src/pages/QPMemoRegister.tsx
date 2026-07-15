@@ -123,6 +123,8 @@ const [itemAttachmentCounts, setItemAttachmentCounts] = useState<Record<string, 
   const [itemSvgs, setItemSvgs] = useState<any[]>([]);
   const [itemAudio, setItemAudio] = useState<any[]>([]);
   const [attachmentLoading, setAttachmentLoading] = useState(false);
+  const [missingItems, setMissingItems] = useState<Array<{ qn: string; reason: string; expected_marks: number }>>([]);
+  const [showMissingPanel, setShowMissingPanel] = useState(false);
 
   useEffect(() => { fetchData(); }, [dataSource, viewMode]);
 
@@ -717,6 +719,81 @@ fetch(`${API_BASE}/attachments/paper/${encodeURIComponent(itemListPaperCode)}`)
     return 0;
   }
 
+  // Detect missing question numbers based on common NSC paper patterns
+  const detectMissingItems = (items: ItemPair[]) => {
+    const existingQns = new Set(items.map(i => i.question_number));
+    const missing: Array<{ qn: string; reason: string; expected_marks: number }> = [];
+
+    // Common NSC patterns: check for gaps in numbered sequences
+    const sections = ['1', '2', '3', '4', '5'];
+    for (const sec of sections) {
+      // Check for section headers (e.g., 1, 2, 3)
+      if (!existingQns.has(sec)) {
+        missing.push({ qn: sec, reason: 'Section header missing', expected_marks: 0 });
+      }
+
+      // Check sub-section headers (e.g., 1.1, 1.2, 1.3)
+      for (let sub = 1; sub <= 6; sub++) {
+        const subHeader = `${sec}.${sub}`;
+        const hasSubItems = Array.from(existingQns).some(qn => qn.startsWith(subHeader + '.'));
+        if (hasSubItems && !existingQns.has(subHeader)) {
+          missing.push({ qn: subHeader, reason: 'Sub-section header missing', expected_marks: 0 });
+        }
+
+        // Check for gaps in sub-item sequences (e.g., 1.1.1, 1.1.2, ...)
+        const subItems = Array.from(existingQns).filter(qn => {
+          const parts = qn.split('.');
+          return parts.length === 3 && parts[0] === sec && parts[1] === String(sub);
+        }).sort((a, b) => compareQuestionNumbers(a, b));
+
+        if (subItems.length > 0) {
+          // Find gaps in sequence
+          const nums = subItems.map(qn => parseInt(qn.split('.')[2])).filter(n => !isNaN(n));
+          if (nums.length > 0) {
+            const maxNum = Math.max(...nums);
+            for (let n = 1; n <= maxNum; n++) {
+              const expectedQn = `${sec}.${sub}.${n}`;
+              if (!existingQns.has(expectedQn)) {
+                missing.push({ qn: expectedQn, reason: 'Sub-item gap detected', expected_marks: 2 });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Check for common diagram-based MCQ patterns (1.1.x where x = 5-8 typically)
+    for (let sec = 1; sec <= 5; sec++) {
+      for (let sub = 1; sub <= 6; sub++) {
+        const baseQn = `${sec}.${sub}`;
+        const hasItems = Array.from(existingQns).some(qn => qn.startsWith(baseQn + '.'));
+        if (hasItems) {
+          // Check if 1.1.5-1.1.8 exist (common diagram MCQ range)
+          for (let n = 5; n <= 8; n++) {
+            const diagramQn = `${sec}.${sub}.${n}`;
+            if (!existingQns.has(diagramQn)) {
+              missing.push({ qn: diagramQn, reason: 'Potential diagram-based MCQ', expected_marks: 2 });
+            }
+          }
+        }
+      }
+    }
+
+    return missing;
+  };
+
+  const openMissingItemCreator = (qn: string, expectedMarks: number) => {
+    setAddItemForm({
+      question_number: qn,
+      question_text: `[${qn} - Missing item detected]`,
+      expected_marks: expectedMarks,
+      answer_text: '',
+      memo_marks: expectedMarks,
+      parent_item_id: ''
+    });
+    setAddItemOpen(true);
+  };
+
   const MatchBadge = ({ match, label }: { match: boolean; label: string }) => ( <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', background: match ? '#d1fae5' : '#fee2e2', color: match ? '#065f46' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}> {match ? 'âœ“' : 'âœ—'} {label} </span> );
   const VarianceBadge = ({ value }: { value: number }) => ( <span style={{ fontSize: '12px', fontWeight: 'bold', color: value === 0 ? '#10b981' : value > 0 ? '#f59e0b' : '#ef4444' }}> {value > 0 ? `+${value}` : value} </span> );
   const IssueBadge = ({ count }: { count: number }) => ( <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', background: count === 0 ? '#d1fae5' : count < 3 ? '#fef3c7' : '#fee2e2', color: count === 0 ? '#065f46' : count < 3 ? '#92400e' : '#991b1b' }}> {count === 0 ? 'âœ“ Clean' : `âš  ${count} issue${count > 1 ? 's' : ''}`} </span> );
@@ -817,6 +894,7 @@ fetch(`${API_BASE}/attachments/paper/${encodeURIComponent(itemListPaperCode)}`)
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button onClick={() => setShowHierarchyView(!showHierarchyView)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #3b82f6', background: showHierarchyView ? '#3b82f6' : 'white', color: showHierarchyView ? 'white' : '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>{showHierarchyView ? 'List View' : 'Hierarchy View'}</button>
                 <button onClick={() => autoDetectSubHeaders(itemListPaperCode)} disabled={fixing} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #10b981', background: 'white', color: '#10b981', cursor: fixing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Auto-Detect</button>
+                <button onClick={() => { const missing = detectMissingItems(itemListItems); setMissingItems(missing); setShowMissingPanel(true); }} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #ef4444', background: showMissingPanel ? '#ef4444' : 'white', color: showMissingPanel ? 'white' : '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>{showMissingPanel ? 'Hide Missing' : 'Detect Missing'}</button>
                 <button onClick={() => setBulkAssignMode(!bulkAssignMode)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #8b5cf6', background: bulkAssignMode ? '#8b5cf6' : 'white', color: bulkAssignMode ? 'white' : '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>{bulkAssignMode ? 'Cancel Bulk' : 'Bulk Assign'}</button>
                 <input type="text" value={itemListFilter} onChange={(e) => setItemListFilter(e.target.value)} placeholder="Filter by Q#..." style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px' }} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}><input type="checkbox" checked={itemListShowErrorsOnly} onChange={(e) => setItemListShowErrorsOnly(e.target.checked)} /> Errors only</label>
@@ -874,6 +952,27 @@ fetch(`${API_BASE}/attachments/paper/${encodeURIComponent(itemListPaperCode)}`)
                     {ht.directItems.length > 0 && <div style={{ marginLeft: '16px', marginTop: '4px', fontSize: '12px', color: '#6b7280' }}>Direct items: {ht.directItems.map(di => `${di.qn}(${di.marks})`).join(', ')}</div>}
                   </div>
                 ))}
+              </div>
+            )}
+            {showMissingPanel && missingItems.length > 0 && (
+              <div style={{ background: '#fef2f2', borderRadius: '8px', padding: '16px', marginBottom: '16px', border: '2px solid #ef4444' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: 'bold', color: '#dc2626', margin: 0 }}>
+                    Missing Items Detected ({missingItems.length})
+                  </h4>
+                  <button onClick={() => setShowMissingPanel(false)} style={{ fontSize: '12px', padding: '4px 8px', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '4px', cursor: 'pointer', color: '#991b1b' }}>Hide</button>
+                </div>
+                <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                  {missingItems.map((mi, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: 'white', borderRadius: '6px', marginBottom: '6px', border: '1px solid #fecaca' }}>
+                      <div>
+                        <span style={{ fontWeight: 'bold', color: '#dc2626', fontSize: '13px' }}>{mi.qn}</span>
+                        <span style={{ fontSize: '11px', color: '#991b1b', marginLeft: '8px' }}>{mi.reason}</span>
+                      </div>
+                      <button onClick={() => openMissingItemCreator(mi.qn, mi.expected_marks)} style={{ padding: '4px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>+ Create</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             {itemListLoading ? (<div>Loading items...</div>) : (
