@@ -488,3 +488,121 @@ router.get('/audit-log', async (req, res) => {
 });
 
 module.exports = router;
+
+// ============================================
+// POST /api/qbank/admin/bulk-set-mcq-answers
+// Body: multipart/form-data with field 'csv'
+// CSV format: item_id,correct_answer
+// correct_answer must be P, S, or R
+// ============================================
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
+
+router.post('/admin/bulk-set-mcq-answers', upload.single('csv'), async (req, res) => {
+  try {
+    const db = req.db || req.app.locals.db;
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No CSV file uploaded. Field name must be "csv".' });
+    }
+
+    const csvContent = req.file.buffer.toString('utf-8');
+    const lines = csvContent.split(/\r?\n/).filter(line => line.trim());
+
+    // Skip header if present
+    const startIndex = lines[0].toLowerCase().includes('item_id') ? 1 : 0;
+
+    const results = {
+      total_rows: lines.length - startIndex,
+      updated: [],
+      skipped: [],
+      errors: []
+    };
+
+    for (let i = startIndex; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const parts = line.split(',');
+      if (parts.length < 2) {
+        results.errors.push({ row: i + 1, line: line, error: 'Invalid CSV format: expected item_id,correct_answer' });
+        continue;
+      }
+
+      const itemId = parts[0].trim();
+      const correctAnswer = parts[1].trim().toUpperCase();
+
+      if (!['P', 'S', 'R'].includes(correctAnswer)) {
+        results.errors.push({ row: i + 1, item_id: itemId, error: `Invalid answer "${correctAnswer}". Must be P, S, or R.` });
+        continue;
+      }
+
+      // Validate item exists and is MCQ
+      const [items] = await db.query(
+        `SELECT item_id, item_type_id, item_answer_json FROM item_master WHERE item_id = ?`,
+        [itemId]
+      );
+
+      if (items.length === 0) {
+        results.errors.push({ row: i + 1, item_id: itemId, error: 'Item not found' });
+        continue;
+      }
+
+      const item = items[0];
+      if (item.item_type_id != 1) {
+        results.errors.push({ row: i + 1, item_id: itemId, error: `Item is not MCQ (item_type_id=${item.item_type_id})` });
+        continue;
+      }
+
+      // Update item_answer_json
+      let answerJson = item.item_answer_json;
+      if (typeof answerJson === 'string') {
+        try { answerJson = JSON.parse(answerJson); } catch (e) {}
+      }
+
+      if (!answerJson || typeof answerJson !== 'object') {
+        answerJson = { options: [
+          { label: "P", text: "[DIAGRAM â€” Option P]" },
+          { label: "S", text: "[DIAGRAM â€” Option S]" },
+          { label: "R", text: "[DIAGRAM â€” Option R]" }
+        ]};
+      }
+
+      answerJson.correct_answer = correctAnswer;
+      answerJson.needs_manual_answer = false;
+      answerJson.verified_at = new Date().toISOString();
+
+      await db.query(
+        `UPDATE item_master SET item_answer_json = ? WHERE item_id = ?`,
+        [JSON.stringify(answerJson), itemId]
+      );
+
+      results.updated.push({ row: i + 1, item_id: itemId, correct_answer: correctAnswer });
+
+      // Log audit
+      await logAudit(db, {
+        item_id: itemId,
+        action: 'update',
+        action_by: req.body.updated_by || 'csv_bulk',
+        old_values: { correct_answer: null },
+        new_values: { correct_answer: correctAnswer },
+        notes: 'Bulk CSV upload: set diagram MCQ correct answer',
+        paper_code: item.source_paper_code
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        processed: results.updated.length + results.errors.length,
+        updated: results.updated.length,
+        errors: results.errors.length,
+        details: results
+      }
+    });
+  } catch (error) {
+    console.error("[BULK SET MCQ ANSWERS ERROR]", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
