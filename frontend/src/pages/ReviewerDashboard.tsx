@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { MessageSquare, CheckCircle, XCircle, AlertCircle, Clock, User, BookOpen, Filter, Send, History, FileText, BookMarked } from 'lucide-react';
+﻿import React, { useState, useEffect } from 'react';
+import { MessageSquare, CheckCircle, XCircle, AlertCircle, Clock, User, BookOpen, Filter, Send, History, FileText, BookMarked, BarChart3, Shield, Wrench } from 'lucide-react';
 
 interface ReviewItem {
   item_id: string;
@@ -9,6 +9,7 @@ interface ReviewItem {
   marks: number;
   marks_allocated: number;
   status: string;
+  review_status?: string;
   parser_confidence: string;
   source_paper_code: string;
   last_used_date: string;
@@ -43,6 +44,27 @@ interface Subject {
   subject_alpha_code: string;
 }
 
+interface StatsData {
+  total_items: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  published: number;
+  mcq_count: number;
+}
+
+interface AuditEntry {
+  log_id: number;
+  item_id: string;
+  action: string;
+  action_by: string;
+  timestamp: string;
+  old_value: string;
+  new_value: string;
+  reason: string;
+  comment: string;
+}
+
 const ReviewerDashboard: React.FC = () => {
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<ReviewItem | null>(null);
@@ -60,13 +82,29 @@ const ReviewerDashboard: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSubject, setFilterSubject] = useState('');
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [activeTab, setActiveTab] = useState<'review' | 'history' | 'threads' | 'qp_memo'>('review');
+  const [activeTab, setActiveTab] = useState<'review' | 'history' | 'threads' | 'qp_memo' | 'audit_log'>('review');
   const [qpMemoData, setQpMemoData] = useState<{qp_text: string, memo_text: string, qp_marks: number, memo_marks: number} | null>(null);
+
+  // Moderator state
+  const [stats, setStats] = useState<StatsData | null>(null);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [diagramPaperCode, setDiagramPaperCode] = useState('');
+  const [diagramResult, setDiagramResult] = useState<any>(null);
+  const [moderatorActionLoading, setModeratorActionLoading] = useState(false);
+
+  const isModerator = userRole === 'moderator' || userRole === 'admin';
+  const isAdmin = userRole === 'admin';
 
   useEffect(() => {
     fetchItems();
     fetchSubjects();
+    if (isModerator) fetchStats();
   }, [userRole, filterStatus, filterSubject]);
+
+  useEffect(() => {
+    if (isModerator && activeTab === 'audit_log') fetchAuditLog();
+  }, [activeTab, isModerator]);
 
   const fetchItems = async () => {
     setLoading(true);
@@ -84,7 +122,6 @@ const ReviewerDashboard: React.FC = () => {
     try {
       const res = await fetch('/api/lookup/lookup_subjects');
       const data = await res.json();
-      // API returns {success: true, data: [...]} not {success: true, subjects: [...]}
       const mappedSubjects = (data.data || []).map((s: any) => ({
         subject_id: s.subject_official_code,
         subject_name: s.subject_name,
@@ -92,6 +129,35 @@ const ReviewerDashboard: React.FC = () => {
       }));
       setSubjects(mappedSubjects);
     } catch (e) { console.error(e); }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/qbank/items/stats');
+      const data = await res.json();
+      if (data.success) setStats(data.data.overall);
+    } catch (e) { console.error('Stats fetch error:', e); }
+  };
+
+  const fetchAuditLog = async () => {
+    setAuditLoading(true);
+    try {
+      const res = await fetch('/api/qbank/audit-log?limit=50');
+      const data = await res.json();
+      if (data.success) {
+        const parsed = (data.data || []).map((entry: any) => {
+          if (entry.old_value && typeof entry.old_value === 'string') {
+            try { entry.old_value = JSON.parse(entry.old_value); } catch (e) {}
+          }
+          if (entry.new_value && typeof entry.new_value === 'string') {
+            try { entry.new_value = JSON.parse(entry.new_value); } catch (e) {}
+          }
+          return entry;
+        });
+        setAuditLog(parsed);
+      }
+    } catch (e) { console.error('Audit log fetch error:', e); }
+    finally { setAuditLoading(false); }
   };
 
   const fetchReviewThreads = async (itemId: string) => {
@@ -156,6 +222,85 @@ const ReviewerDashboard: React.FC = () => {
     } catch (e) { console.error(e); }
   };
 
+  // Moderator actions
+  const handleModeratorApprove = async (itemId: string) => {
+    setModeratorActionLoading(true);
+    try {
+      const res = await fetch(`/api/qbank/items/${itemId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve', reviewer: userId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchItems();
+        fetchStats();
+        if (selectedItem?.item_id === itemId) {
+          fetchWorkflowHistory(itemId);
+        }
+      }
+    } catch (e) { console.error(e); }
+    finally { setModeratorActionLoading(false); }
+  };
+
+  const handleModeratorReject = async (itemId: string) => {
+    setModeratorActionLoading(true);
+    try {
+      const res = await fetch(`/api/qbank/items/${itemId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject', reviewer: userId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchItems();
+        fetchStats();
+        if (selectedItem?.item_id === itemId) {
+          fetchWorkflowHistory(itemId);
+        }
+      }
+    } catch (e) { console.error(e); }
+    finally { setModeratorActionLoading(false); }
+  };
+
+  const handleBulkPublish = async () => {
+    if (!window.confirm('Publish all approved items? This cannot be undone.')) return;
+    try {
+      const res = await fetch('/api/qbank/items/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_ids: [], publisher: userId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Published ${data.data.published} items. Skipped ${data.data.skipped}.`);
+        fetchItems();
+        fetchStats();
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleDiagramFix = async () => {
+    if (!diagramPaperCode) {
+      alert('Enter a paper code first');
+      return;
+    }
+    try {
+      const res = await fetch('/api/qbank/items/fix-diagram-mcqs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paper_code: diagramPaperCode, dry_run: false })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiagramResult(data.data);
+        alert(`Fixed ${data.data.inserted.length} missing, updated ${data.data.updated.length} existing. Errors: ${data.data.errors.length}`);
+        fetchItems();
+        fetchStats();
+      }
+    } catch (e) { console.error(e); }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-gray-100 text-gray-800 border-gray-200';
@@ -163,6 +308,16 @@ const ReviewerDashboard: React.FC = () => {
       case 'expert_approved': return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'moderated': return 'bg-green-50 text-green-700 border-green-200';
       case 'revision_required': return 'bg-red-50 text-red-700 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getReviewStatusColor = (rs?: string) => {
+    switch (rs) {
+      case 'approved': return 'bg-green-100 text-green-800 border-green-200';
+      case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
+      case 'peer_review': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'draft': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
@@ -265,6 +420,77 @@ const ReviewerDashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* Moderator Stats Cards */}
+        {isModerator && stats && (
+          <div className="grid grid-cols-5 gap-4 mb-6">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+              <div className="text-2xl font-bold text-gray-900">{stats.total_items}</div>
+              <div className="text-xs text-gray-500 uppercase tracking-wider">Total Items</div>
+            </div>
+            <div className="bg-yellow-50 p-4 rounded-xl shadow-sm border border-yellow-200">
+              <div className="text-2xl font-bold text-yellow-800">{stats.pending}</div>
+              <div className="text-xs text-yellow-600 uppercase tracking-wider">Pending</div>
+            </div>
+            <div className="bg-green-50 p-4 rounded-xl shadow-sm border border-green-200">
+              <div className="text-2xl font-bold text-green-800">{stats.approved}</div>
+              <div className="text-xs text-green-600 uppercase tracking-wider">Approved</div>
+            </div>
+            <div className="bg-red-50 p-4 rounded-xl shadow-sm border border-red-200">
+              <div className="text-2xl font-bold text-red-800">{stats.rejected}</div>
+              <div className="text-xs text-red-600 uppercase tracking-wider">Rejected</div>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-xl shadow-sm border border-blue-200">
+              <div className="text-2xl font-bold text-blue-800">{stats.published}</div>
+              <div className="text-xs text-blue-600 uppercase tracking-wider">Published</div>
+            </div>
+          </div>
+        )}
+
+        {/* Moderator Bulk Actions */}
+        {isModerator && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 flex flex-wrap gap-3 items-end">
+            <button
+              onClick={handleBulkPublish}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              <Shield className="w-4 h-4" />
+              Publish All Approved
+            </button>
+            {isAdmin && (
+              <>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Paper code for diagram fix"
+                    value={diagramPaperCode}
+                    onChange={(e) => setDiagramPaperCode(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <button
+                    onClick={handleDiagramFix}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors flex items-center gap-2"
+                  >
+                    <Wrench className="w-4 h-4" />
+                    Fix Diagram MCQs
+                  </button>
+                </div>
+                {diagramResult && (
+                  <span className="text-xs text-gray-600">
+                    Last: +{diagramResult.inserted?.length || 0} inserted, {diagramResult.updated?.length || 0} updated
+                  </span>
+                )}
+              </>
+            )}
+            <button
+              onClick={fetchStats}
+              className="ml-auto px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+            >
+              <BarChart3 className="w-4 h-4 inline mr-1" />
+              Refresh Stats
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col max-h-[calc(100vh-280px)]">
             <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
@@ -306,6 +532,13 @@ const ReviewerDashboard: React.FC = () => {
                           </span>
                         )}
                       </div>
+                      {item.review_status && (
+                        <div className="mt-1">
+                          <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${getReviewStatusColor(item.review_status)}`}>
+                            {item.review_status}
+                          </span>
+                        </div>
+                      )}
                       {item.review_counts && Object.keys(item.review_counts).length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
                           {Object.entries(item.review_counts).map(([role, count]) => (
@@ -314,6 +547,25 @@ const ReviewerDashboard: React.FC = () => {
                               {role}: {count}
                             </span>
                           ))}
+                        </div>
+                      )}
+                      {/* Moderator quick actions */}
+                      {isModerator && (
+                        <div className="mt-2 flex gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleModeratorApprove(item.item_id); }}
+                            disabled={moderatorActionLoading}
+                            className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 transition-colors disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleModeratorReject(item.item_id); }}
+                            disabled={moderatorActionLoading}
+                            className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 transition-colors disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
                         </div>
                       )}
                     </div>
@@ -339,10 +591,17 @@ const ReviewerDashboard: React.FC = () => {
                       <h2 className="text-xl font-bold text-gray-900">{selectedItem.question_number}</h2>
                       <p className="text-sm text-gray-600 mt-1">{selectedItem.source_paper_code} | {selectedItem.subject_name} ({selectedItem.subject_alpha_code})</p>
                     </div>
-                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(selectedItem.status)}`}>
-                      {getStatusIcon(selectedItem.status)}
-                      {selectedItem.status}
-                    </span>
+                    <div className="flex gap-2">
+                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(selectedItem.status)}`}>
+                        {getStatusIcon(selectedItem.status)}
+                        {selectedItem.status}
+                      </span>
+                      {selectedItem.review_status && (
+                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium border ${getReviewStatusColor(selectedItem.review_status)}`}>
+                          {selectedItem.review_status}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
@@ -359,6 +618,34 @@ const ReviewerDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* Moderator actions for selected item */}
+                  {isModerator && (
+                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 mb-4">
+                      <div className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <Shield className="w-4 h-4" />
+                        Moderator Actions
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleModeratorApprove(selectedItem.item_id)}
+                          disabled={moderatorActionLoading}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Approve Item
+                        </button>
+                        <button
+                          onClick={() => handleModeratorReject(selectedItem.item_id)}
+                          disabled={moderatorActionLoading}
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Reject Item
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200">
@@ -387,6 +674,14 @@ const ReviewerDashboard: React.FC = () => {
                     >
                       <span className="flex items-center gap-2"><FileText className="w-4 h-4" /> QP & Memo</span>
                     </button>
+                    {isModerator && (
+                      <button
+                        onClick={() => setActiveTab('audit_log')}
+                        className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'audit_log' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+                      >
+                        <span className="flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Audit Log</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="p-6">
@@ -514,7 +809,7 @@ const ReviewerDashboard: React.FC = () => {
                                 </div>
                                 <div className="flex items-center gap-2 text-sm">
                                   <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(entry.previous_state)}`}>{entry.previous_state}</span>
-                                  <span className="text-gray-400">→</span>
+                                  <span className="text-gray-400">â†’</span>
                                   <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(entry.current_state)}`}>{entry.current_state}</span>
                                 </div>
                                 {entry.transition_reason && (
@@ -559,6 +854,62 @@ const ReviewerDashboard: React.FC = () => {
                             <FileText className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                             <p>No QP & Memo data available</p>
                             <p className="text-xs mt-1">This item may not have associated QP/Memo content</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {activeTab === 'audit_log' && isModerator && (
+                      <div className="space-y-3">
+                        {auditLoading ? (
+                          <div className="text-center py-8">
+                            <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                            <span className="text-gray-500 text-sm">Loading audit log...</span>
+                          </div>
+                        ) : auditLog.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            <BarChart3 className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                            <p>No audit entries</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-gray-50 border-b border-gray-200">
+                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Time</th>
+                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Action</th>
+                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Item</th>
+                                  <th className="px-3 py-2 text-left font-medium text-gray-700">User</th>
+                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Old â†’ New</th>
+                                  <th className="px-3 py-2 text-left font-medium text-gray-700">Reason</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {auditLog.map((entry) => (
+                                  <tr key={entry.log_id} className="hover:bg-gray-50">
+                                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{new Date(entry.timestamp).toLocaleString()}</td>
+                                    <td className="px-3 py-2">
+                                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                        entry.action === 'approve' ? 'bg-green-100 text-green-700' :
+                                        entry.action === 'reject' ? 'bg-red-100 text-red-700' :
+                                        entry.action === 'publish' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-gray-100 text-gray-700'
+                                      }`}>
+                                        {entry.action}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 font-mono text-xs text-gray-600">{entry.item_id?.slice(0, 8)}...</td>
+                                    <td className="px-3 py-2 text-xs text-gray-600">{entry.action_by}</td>
+                                    <td className="px-3 py-2 text-xs text-gray-600">
+                                      {entry.old_value ? JSON.stringify(entry.old_value).slice(0, 40) : 'â€”'}
+                                      <span className="text-gray-400 mx-1">â†’</span>
+                                      {entry.new_value ? JSON.stringify(entry.new_value).slice(0, 40) : 'â€”'}
+                                    </td>
+                                    <td className="px-3 py-2 text-xs text-gray-500">{entry.reason || 'â€”'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         )}
                       </div>

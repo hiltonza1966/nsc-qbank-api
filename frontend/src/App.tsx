@@ -22,7 +22,6 @@ import BatchParserDashboard from './pages/BatchParserDashboard';
 import ReviewBoard from './pages/ReviewBoard';
 import ReviewerDashboard from './pages/ReviewerDashboard';
 import AdminAssignmentPanel from './pages/AdminAssignmentPanel';
-import ModeratorDashboard from './pages/ModeratorDashboard';
 import QPMemoRegister from './pages/QPMemoRegister';
 import ParserImportDashboard from './pages/ParserImportDashboard';
 import CapsRegister from './pages/CapsRegister';
@@ -192,7 +191,6 @@ const Navigation: React.FC = () => {
 
   const isReviewActive = location.pathname === '/reviews' || 
                          location.pathname === '/reviewer-dashboard' || 
-                         location.pathname === '/moderator-dashboard' ||
                          location.pathname === '/review-board';
 
   const isWizardActive = location.pathname === '/wizard' || 
@@ -247,7 +245,6 @@ const Navigation: React.FC = () => {
           >
             <Link to="/reviews" onClick={() => setReviewsOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Review Board</Link>
             <Link to="/reviewer-dashboard" onClick={() => setReviewsOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Item Review</Link>
-            <Link to="/moderator-dashboard" onClick={() => setReviewsOpen(false)} style={{ ...linkStyle, display: 'block', padding: '8px 16px', fontSize: '13px' }}>Moderator Review</Link>
           </div>
         )}
       </div>
@@ -413,7 +410,6 @@ const App: React.FC = () => {
                 <Route path="/items/:id" element={<ItemDetail />} />
                 <Route path="/reviews" element={<Reviews />} />
                 <Route path="/reviewer-dashboard" element={<ReviewerDashboard />} />
-                <Route path="/moderator-dashboard" element={<ModeratorDashboard />} />
                 <Route path="/review-board" element={<ReviewBoard />} />
                 <Route path="/papers" element={<Papers />} />
                 <Route path="/papers/:id" element={<PaperDetail />} />
