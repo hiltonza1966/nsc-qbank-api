@@ -23,11 +23,12 @@ import BatchParserDashboard from './pages/BatchParserDashboard';
 import ReviewBoard from './pages/ReviewBoard';
 import ReviewerDashboard from './pages/ReviewerDashboard';
 import AdminAssignmentPanel from './pages/AdminAssignmentPanel';
+import { AuthProvider } from './context/AuthContext';
+import LoginPage from './pages/LoginPage';
+import UserManagement from './pages/UserManagement';
 import QPMemoRegister from './pages/QPMemoRegister';
 import ParserImportDashboard from './pages/ParserImportDashboard';
 import CapsRegister from './pages/CapsRegister';
-import { AuthProvider } from './context/AuthContext';
-import LoginPage from './pages/LoginPage';
 
 // ============================================
 // TYPES
@@ -158,12 +159,16 @@ const LoadingFallback: React.FC = () => (
 // ============================================
 const Navigation: React.FC = () => {
   const { user, isAuthenticated, isAdmin, isModerator, logout } = useAuth();
+  const [userRole, setUserRole] = useState('author');
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [capsParserOpen, setCapsParserOpen] = useState(false);
   const location = useLocation();
 
-  // Auth state from AuthContext, no localStorage needed
+  useEffect(() => {
+    const storedRole = localStorage.getItem('qbank_role') || 'author';
+    setUserRole(storedRole);
+  }, []);
 
   const navStyle: React.CSSProperties = {
     display: 'flex',
@@ -337,7 +342,12 @@ const Navigation: React.FC = () => {
         )}
       </div>
       {(isAdmin || isModerator) && (
-        <Link to="/admin" style={location.pathname === '/admin' ? activeLinkStyle : linkStyle}>Admin</Link>
+        <>
+          <Link to="/admin" style={location.pathname === '/admin' ? activeLinkStyle : linkStyle}>Admin</Link>
+          {isAdmin && (
+            <Link to="/admin/users" style={location.pathname === '/admin/users' ? activeLinkStyle : linkStyle}>Users</Link>
+          )}
+        </>
       )}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
         {isAuthenticated && user && (
@@ -442,6 +452,7 @@ const App: React.FC = () => {
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="/admin/assignments" element={<AdminAssignmentPanel />} />
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/admin/users" element={<UserManagement />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </React.Suspense>
